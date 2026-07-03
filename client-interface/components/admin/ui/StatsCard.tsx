@@ -12,7 +12,6 @@ interface StatsCardProps {
    * e.g. 'text-brand-600 bg-brand-50'  (default)
    */
   colorClass?: string;
-  valueClassName?: string;
 }
 
 export function StatsCard({
