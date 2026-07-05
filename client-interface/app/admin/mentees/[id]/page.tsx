@@ -228,7 +228,7 @@ export default function AdminMenteeProfilePage() {
             <StatsCard icon={TrendingUp}   label="Progress"        value={`${overallProgress}%`}                           colorClass="text-brand-600 bg-brand-50" />
             <StatsCard icon={CheckCircle2} label="Tasks Completed"  value={`${tasksCompleted}/${stats?.tasksTotal ?? tasksCompleted}`} colorClass="text-green-600 bg-green-50" />
             <StatsCard icon={Trophy}       label="Points"           value={points.toLocaleString()}                        colorClass="text-amber-600 bg-amber-50" />
-            <StatsCard icon={Users2}       label="Clan"             value={stats?.currentClanName ?? currentClan?.name ?? '-'} colorClass="text-purple-600 bg-purple-50"   />
+            <StatsCard icon={Users2}       label="Clan"             value={stats?.currentClanName ?? currentClan?.name ?? '-'} colorClass="text-purple-600 bg-purple-50" />
           </div>
 
           {/* Weekly schedule (read-only; the mentor fills it in Schedules) */}
