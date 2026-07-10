@@ -110,9 +110,11 @@ const getMyClanAccess = catchAsync(async (req, res) => {
 
 /**
  * DELETE /api/clans/:id/members/:userId  (admin / lead mentor)
+ * `?role=` removes just that clan role — a member who is both a mentee and a
+ * co-mentor here keeps the other one. Omit it to evict them from the clan.
  */
 const removeMember = catchAsync(async (req, res) => {
-  const membership = await clanService.removeMember(req.params.id, req.params.userId);
+  const membership = await clanService.removeMember(req.params.id, req.params.userId, req.query.role || null);
   res.status(200).json(successResponse('Member removed', { membership }));
 });
 

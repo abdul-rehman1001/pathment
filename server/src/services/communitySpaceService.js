@@ -24,9 +24,13 @@ const MENTOR_CLAN_ROLES = ['lead_mentor', 'co_mentor', 'core_team'];
  * who are a space's members (getMemberIds / getPeople).
  */
 class CommunitySpaceService {
-  /** Active clan memberships for a user, with clan + program eager-loaded. */
+  /**
+   * Active clan memberships for a user, with clan + program eager-loaded — ONE
+   * per clan. A user can hold two roles in a clan (mentee + co-mentor), and a
+   * clan's community space must still appear exactly once in their sidebar.
+   */
   async _myClanMemberships(userId) {
-    return models.ClanMembership.findAll({
+    const rows = await models.ClanMembership.findAll({
       where: { userId, status: 'active' },
       include: [{
         model: models.Clan,
@@ -35,6 +39,9 @@ class CommunitySpaceService {
         include: [{ model: models.Program, as: 'program', attributes: ['id', 'name'] }]
       }]
     });
+    const byClan = new Map();
+    for (const m of rows) if (!byClan.has(m.clanId)) byClan.set(m.clanId, m);
+    return [...byClan.values()];
   }
 
   /** Active enrollments for a user (mentee side), with program + cohort. */

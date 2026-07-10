@@ -24,6 +24,16 @@ const CAPABILITY_FOR_CLAN_ROLE = {
   mentee: 'mentee'
 };
 
+// The mentor-side roles. A person holds AT MOST ONE of these per clan (they
+// swap in place), and independently may also be a 'mentee' of the same clan.
+const MENTOR_CLAN_ROLES = ['lead_mentor', 'co_mentor', 'core_team'];
+
+// Most → least authority, for collapsing a dual-role member to the single role
+// a UI needs to name ("what am I here?").
+const ROLE_RANK = { lead_mentor: 3, core_team: 2, co_mentor: 1, mentee: 0 };
+const strongestRole = (roles) =>
+  [...roles].sort((a, b) => (ROLE_RANK[b] ?? -1) - (ROLE_RANK[a] ?? -1))[0] || null;
+
 class ClanService {
   /**
    * Ensure a user holds a platform capability (adds it if missing). Used when
@@ -145,16 +155,19 @@ class ClanService {
     // so an IAM-granted co-mentor was invisible on the Clan Team page even though
     // their access worked. Merge those grants in so the displayed team matches the
     // people who actually mentor the clan. (Membership rows win on conflict.)
+    // Keyed by user AND role: someone can legitimately appear twice (a mentee of
+    // this clan who also co-mentors it), so a per-user key would swallow one of
+    // the two — which is exactly the roster row a dual-role member was missing.
     const out = clan.toJSON();
     const memberships = out.memberships || [];
-    const seenUserIds = new Set(memberships.map((m) => m.userId));
+    const key = (userId, role) => `${userId}:${role}`;
+    const seenRoles = new Set(memberships.map((m) => key(m.userId, m.role)));
 
-    const MENTOR_ROLES = ['lead_mentor', 'co_mentor', 'core_team'];
     const grants = await models.RoleAssignment.findAll({
-      where: { scopeType: 'clan', scopeId: clanId, role: { [Op.in]: MENTOR_ROLES } },
+      where: { scopeType: 'clan', scopeId: clanId, role: { [Op.in]: MENTOR_CLAN_ROLES } },
       attributes: ['id', 'userId', 'role'],
     });
-    const missing = grants.filter((g) => g.userId && !seenUserIds.has(g.userId));
+    const missing = grants.filter((g) => g.userId && !seenRoles.has(key(g.userId, g.role)));
     if (missing.length) {
       const users = await models.User.findAll({
         where: { id: { [Op.in]: [...new Set(missing.map((g) => g.userId))] } },
@@ -162,10 +175,10 @@ class ClanService {
       });
       const userById = new Map(users.map((u) => [u.id, u.toJSON()]));
       for (const g of missing) {
-        if (seenUserIds.has(g.userId)) continue; // de-dupe across multiple grants
+        if (seenRoles.has(key(g.userId, g.role))) continue; // de-dupe across multiple grants
         const u = userById.get(g.userId);
         if (!u) continue;
-        seenUserIds.add(g.userId);
+        seenRoles.add(key(g.userId, g.role));
         memberships.push({
           id: `ra-${g.id}`,        // synthetic — there's no clan_memberships row
           clanId,
@@ -236,8 +249,15 @@ class ClanService {
    * Add (or reactivate) a member in a clan with a clan-scoped role. This is the
    * clan-based assignment entry point: assigning a mentee here is how they're
    * "matched". Ensures the user gains the implied platform capability.
+   *
+   * Roles are GRANTED, not swapped wholesale: adding someone as a co-mentor
+   * leaves an existing mentee membership intact (a mentee promoted to co-mentor
+   * of their own clan stays a mentee there — still on the roster, still gets
+   * tasks). Only the mentor roles are mutually exclusive with each other, so
+   * lead_mentor / co_mentor / core_team reuse the one mentor row.
    */
   async addMember(clanId, { userId, role, enrollmentId }, actor = null) {
+    const { Op } = require('sequelize');
     if (!userId || !role) throw new ValidationError('userId and role are required');
     if (!CAPABILITY_FOR_CLAN_ROLE[role]) throw new ValidationError(`Invalid clan role: ${role}`);
 
@@ -256,10 +276,37 @@ class ClanService {
     const user = await models.User.findByPk(userId);
     if (!user) throw new NotFoundError('User not found');
 
+    // One mentee placement per person. If they're already an active/paused mentee
+    // — of this clan or another — refuse with a message that names where, instead
+    // of silently creating a second placement. Re-adding a REMOVED mentee is fine
+    // (that row isn't active), and this never touches mentor-role grants.
+    if (role === 'mentee') {
+      const placed = await models.ClanMembership.findOne({
+        where: { userId, role: 'mentee', status: { [Op.in]: ['active', 'paused'] } },
+        include: [{ model: models.Clan, as: 'clan', attributes: ['id', 'name'] }],
+      });
+      if (placed) {
+        const who = `${user.firstName} ${user.lastName}`.trim() || user.email;
+        throw new ConflictError(
+          placed.clanId === clanId
+            ? `${who} is already a mentee of this clan.`
+            : `${who} is already a mentee of "${placed.clan?.name || 'another clan'}". A person can be a mentee of only one clan at a time — reassign them instead.`
+        );
+      }
+    }
+
     const membership = await sequelize.transaction(async (transaction) => {
       await this.ensureCapability(user, CAPABILITY_FOR_CLAN_ROLE[role], transaction);
 
-      let membership = await models.ClanMembership.findOne({ where: { clanId, userId }, transaction });
+      // The row this grant occupies: the person's mentor row (whatever role it
+      // currently names) for a mentor role, or their mentee row for 'mentee'.
+      // Never the other one — that's what used to clobber the mentee.
+      const slot = role === 'mentee' ? { role: 'mentee' } : { role: { [Op.in]: MENTOR_CLAN_ROLES } };
+      let membership = await models.ClanMembership.findOne({
+        where: { clanId, userId, ...slot },
+        order: [[sequelize.literal(`(status = 'active') DESC`)]], // prefer a live row over a removed one
+        transaction
+      });
       if (membership) {
         membership.role = role;
         membership.status = 'active';
@@ -323,25 +370,40 @@ class ClanService {
     return membership;
   }
 
-  async removeMember(clanId, userId) {
+  /**
+   * Remove ONE role from a clan member, or (with no `role`) evict them entirely.
+   * Removing a mentee-and-co-mentor's co-mentor role must not also unassign them
+   * as a mentee — hence the role-scoped delete. Callers that mean "get this
+   * person out of the clan" simply omit `role`.
+   */
+  async removeMember(clanId, userId, role = null) {
     const { Op } = require('sequelize');
-    const membership = await models.ClanMembership.findOne({ where: { clanId, userId } });
+    if (role && !CAPABILITY_FOR_CLAN_ROLE[role]) throw new ValidationError(`Invalid clan role: ${role}`);
+
+    const memberships = await models.ClanMembership.findAll({
+      where: { clanId, userId, ...(role ? { role } : {}) }
+    });
 
     // A co-mentor / core-team member may instead (or also) be granted via the
     // scoped-RBAC RoleAssignment table. Revoke that here too — otherwise the IAM
     // grant keeps them a co-mentor and they'd reappear on the team after "remove".
-    const revoked = await models.RoleAssignment.destroy({
-      where: { userId, scopeType: 'clan', scopeId: clanId, role: { [Op.in]: ['co_mentor', 'core_team'] } }
-    });
+    // Dropping only the 'mentee' role leaves any mentor grant alone.
+    const grantRoles = role ? [role].filter((r) => r !== 'mentee') : ['co_mentor', 'core_team'];
+    const revoked = grantRoles.length
+      ? await models.RoleAssignment.destroy({
+        where: { userId, scopeType: 'clan', scopeId: clanId, role: { [Op.in]: grantRoles } }
+      })
+      : 0;
 
-    if (!membership && !revoked) throw new NotFoundError('Membership not found');
+    if (!memberships.length && !revoked) throw new NotFoundError('Membership not found');
 
-    if (membership) {
+    for (const membership of memberships) {
       membership.status = 'removed';
       membership.leftAt = new Date();
       await membership.save();
     }
-    return membership || { clanId, userId, status: 'removed', source: 'role_assignment' };
+
+    return memberships[0] || { clanId, userId, role, status: 'removed', source: 'role_assignment' };
   }
 
   /** The permission keys a lead/admin may toggle for a co-mentor (the defaults). */
@@ -370,12 +432,15 @@ class ClanService {
     }
 
     // Prefer the real membership role; fall back to an inferred role for
-    // cover/IAM co-mentors who hold capability without a membership row.
-    const membership = await models.ClanMembership.findOne({
+    // cover/IAM co-mentors who hold capability without a membership row. A
+    // dual-role member (mentee + co-mentor here) has several rows — this view is
+    // the MENTOR one, so name their strongest role, never 'mentee'.
+    const memberships = await models.ClanMembership.findAll({
       where: { clanId, userId, status: 'active' },
       attributes: ['role']
     });
-    const role = membership?.role || (canManageTeam ? 'lead_mentor' : 'co_mentor');
+    const role = strongestRole(memberships.map((m) => m.role))
+      || (canManageTeam ? 'lead_mentor' : 'co_mentor');
 
     return { role, canManageTeam, canAddMentees };
   }
@@ -512,15 +577,29 @@ class ClanService {
   }
 
   /**
-   * Mentees not currently in ANY active clan ("leftover" people a lead mentor can
-   * pull into their clan). Optional `q` filters by name/email.
+   * People a lead mentor can pull into their clan AS A MENTEE. Anyone active who
+   * isn't already placed as a mentee somewhere — INCLUDING mentors, who can learn
+   * in one clan while mentoring another (a mentor and a mentee are the same kind
+   * of account; the difference is the clan role, not the base role). Optional `q`
+   * filters by name/email.
+   *
+   * Two deliberate exclusions:
+   *   - already an active mentee in ANY clan → one mentee placement at a time, so
+   *     a person is never a mentee of two clans at once (mentoring is unlimited).
+   *   - platform admins → a super-admin as someone's mentee is never intended.
+   *
+   * A co-mentor with no mentee placement DOES appear here (that's the point), and
+   * so does a co-mentor of THIS clan — adding them makes them a mentee here too,
+   * the supported mentee-and-co-mentor dual role.
    */
   async listAvailableMembers({ q } = {}) {
     const { Op } = require('sequelize');
-    const assigned = await models.ClanMembership.findAll({ where: { status: 'active' }, attributes: ['userId'] });
+    const assigned = await models.ClanMembership.findAll({
+      where: { status: { [Op.in]: ['active', 'paused'] }, role: 'mentee' }, attributes: ['userId']
+    });
     const assignedIds = [...new Set(assigned.map((m) => m.userId).filter(Boolean))];
 
-    const where = { role: 'mentee', status: 'active' };
+    const where = { role: { [Op.ne]: 'admin' }, status: 'active' };
     if (assignedIds.length) where.id = { [Op.notIn]: assignedIds };
     if (q && q.trim()) {
       const like = { [Op.iLike]: `%${q.trim()}%` };
@@ -528,11 +607,11 @@ class ClanService {
     }
     const users = await models.User.findAll({
       where,
-      attributes: ['id', 'firstName', 'lastName', 'email'],
+      attributes: ['id', 'firstName', 'lastName', 'email', 'role'],
       order: [['firstName', 'ASC']],
       limit: 50
     });
-    return users.map((u) => ({ id: u.id, name: `${u.firstName} ${u.lastName}`.trim() || u.email, email: u.email }));
+    return users.map((u) => ({ id: u.id, name: `${u.firstName} ${u.lastName}`.trim() || u.email, email: u.email, role: u.role }));
   }
 
   /**
@@ -547,7 +626,7 @@ class ClanService {
     // core) — keep this clan's MENTEES in the list so they can be promoted to
     // co-mentor, and of course include everyone outside the clan.
     const mentors = await models.ClanMembership.findAll({
-      where: { clanId, status: 'active', role: { [Op.in]: ['lead_mentor', 'co_mentor', 'core_team'] } },
+      where: { clanId, status: 'active', role: { [Op.in]: MENTOR_CLAN_ROLES } },
       attributes: ['userId']
     });
     const excludeIds = [...new Set(mentors.map((m) => m.userId).filter(Boolean))];

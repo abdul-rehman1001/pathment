@@ -73,7 +73,7 @@ class ClanRequestsService {
       if (status === 'approved') {
         // Move the mentee: remove old membership, add to the target clan.
         if (req.fromClanId) {
-          const old = await models.ClanMembership.findOne({ where: { clanId: req.fromClanId, userId: req.menteeId }, transaction });
+          const old = await models.ClanMembership.findOne({ where: { clanId: req.fromClanId, userId: req.menteeId, role: 'mentee' }, transaction });
           if (old) { old.status = 'removed'; old.leftAt = new Date(); await old.save({ transaction }); }
         }
       }

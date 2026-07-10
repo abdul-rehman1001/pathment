@@ -27,6 +27,13 @@ interface MyMembership {
   clan: { id: string; name: string; programId: string; status: string };
 }
 
+const ROLE_LABEL: Record<Member['role'], string> = {
+  lead_mentor: 'lead mentor',
+  co_mentor: 'co-mentor',
+  core_team: 'core team',
+  mentee: 'mentee',
+};
+
 const name = (u: { firstName: string; lastName: string; email: string }) => `${u.firstName} ${u.lastName}`.trim() || u.email;
 const initials = (u: { firstName: string; lastName: string; email: string }) =>
   (`${u.firstName?.[0] || ''}${u.lastName?.[0] || ''}`.trim() || u.email[0] || '?').toUpperCase();
@@ -104,9 +111,30 @@ function ClanTeamCard({ clanId, myRole }: { clanId: string; myRole: string }) {
   }, [clanId, myRole]);
   useEffect(load, [load]);
 
-  const remove = async (userId: string, label: string) => {
-    if (!(await confirm({ title: `Remove ${label}?`, description: "They'll be unassigned from this clan and can be placed again.", variant: 'danger', confirmLabel: 'Remove' }))) return;
-    try { await clanApi.removeMember(clanId, userId); toast.success('Removed'); load(); }
+  const members = clan?.memberships || [];
+  // People holding a mentor role here AND still learning here as a mentee. They
+  // appear in two sections on purpose.
+  const dualRole = new Set(
+    members
+      .filter((m) => m.role === 'mentee')
+      .map((m) => m.user.id)
+      .filter((id) => members.some((m) => m.role !== 'mentee' && m.user.id === id))
+  );
+
+  // Scoped to the role of the row you clicked: someone who is both a mentee and a
+  // co-mentor here keeps the other role.
+  const remove = async (m: Member) => {
+    const label = name(m.user);
+    const asRole = ROLE_LABEL[m.role];
+    if (!(await confirm({
+      title: `Remove ${label} as ${asRole}?`,
+      description: dualRole.has(m.user.id)
+        ? `They'll keep their other role in this clan — only ${asRole} is removed.`
+        : "They'll be unassigned from this clan and can be placed again.",
+      variant: 'danger',
+      confirmLabel: 'Remove',
+    }))) return;
+    try { await clanApi.removeMember(clanId, m.user.id, m.role); toast.success('Removed'); load(); }
     catch (e) { toast.error(extractApiErrorMessage(e, 'Could not remove')); }
   };
 
@@ -115,7 +143,6 @@ function ClanTeamCard({ clanId, myRole }: { clanId: string; myRole: string }) {
   }
   if (!clan) return null;
 
-  const members = clan.memberships || [];
   const lead = members.filter((m) => m.role === 'lead_mentor');
   const co = members.filter((m) => m.role === 'co_mentor');
   const core = members.filter((m) => m.role === 'core_team');
@@ -127,7 +154,14 @@ function ClanTeamCard({ clanId, myRole }: { clanId: string; myRole: string }) {
       <div className="flex items-center gap-3 min-w-0">
         <span className="w-9 h-9 rounded-full bg-brand-100 text-brand-700 text-sm font-medium flex items-center justify-center shrink-0">{initials(m.user)}</span>
         <div className="min-w-0">
-          <p className="text-sm font-medium text-slate-900 truncate">{name(m.user)}</p>
+          <p className="text-sm font-medium text-slate-900 truncate">
+            {name(m.user)}
+            {dualRole.has(m.user.id) && (
+              <span className="ml-2 align-middle rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
+                also {m.role === 'mentee' ? 'on the team' : 'a mentee here'}
+              </span>
+            )}
+          </p>
           <p className="text-xs text-slate-500 truncate">{m.user.email}</p>
         </div>
       </div>
@@ -136,7 +170,7 @@ function ClanTeamCard({ clanId, myRole }: { clanId: string; myRole: string }) {
           <button onClick={() => setPermMember(m)} className="p-1.5 rounded-md text-slate-400 hover:text-brand-600 hover:bg-brand-50" aria-label="Edit permissions" title="Edit permissions"><SlidersHorizontal className="w-4 h-4" /></button>
         )}
         {removable && canManageTeam && (
-          <button onClick={() => remove(m.user.id, name(m.user))} className="p-1.5 rounded-md text-rose-500 hover:bg-rose-50" aria-label="Remove"><Trash2 className="w-4 h-4" /></button>
+          <button onClick={() => remove(m)} className="p-1.5 rounded-md text-rose-500 hover:bg-rose-50" aria-label={`Remove as ${ROLE_LABEL[m.role]}`}><Trash2 className="w-4 h-4" /></button>
         )}
       </div>
     </div>
@@ -463,7 +497,7 @@ function AddCoverDrawer({ clanId, clanName, onClose, onAdded }: { clanId: string
 /** Lead-mentor: pull in unassigned mentees, or invite a new one straight into the clan. */
 function AddMenteesDrawer({ clanId, clanName, onClose, onChanged }: { clanId: string; clanName: string; onClose: () => void; onChanged: () => void }) {
   const [query, setQuery] = useState('');
-  const [people, setPeople] = useState<{ id: string; name: string; email: string }[]>([]);
+  const [people, setPeople] = useState<{ id: string; name: string; email: string; role?: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState('');
@@ -522,7 +556,7 @@ function AddMenteesDrawer({ clanId, clanName, onClose, onChanged }: { clanId: st
         </div>
 
         <div className="pt-4 border-t border-slate-100">
-          <label className="block text-sm font-medium text-slate-700 mb-1">Available people <span className="text-slate-400 font-normal">(not in any clan)</span></label>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Available people <span className="text-slate-400 font-normal">(anyone not already a mentee)</span></label>
           <div className="relative">
             <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by name or email…" className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500" />
@@ -535,7 +569,12 @@ function AddMenteesDrawer({ clanId, clanName, onClose, onChanged }: { clanId: st
             ) : people.map((p) => (
               <div key={p.id} className="flex items-center justify-between gap-3 py-2">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-900 truncate">{p.name}</p>
+                  <p className="text-sm font-medium text-slate-900 truncate">
+                    {p.name}
+                    {p.role === 'mentor' && (
+                      <span className="ml-2 align-middle rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">Mentor — will also learn here</span>
+                    )}
+                  </p>
                   <p className="text-xs text-slate-500 truncate">{p.email}</p>
                 </div>
                 <button onClick={() => add(p)} disabled={busy === p.id} className="px-2.5 py-1.5 rounded-lg bg-brand-50 dark:bg-brand-500/15 text-brand-700 text-xs font-medium hover:bg-brand-100 disabled:opacity-50 inline-flex items-center gap-1.5 shrink-0">

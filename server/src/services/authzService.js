@@ -290,7 +290,7 @@ class AuthzService {
     if (match) return true;
 
     const menteeClans = await models.ClanMembership.findAll({
-      where: { userId: menteeId, status: 'active' }, attributes: ['clanId']
+      where: { userId: menteeId, status: 'active', role: 'mentee' }, attributes: ['clanId']
     });
     for (const c of menteeClans) {
       const resource = await this.scopeOfClan(c.clanId);
@@ -310,11 +310,20 @@ class AuthzService {
    */
   async canActOnTask(userId, task, permissions) {
     if (!userId || !task) return false;
-    if (task.mentorId && task.mentorId === userId) return true; // the assigning mentor
     const user = await models.User.findByPk(userId, { attributes: ['id', 'role'] });
     if (!user) return false;
-    const resource = await this.scopeOfAssignedTask(task.id);
     const assignments = await this.getAssignments(user);
+
+    // No self-review. A co-mentor of the clan they're also a mentee in holds
+    // task.review over that clan's mentees — themselves included — so without
+    // this they could approve and score their own submissions. Admins keep
+    // their override (they answer to the audit log, not to a clan role).
+    if (task.menteeId && task.menteeId === userId) {
+      return this.hasAdminAccess(user, { assignments });
+    }
+
+    if (task.mentorId && task.mentorId === userId) return true; // the assigning mentor
+    const resource = await this.scopeOfAssignedTask(task.id);
     const perms = Array.isArray(permissions) ? permissions : [permissions];
     for (const p of perms) {
       if (await this.can(user, p, resource, { assignments })) return true;
@@ -340,7 +349,7 @@ class AuthzService {
       if (enr) out.programId = enr.programId;
     }
     const membership = await models.ClanMembership.findOne({
-      where: { userId: task.menteeId, status: 'active' }, attributes: ['clanId']
+      where: { userId: task.menteeId, status: 'active', role: 'mentee' }, attributes: ['clanId']
     });
     if (membership) out.clanId = membership.clanId;
     return out;
@@ -398,12 +407,16 @@ class AuthzService {
     return allowed;
   }
 
-  /** A mentee: their self scope + the clan/program they're currently placed in. */
+  /**
+   * A mentee: their self scope + the clan/program they're currently placed in.
+   * `role: 'mentee'` matters — someone who co-mentors clan B while learning in
+   * clan A must resolve to A, or their mentors lose access to their own mentee.
+   */
   async scopeOfMentee(menteeId) {
     if (!menteeId) return null;
     const out = { userId: menteeId };
     const membership = await models.ClanMembership.findOne({
-      where: { userId: menteeId, status: 'active' }, attributes: ['clanId']
+      where: { userId: menteeId, status: 'active', role: 'mentee' }, attributes: ['clanId']
     });
     if (membership) {
       out.clanId = membership.clanId;
@@ -420,7 +433,7 @@ class AuthzService {
     if (!enr) return null;
     const out = { userId: enr.menteeId, programId: enr.programId };
     const membership = await models.ClanMembership.findOne({
-      where: { userId: enr.menteeId, status: 'active' }, attributes: ['clanId']
+      where: { userId: enr.menteeId, status: 'active', role: 'mentee' }, attributes: ['clanId']
     });
     if (membership) out.clanId = membership.clanId;
     return out;

@@ -2,8 +2,14 @@ module.exports = (sequelize, DataTypes) => {
   /**
    * ClanMembership - a user's clan-scoped role. This is what makes roles
    * contextual: the same user can be a 'mentee' in one clan and a 'co_mentor'
-   * (or 'lead_mentor' / 'core_team') in another. Platform-level capabilities
-   * live on User.capabilities; the per-clan role lives here.
+   * (or 'lead_mentor' / 'core_team') in another - and, since migration 075, both
+   * at once in the SAME clan (a mentee promoted to co-mentor keeps learning
+   * there). One row per role, hence the unique key on (clan, user, role).
+   * Holding at most one MENTOR role per clan is a service-level rule, not a DB
+   * one: `clanService.addMember` swaps lead/co/core in place.
+   *
+   * Platform-level capabilities live on User.capabilities; the per-clan role
+   * lives here.
    */
   const ClanMembership = sequelize.define('ClanMembership', {
     id: {
@@ -67,7 +73,8 @@ module.exports = (sequelize, DataTypes) => {
     underscored: true,
     timestamps: true,
     indexes: [
-      { unique: true, fields: ['clan_id', 'user_id'] },
+      { unique: true, fields: ['clan_id', 'user_id', 'role'] },
+      { fields: ['clan_id', 'user_id'] },
       { fields: ['user_id'] },
       { fields: ['clan_id'] },
       { fields: ['role'] }

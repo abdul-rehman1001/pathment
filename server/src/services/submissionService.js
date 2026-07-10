@@ -860,7 +860,9 @@ class SubmissionService {
           where: { clanId: { [Op.in]: clanIds }, status: 'active', role: 'mentee' },
           attributes: ['userId'],
         });
-        const menteeIds = [...new Set(ms.map((m) => m.userId))];
+        // Never queue your own work: a co-mentor who is also a mentee of the clan
+        // is in this roster, and `canActOnTask` will refuse to let them review it.
+        const menteeIds = [...new Set(ms.map((m) => m.userId))].filter((id) => id !== mentorId);
         if (menteeIds.length) clauses.push({ menteeId: { [Op.in]: menteeIds } });
       }
     }

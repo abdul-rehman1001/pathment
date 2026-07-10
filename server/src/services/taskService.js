@@ -274,16 +274,20 @@ class TaskService {
    * mentee is an active 'mentee' member (the clan-based model).
    */
   async _isMentorForMentee(mentorId, menteeId) {
+    // Nobody mentors themselves. A co-mentor of the clan they also learn in
+    // matches every clan check below, which would let them assign (and then
+    // review) their own work.
+    if (mentorId === menteeId) return false;
+
     const match = await models.MentorMenteeMatch.findOne({
       where: { mentorId, menteeId, status: 'active' }
     });
     if (match) return true;
 
-    const mentorClans = await models.ClanMembership.findAll({
-      where: { userId: mentorId, status: 'active', role: { [Op.in]: ['lead_mentor', 'co_mentor', 'core_team'] } },
-      attributes: ['clanId']
-    });
-    const clanIds = mentorClans.map((c) => c.clanId);
+    // Every clan they mentor, from any source — a team membership, an IAM grant,
+    // or accepted cross-clan cover. The old membership-only lookup silently
+    // refused task assignment to co-mentors granted through Roles & Access.
+    const clanIds = await authzService.mentoredClanIds(mentorId);
     if (!clanIds.length) return false;
 
     const menteeMembership = await models.ClanMembership.findOne({

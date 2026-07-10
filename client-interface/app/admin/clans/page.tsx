@@ -9,13 +9,13 @@ import { TablePagination } from '@/components/shared/TablePagination';
 import { Avatar } from '@/components/shared/Avatar';
 import { CoMentorPermissionsDrawer } from '@/components/shared/CoMentorPermissionsDrawer';
 import { ReassignClanModal } from '@/components/admin/ReassignClanModal';
-import { useAdminClans, type Clan } from '@/lib/hooks/admin';
+import { useAdminClans, type Clan, type ClanMembershipRow } from '@/lib/hooks/admin';
 import { clanApi } from '@/lib/services/clan-api';
 import { programsApi } from '@/lib/services/program-api';
 import { mentorApi } from '@/lib/services/mentor-api';
 import { menteeApi } from '@/lib/services/mentee-api';
 
-interface Person { id: string; firstName: string; lastName: string; email?: string }
+interface Person { id: string; firstName: string; lastName: string; email?: string; role?: string }
 
 const ROLE_LABEL: Record<string, string> = {
   lead_mentor: 'Lead mentor', co_mentor: 'Co-mentor', mentee: 'Mentee', core_team: 'Core team',
@@ -136,7 +136,7 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
       setSearching(true);
       const req = role === 'mentee' ? clanApi.availableMembers(clanId, q) : clanApi.candidates(clanId, q);
       req
-        .then((r: any) => { if (alive) setPickResults((r.data?.people || []).map((p: any) => ({ id: p.id, firstName: p.firstName ?? (p.name || '').split(' ')[0] ?? '', lastName: p.lastName ?? (p.name || '').split(' ').slice(1).join(' '), email: p.email }))); })
+        .then((r: any) => { if (alive) setPickResults((r.data?.people || []).map((p: any) => ({ id: p.id, firstName: p.firstName ?? (p.name || '').split(' ')[0] ?? '', lastName: p.lastName ?? (p.name || '').split(' ').slice(1).join(' '), email: p.email, role: p.role }))); })
         .catch(() => { if (alive) setPickResults([]); })
         .finally(() => { if (alive) setSearching(false); });
     }, 250);
@@ -155,10 +155,12 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
     finally { setBusy(false); }
   };
 
-  const remove = async (uid: string) => {
+  // Role-scoped: a member listed twice (mentee + co-mentor of this clan) loses
+  // only the role on the row you clicked.
+  const remove = async (uid: string, role: ClanMembershipRow['role']) => {
     try {
       setBusy(true);
-      await clanApi.removeMember(clanId, uid);
+      await clanApi.removeMember(clanId, uid, role);
       toast.success('Member removed');
       await load(); onChanged();
     } catch { toast.error('Could not remove member'); }
@@ -210,7 +212,12 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
                               <div className="py-4 flex justify-center"><Loader2 className="w-4 h-4 animate-spin text-slate-400" /></div>
                             ) : pickResults.map((p) => (
                               <button key={p.id} onClick={() => { setPicked(p); setPickResults([]); }} className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50">
-                                <span className="block text-slate-900">{p.firstName} {p.lastName}</span>
+                                <span className="block text-slate-900">
+                                  {p.firstName} {p.lastName}
+                                  {role === 'mentee' && p.role === 'mentor' && (
+                                    <span className="ml-2 align-middle rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">Mentor</span>
+                                  )}
+                                </span>
                                 {p.email && <span className="block text-xs text-slate-500">{p.email}</span>}
                               </button>
                             ))}
@@ -276,7 +283,7 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
                             <ArrowRightLeft className="w-4 h-4" />
                           </button>
                         )}
-                        <button onClick={() => remove(m.userId)} disabled={busy} className="text-slate-400 hover:text-red-500 disabled:opacity-50 shrink-0">
+                        <button onClick={() => remove(m.userId, m.role)} disabled={busy} title={`Remove as ${ROLE_LABEL[m.role] || m.role}`} className="text-slate-400 hover:text-red-500 disabled:opacity-50 shrink-0">
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>

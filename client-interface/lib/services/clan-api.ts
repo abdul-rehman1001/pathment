@@ -29,7 +29,10 @@ export const clanApi = {
     apiClient.post(`/clans/${id}/members`, { userId, role }),
   /** Clan-scoped mentor capabilities for the current user (matches server guards). */
   myClanAccess: (id: string) => apiClient.get(`/clans/${id}/members/me/access`),
-  removeMember: (id: string, userId: string) => apiClient.delete(`/clans/${id}/members/${userId}`),
+  /** Drops one clan role. A member who is both a mentee and a co-mentor of this
+   *  clan keeps the other role — omit `role` only to evict them from the clan. */
+  removeMember: (id: string, userId: string, role?: 'lead_mentor' | 'co_mentor' | 'mentee' | 'core_team') =>
+    apiClient.delete(`/clans/${id}/members/${userId}`, { params: role ? { role } : {} }),
   /** A co-mentor's current toggle state: { keys, denied }. Works for co-mentors
    *  from any source (team membership / cross-clan cover / IAM grant). */
   getMemberPermissions: (id: string, userId: string) =>
