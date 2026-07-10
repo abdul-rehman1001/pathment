@@ -40,66 +40,90 @@ EXTENSION_HANDLED: 'extension_handled',
   APPLICATION_CAPACITY_REACHED: 'application_capacity_reached'
 };
 
+// Which role's "hat" a notification concerns, so the bell + list can scope to the
+// portal the viewer is currently in (a dual-role mentor/mentee sees only the
+// active role's items; single-role users are unaffected). 'any' = always shown
+// regardless of role (system/security/cross-cutting — never hidden).
+//
+// This is the DECLARED audience per event and the enforcement point (every event
+// must set one — see the matrix-completeness test). At dispatch time the concrete
+// per-notification actionUrl wins when it names a role (see resolveAudience),
+// because a single event can legitimately fan out to different roles; `audience`
+// is the fallback for role-neutral or url-less notifications.
+const NOTIFICATION_AUDIENCES = ['mentor', 'mentee', 'admin', 'any'];
+
 const NOTIFICATION_MATRIX = {
   // New applicant landed — in-app only (can be frequent; no email spam).
   [NOTIFICATION_EVENTS.APPLICATION_RECEIVED]: {
     type: 'intake',
+    audience: 'admin',
     preferenceKey: 'application_received',
     channels: { inApp: true, email: false, chat: false }
   },
   // Cohort hit its application cap — admins should decide to raise it or close.
   [NOTIFICATION_EVENTS.APPLICATION_CAPACITY_REACHED]: {
     type: 'intake',
+    audience: 'admin',
     preferenceKey: 'application_capacity_reached',
     channels: { inApp: true, email: true, chat: false }
   },
   [NOTIFICATION_EVENTS.TASK_SUBMITTED]: {
     type: 'task',
+    audience: 'mentor',
     preferenceKey: 'task_submitted',
     channels: { inApp: true, email: true, chat: false }
   },
   [NOTIFICATION_EVENTS.SUBMISSION_REVIEWED]: {
     type: 'feedback',
+    audience: 'mentee',
     preferenceKey: 'submission_reviewed',
     channels: { inApp: true, email: true, chat: false }
   },
   [NOTIFICATION_EVENTS.FEEDBACK_SENT]: {
     type: 'feedback',
+    audience: 'mentee',
     preferenceKey: 'feedback_sent',
     channels: { inApp: true, email: true, chat: false }
   },
   [NOTIFICATION_EVENTS.TASK_ASSIGNED]: {
     type: 'task',
+    audience: 'mentee',
     preferenceKey: 'task_assigned',
     channels: { inApp: true, email: true, chat: false }
   },
   [NOTIFICATION_EVENTS.ROADMAP_ADVANCED]: {
     type: 'task',
+    audience: 'mentee',
     preferenceKey: 'task_assigned',
     channels: { inApp: true, email: false, chat: false }
   },
   [NOTIFICATION_EVENTS.TASK_DEADLINE_APPROACHING]: {
     type: 'task',
+    audience: 'mentee',
     preferenceKey: 'deadline_approaching',
     channels: { inApp: true, email: true, chat: false }
   },
   [NOTIFICATION_EVENTS.CHAT_MESSAGE_NEW]: {
     type: 'message',
+    audience: 'any',
     preferenceKey: 'message_received',
     channels: { inApp: true, email: false, chat: true }
   },
   [NOTIFICATION_EVENTS.MENTEE_ENROLLED]: {
     type: 'system',
+    audience: 'mentor',
     preferenceKey: 'enrollment_updates',
     channels: { inApp: true, email: true, chat: false }
   },
   [NOTIFICATION_EVENTS.MENTOR_ASSIGNED]: {
     type: 'system',
+    audience: 'mentee',
     preferenceKey: 'mentor_assignment',
     channels: { inApp: true, email: true, chat: false }
   },
   [NOTIFICATION_EVENTS.PROGRAM_UPDATED]: {
     type: 'system',
+    audience: 'any',
     preferenceKey: 'program_updates',
     channels: { inApp: true, email: true, chat: false }
   },
@@ -107,140 +131,195 @@ const NOTIFICATION_MATRIX = {
   // get the approve/decline outcome. New preferenceKeys default to on.
   [NOTIFICATION_EVENTS.REVIEW_UNLOCK_REQUESTED]: {
     type: 'system',
+    audience: 'admin',
     preferenceKey: 'review_unlock_requested',
     channels: { inApp: true, email: true, chat: false }
   },
   [NOTIFICATION_EVENTS.REVIEW_UNLOCK_HANDLED]: {
     type: 'system',
+    audience: 'mentor',
     preferenceKey: 'review_unlock_handled',
     channels: { inApp: true, email: true, chat: false }
   },
   [NOTIFICATION_EVENTS.SUBMISSION_DEADLINE_PASSED]: {
     type: 'task',
+    audience: 'mentee',
     preferenceKey: 'deadline_passed',
     channels: { inApp: true, email: true, chat: false }
   },
   [NOTIFICATION_EVENTS.ACCOUNT_CREATED_WELCOME]: {
     type: 'system',
+    audience: 'any',
     preferenceKey: 'account_welcome',
     channels: { inApp: false, email: true, chat: false }
   },
   [NOTIFICATION_EVENTS.PASSWORD_RESET]: {
     type: 'system',
+    audience: 'any',
     preferenceKey: 'password_reset',
     channels: { inApp: false, email: true, chat: false }
   },
   [NOTIFICATION_EVENTS.WEEKLY_PROGRESS_REPORT]: {
     type: 'system',
+    audience: 'any',
     preferenceKey: 'weekly_progress_report',
     channels: { inApp: false, email: true, chat: false }
   },
   [NOTIFICATION_EVENTS.EXTENSION_REQUESTED]: {
   type: 'task',
+  audience: 'mentor',
   preferenceKey: 'extension_requested',
   channels: { inApp: true, email: true, chat: false }
 },
 [NOTIFICATION_EVENTS.EXTENSION_HANDLED]: {
   type: 'task',
+  audience: 'mentee',
   preferenceKey: 'extension_handled',
   channels: { inApp: true, email: true, chat: false }
 },
   [NOTIFICATION_EVENTS.MENTOR_NUDGE]: {
     type: 'system',
+    audience: 'mentee',
     preferenceKey: 'mentor_nudge',
     channels: { inApp: true, email: false, chat: false }
   },
   [NOTIFICATION_EVENTS.COMMUNITY_MENTION]: {
     type: 'message',
+    audience: 'any',
     preferenceKey: 'community_mention',
     channels: { inApp: true, email: false, chat: false }
   },
   [NOTIFICATION_EVENTS.COMMUNITY_REPLY]: {
     type: 'message',
+    audience: 'any',
     preferenceKey: 'community_reply',
     channels: { inApp: true, email: false, chat: false }
   },
   [NOTIFICATION_EVENTS.COMMUNITY_KUDOS]: {
     type: 'message',
+    audience: 'any',
     preferenceKey: 'community_kudos',
     channels: { inApp: true, email: false, chat: false }
   },
   [NOTIFICATION_EVENTS.COMMUNITY_ANSWER_ACCEPTED]: {
     type: 'system',
+    audience: 'any',
     preferenceKey: 'community_answer_accepted',
     channels: { inApp: true, email: false, chat: false }
   },
   [NOTIFICATION_EVENTS.COMPLETION_READY_FOR_SIGNOFF]: {
     type: 'milestone',
+    audience: 'mentor',
     preferenceKey: 'completion_ready_for_signoff',
     channels: { inApp: true, email: true, chat: false }
   },
   [NOTIFICATION_EVENTS.PROGRAM_COMPLETED]: {
     type: 'milestone',
+    audience: 'any',
     preferenceKey: 'program_completed',
     channels: { inApp: true, email: true, chat: false }
   },
   [NOTIFICATION_EVENTS.MENTOR_FEEDBACK_REQUESTED]: {
     type: 'feedback',
+    audience: 'mentee',
     preferenceKey: 'mentor_feedback_requested',
     channels: { inApp: true, email: false, chat: false }
   },
   [NOTIFICATION_EVENTS.MEETING_CANCELLED]: {
     type: 'system',
+    audience: 'any',
     preferenceKey: 'meeting_cancelled',
     channels: { inApp: true, email: true, chat: false }
   },
   [NOTIFICATION_EVENTS.MEETING_BOOKED]: {
     type: 'system',
+    audience: 'any',
     preferenceKey: 'meeting_booked',
     channels: { inApp: true, email: true, chat: false }
   },
   [NOTIFICATION_EVENTS.CROSS_CLAN_ASSIGNED]: {
     type: 'system',
+    audience: 'mentor',
     preferenceKey: 'cross_clan_assigned',
     channels: { inApp: true, email: true, chat: false }
   },
   [NOTIFICATION_EVENTS.NEW_MENTEE_IN_CLAN]: {
     type: 'system',
+    audience: 'mentor',
     preferenceKey: 'new_mentee_in_clan',
     channels: { inApp: true, email: true, chat: false }
   },
   [NOTIFICATION_EVENTS.PROMOTION_NOMINATED]: {
     type: 'system',
+    // Dual-use: nomination/awaiting → admins; "you're now a co-mentor" → the
+    // promoted person (mentor-view). actionUrl resolves each per recipient.
+    audience: 'any',
     preferenceKey: 'promotion_nominated',
     channels: { inApp: true, email: true, chat: false }
   },
   // A mentee looks inactive and is suggested for pausing (to the mentor).
   [NOTIFICATION_EVENTS.MENTEE_PAUSE_SUGGESTED]: {
     type: 'system',
+    audience: 'mentor',
     preferenceKey: 'mentee_pause_suggested',
     channels: { inApp: true, email: false, chat: false }
   },
   // Win-back reminder to a paused mentee (in-app + email, the Zomato model).
   [NOTIFICATION_EVENTS.MENTEE_REENGAGE]: {
     type: 'system',
+    audience: 'mentee',
     preferenceKey: 'mentee_reengage',
     channels: { inApp: true, email: true, chat: false }
   },
   // A paused mentee re-engaged and is back to active (to the mentor).
   [NOTIFICATION_EVENTS.MENTEE_RETURNED]: {
     type: 'system',
+    audience: 'mentor',
     preferenceKey: 'mentee_returned',
     channels: { inApp: true, email: true, chat: false }
   },
   // A new feedback/bug report was submitted (to admins, in-app only).
   [NOTIFICATION_EVENTS.FEEDBACK_SUBMITTED]: {
     type: 'system',
+    audience: 'admin',
     preferenceKey: 'feedback_submitted',
     channels: { inApp: true, email: false, chat: false }
   },
-  // A reporter's feedback changed status (to the reporter, in-app + email).
+  // A reporter's feedback changed status (to the reporter — could be anyone).
   [NOTIFICATION_EVENTS.FEEDBACK_STATUS_UPDATED]: {
     type: 'system',
+    audience: 'any',
     preferenceKey: 'feedback_status_updated',
     channels: { inApp: true, email: true, chat: false }
   }
 };
+
+/**
+ * The role a notification's action link belongs to, from its URL namespace
+ * (`/mentor/...` → mentor). Returns null for role-neutral or missing URLs. This
+ * is the primary, per-notification signal — the whole app is route-partitioned
+ * by role, so the URL namespace IS the role context.
+ */
+function deriveAudienceFromUrl(actionUrl) {
+  if (!actionUrl || typeof actionUrl !== 'string') return null;
+  const seg = actionUrl.split('?')[0].split('/').filter(Boolean)[0];
+  if (seg === 'mentor' || seg === 'mentee' || seg === 'admin') return seg;
+  return null;
+}
+
+/**
+ * The audience to STORE on a notification, resolved at dispatch:
+ *   1. the concrete actionUrl's role (per-recipient-correct, even when one event
+ *      fans out to several roles), else
+ *   2. the event's declared matrix audience, else
+ *   3. 'any' (always shown — the safe default, never hides anything).
+ */
+function resolveAudience(eventKey, actionUrl) {
+  const fromUrl = deriveAudienceFromUrl(actionUrl);
+  if (fromUrl) return fromUrl;
+  const declared = NOTIFICATION_MATRIX[eventKey] && NOTIFICATION_MATRIX[eventKey].audience;
+  return declared && NOTIFICATION_AUDIENCES.includes(declared) ? declared : 'any';
+}
 
 /**
  * User-facing email notification categories - the emailable, NON-transactional
@@ -276,5 +355,8 @@ const EMAIL_PREFERENCE_CATEGORIES = [
 module.exports = {
   NOTIFICATION_EVENTS,
   NOTIFICATION_MATRIX,
-  EMAIL_PREFERENCE_CATEGORIES
+  NOTIFICATION_AUDIENCES,
+  EMAIL_PREFERENCE_CATEGORIES,
+  deriveAudienceFromUrl,
+  resolveAudience
 };

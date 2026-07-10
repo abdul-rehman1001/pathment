@@ -17,6 +17,18 @@ module.exports = (sequelize, DataTypes) => {
         isIn: [['task', 'feedback', 'badge', 'milestone', 'message', 'system', 'challenge']]
       }
     },
+    // Which role's "hat" this notification concerns, so the bell + list scope to
+    // the portal the viewer is currently in. Resolved at dispatch from the action
+    // URL / event matrix (see resolveAudience in notificationMatrix). 'any' =
+    // always shown regardless of role (system/security/cross-cutting).
+    audience: {
+      type: DataTypes.STRING(10),
+      allowNull: false,
+      defaultValue: 'any',
+      validate: {
+        isIn: [['mentor', 'mentee', 'admin', 'any']]
+      }
+    },
     title: {
       type: DataTypes.STRING(255),
       allowNull: false

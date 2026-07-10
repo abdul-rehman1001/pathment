@@ -1,16 +1,19 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { usePathname, useRouter } from 'next/navigation';
 import { Bell, X, Check, Trash2, Clock, ListTodo, MessageSquare, Award, Trophy, Zap, ChevronRight } from 'lucide-react';
 import { io } from 'socket.io-client';
 import { messagingApi } from '@/lib/services/messaging-api';
 import { getToken } from '@/lib/services/token-store';
+import { useAuth } from '@/lib/context/AuthContext';
+import { matchesRole, roleFromPathname, type NotificationRole } from '@/lib/utils/notification-audience';
 
 interface Notification {
   id: string;
   type: string;
+  audience?: 'mentor' | 'mentee' | 'admin' | 'any';
   title: string;
   message: string;
   status: 'unread' | 'read' | 'archived';
@@ -31,6 +34,7 @@ interface NotificationDrawerProps {
 interface NotificationSocketPayload {
   id?: string;
   type?: string;
+  audience?: 'mentor' | 'mentee' | 'admin' | 'any';
   title?: string;
   message?: unknown;
   actionUrl?: string;
@@ -82,22 +86,39 @@ export default function NotificationDrawer({
 }: NotificationDrawerProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const { activeRole } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [showAllRoles, setShowAllRoles] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
 
   const notificationsPath = getRoleNotificationsPath(pathname || '');
+
+  // Scope to the role the viewer is currently in: prefer the active-role toggle,
+  // fall back to the portal in the URL, else show everything. A dual-role
+  // mentor/mentee sees only the active hat's items; single-role users see all
+  // theirs (they never receive the other role's notifications).
+  const role: NotificationRole | null = (activeRole as NotificationRole) || roleFromPathname(pathname);
+  const roleScoped = useMemo(
+    () => notifications.filter((n) => matchesRole(n.audience, role)),
+    [notifications, role]
+  );
+  // The list can be un-scoped via the "All" toggle, but the BELL BADGE always
+  // reflects the current role — that's the "count based on the tab I opened".
+  const visibleNotifications = showAllRoles ? notifications : roleScoped;
+  const unreadCount = useMemo(
+    () => roleScoped.filter((item) => item.status === 'unread').length,
+    [roleScoped]
+  );
+  const hiddenOtherRoleCount = notifications.length - roleScoped.length;
 
   // Load notifications on mount and when drawer opens
   const loadNotifications = useCallback(async () => {
     setIsLoading(true);
     try {
       const data = await messagingApi.listNotifications(50);
-      const filtered = data.notifications.filter(isNonMessageNotification);
-      setNotifications(filtered);
-      setUnreadCount(filtered.filter((item) => item.status === 'unread').length);
+      setNotifications(data.notifications.filter(isNonMessageNotification));
     } catch (error) {
       console.error('Failed to load notifications:', error);
     } finally {
@@ -129,6 +150,7 @@ export default function NotificationDrawer({
         {
           id: data?.id || `notif-${Date.now()}`,
           type: incomingType,
+          audience: data?.audience,
           title: data?.title || 'New message',
           message: toNotificationMessageText(data?.message),
           status: 'unread',
@@ -137,7 +159,6 @@ export default function NotificationDrawer({
         },
         ...prev
       ]);
-      setUnreadCount((prev) => prev + 1);
     };
 
     const handleUnreadCountUpdate = async (data: { unreadCount: number }) => {
@@ -147,8 +168,7 @@ export default function NotificationDrawer({
 
       try {
         const latest = await messagingApi.listNotifications(50);
-        const filtered = latest.notifications.filter(isNonMessageNotification);
-        setUnreadCount(filtered.filter((item) => item.status === 'unread').length);
+        setNotifications(latest.notifications.filter(isNonMessageNotification));
       } catch (error) {
         console.error('Failed to refresh notification count:', error);
       }
@@ -176,8 +196,7 @@ export default function NotificationDrawer({
     const loadUnreadCount = async () => {
       try {
         const data = await messagingApi.listNotifications(50);
-        const filtered = data.notifications.filter(isNonMessageNotification);
-        setUnreadCount(filtered.filter((item) => item.status === 'unread').length);
+        setNotifications(data.notifications.filter(isNonMessageNotification));
       } catch (error) {
         console.error('Failed to load notification count:', error);
       }
@@ -215,7 +234,6 @@ export default function NotificationDrawer({
             : n
         )
       );
-      setUnreadCount((prev) => Math.max(0, prev - 1));
     } catch (error) {
       console.error('Failed to mark notification as read:', error);
     }
@@ -227,7 +245,6 @@ export default function NotificationDrawer({
       setNotifications((prev) =>
         prev.map((n) => ({ ...n, status: 'read' as const, readAt: new Date().toISOString() }))
       );
-      setUnreadCount(0);
     } catch (error) {
       console.error('Failed to mark all notifications as read:', error);
     }
@@ -237,9 +254,6 @@ export default function NotificationDrawer({
     try {
       await messagingApi.deleteNotification(notificationId);
       setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
-      if (notifications.find((n) => n.id === notificationId)?.status === 'unread') {
-        setUnreadCount((prev) => Math.max(0, prev - 1));
-      }
     } catch (error) {
       console.error('Failed to delete notification:', error);
     }
@@ -336,6 +350,7 @@ export default function NotificationDrawer({
                 </h2>
                 <p className="text-sm text-slate-500">
                   {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
+                  {role && <span className="capitalize"> · {showAllRoles ? 'all roles' : role}</span>}
                 </p>
               </div>
               <button
@@ -347,20 +362,43 @@ export default function NotificationDrawer({
               </button>
             </div>
 
+            {/* Role scope toggle — only meaningful for dual-role users who actually
+                have other-role notifications to reveal. */}
+            {role && (showAllRoles || hiddenOtherRoleCount > 0) && (
+              <div className="px-4 py-2 border-b border-slate-100 flex items-center justify-between gap-2">
+                <span className="text-xs text-slate-500">
+                  {showAllRoles
+                    ? 'Showing notifications for all your roles'
+                    : `${hiddenOtherRoleCount} from your other role${hiddenOtherRoleCount === 1 ? '' : 's'} hidden`}
+                </span>
+                <button
+                  onClick={() => setShowAllRoles((v) => !v)}
+                  className="text-xs font-medium text-brand-600 hover:text-brand-700 shrink-0"
+                >
+                  {showAllRoles ? `Show only ${role}` : 'Show all'}
+                </button>
+              </div>
+            )}
+
             <div className="flex-1 overflow-y-auto">
               {isLoading ? (
                 <div className="h-full flex flex-col items-center justify-center text-slate-500 gap-2">
                   <Clock className="w-6 h-6 animate-spin" />
                   <span>Loading notifications...</span>
                 </div>
-              ) : notifications.length === 0 ? (
+              ) : visibleNotifications.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-slate-500 gap-2 px-6 text-center">
                   <Bell className="w-8 h-8 text-slate-300" />
-                  <span>No notifications yet</span>
+                  <span>{role && !showAllRoles ? `No ${role} notifications` : 'No notifications yet'}</span>
+                  {role && !showAllRoles && hiddenOtherRoleCount > 0 && (
+                    <button onClick={() => setShowAllRoles(true)} className="text-xs font-medium text-brand-600 hover:text-brand-700">
+                      Show {hiddenOtherRoleCount} from your other role{hiddenOtherRoleCount === 1 ? '' : 's'}
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="divide-y divide-slate-100">
-                  {notifications.map((notification) => (
+                  {visibleNotifications.map((notification) => (
                     <div
                       key={notification.id}
                       className={`group px-4 py-3 cursor-pointer transition-colors ${

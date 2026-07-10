@@ -57,6 +57,8 @@ export interface NotificationItem {
   id: string;
   userId: string;
   type: 'task' | 'feedback' | 'badge' | 'milestone' | 'message' | 'system' | 'challenge';
+  // Which role's "hat" this notification concerns; 'any' = shown in every role.
+  audience?: 'mentor' | 'mentee' | 'admin' | 'any';
   title: string;
   message: string;
   status: 'unread' | 'read' | 'archived';

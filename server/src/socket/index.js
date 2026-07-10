@@ -199,6 +199,7 @@ function initSocket(httpServer) {
           emitToUser(recipientId, 'notification:new', {
             id: notification.id,
             type: notification.type,
+            audience: notification.audience || 'any',
             title: notification.title,
             message: notification.message,
             status: notification.status,

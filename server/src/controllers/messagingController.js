@@ -10,6 +10,7 @@ const serializeNotification = (notification) => {
     id: item.id,
     userId: item.userId,
     type: item.type,
+    audience: item.audience || 'any',
     title: item.title,
     message: item.message,
     status: item.status,
@@ -62,6 +63,7 @@ exports.sendMessage = catchAsync(async (req, res) => {
     emitToUser(recipientId, 'notification:new', {
       id: notification.id,
       type: notification.type,
+      audience: notification.audience || 'any',
       title: notification.title,
       message: notification.message,
       status: notification.status,

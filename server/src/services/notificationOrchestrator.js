@@ -2,7 +2,7 @@ const { Op } = require('sequelize');
 const { models } = require('../db');
 const emailService = require('./emailService');
 const { shouldCreateNotification } = require('../utils/notificationPreferences');
-const { NOTIFICATION_EVENTS, NOTIFICATION_MATRIX } = require('../config/notificationMatrix');
+const { NOTIFICATION_EVENTS, NOTIFICATION_MATRIX, resolveAudience } = require('../config/notificationMatrix');
 
 class NotificationOrchestrator {
   isNotificationEmailEnabled() {
@@ -73,6 +73,7 @@ class NotificationOrchestrator {
           const created = await models.Notification.create({
             userId: recipient.userId,
             type: matrix.type,
+            audience: resolveAudience(eventKey, payload.actionUrl),
             title: payload.title,
             message: payload.message,
             actionUrl: payload.actionUrl || null,
@@ -90,6 +91,7 @@ class NotificationOrchestrator {
             emitToUser(recipient.userId, 'notification:new', {
               id: created.id,
               type: created.type,
+              audience: created.audience,
               title: created.title,
               message: created.message,
               status: created.status,

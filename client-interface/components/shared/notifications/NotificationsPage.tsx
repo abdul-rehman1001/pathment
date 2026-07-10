@@ -7,6 +7,7 @@ import { messagingApi } from '@/lib/services/messaging-api';
 import { usePagination } from '@/lib/hooks/shared/usePagination';
 import { TablePagination } from '@/components/shared/TablePagination';
 import type { NotificationItem } from '@/lib/types/messaging';
+import { matchesRole } from '@/lib/utils/notification-audience';
 
 interface NotificationsPageProps {
   role: 'admin' | 'mentor' | 'mentee';
@@ -36,6 +37,7 @@ export default function NotificationsPage({ role }: NotificationsPageProps) {
   const pagination = usePagination({ initialPage: 1, initialLimit: 10 });
 
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [showAllRoles, setShowAllRoles] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   const loadNotifications = useCallback(async () => {
@@ -55,19 +57,27 @@ export default function NotificationsPage({ role }: NotificationsPageProps) {
     });
   }, [loadNotifications]);
 
+  // Scope to this portal's role (the page is mounted per-role), with an opt-out.
+  const roleScoped = useMemo(
+    () => notifications.filter((item) => matchesRole(item.audience, role)),
+    [notifications, role]
+  );
+  const visibleNotifications = showAllRoles ? notifications : roleScoped;
+  const hiddenOtherRoleCount = notifications.length - roleScoped.length;
+
   useEffect(() => {
-    pagination.setTotal(notifications.length);
-  }, [notifications.length, pagination.setTotal]);
+    pagination.setTotal(visibleNotifications.length);
+  }, [visibleNotifications.length, pagination.setTotal]);
 
   const paginatedNotifications = useMemo(() => {
     const from = pagination.offset;
     const to = from + pagination.limit;
-    return notifications.slice(from, to);
-  }, [notifications, pagination.limit, pagination.offset]);
+    return visibleNotifications.slice(from, to);
+  }, [visibleNotifications, pagination.limit, pagination.offset]);
 
   const unreadCount = useMemo(
-    () => notifications.filter((item) => item.status === 'unread').length,
-    [notifications]
+    () => roleScoped.filter((item) => item.status === 'unread').length,
+    [roleScoped]
   );
 
   const handleMarkRead = async (notificationId: string) => {
@@ -110,16 +120,26 @@ export default function NotificationsPage({ role }: NotificationsPageProps) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-slate-900">Notifications</h1>
-          <p className="text-slate-600 text-sm capitalize">
-            {role} notifications ({unreadCount} unread)
+          <p className="text-slate-600 text-sm">
+            <span className="capitalize">{showAllRoles ? 'All roles' : role}</span> · {unreadCount} unread
           </p>
         </div>
-        <button
-          onClick={handleMarkAllRead}
-          className="px-3 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
-        >
-          Mark all as read
-        </button>
+        <div className="flex items-center gap-2">
+          {(showAllRoles || hiddenOtherRoleCount > 0) && (
+            <button
+              onClick={() => setShowAllRoles((v) => !v)}
+              className="px-3 py-2 text-sm font-medium text-brand-700 bg-brand-50 dark:bg-brand-500/15 hover:bg-brand-100 rounded-lg transition-colors"
+            >
+              {showAllRoles ? `Show only ${role}` : `Show all (${hiddenOtherRoleCount} other)`}
+            </button>
+          )}
+          <button
+            onClick={handleMarkAllRead}
+            className="px-3 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+          >
+            Mark all as read
+          </button>
+        </div>
       </div>
 
       <div className="bg-card border border-slate-200 rounded-2xl overflow-hidden">
@@ -128,10 +148,15 @@ export default function NotificationsPage({ role }: NotificationsPageProps) {
             <Loader2 className="w-5 h-5 animate-spin" />
             <span>Loading notifications...</span>
           </div>
-        ) : notifications.length === 0 ? (
+        ) : visibleNotifications.length === 0 ? (
           <div className="h-64 flex flex-col items-center justify-center text-slate-500 gap-2">
             <Bell className="w-8 h-8 text-slate-300" />
-            <span>No notifications yet</span>
+            <span className="capitalize">No {showAllRoles ? '' : role} notifications yet</span>
+            {!showAllRoles && hiddenOtherRoleCount > 0 && (
+              <button onClick={() => setShowAllRoles(true)} className="text-xs font-medium text-brand-600 hover:text-brand-700">
+                Show {hiddenOtherRoleCount} from your other role{hiddenOtherRoleCount === 1 ? '' : 's'}
+              </button>
+            )}
           </div>
         ) : (
           <>
