@@ -83,7 +83,9 @@ class ClanHealthService {
         if (m.role === 'mentee') menteeIds.add(m.userId);
       }
     }
-    const rowList = await Promise.all([...menteeIds].map((id) => cohortService.buildMenteeRow(id)));
+    // Bulk-load once, then build every row from memory — no per-mentee N+1.
+    const preloads = await cohortService.preloadMenteeData([...menteeIds]);
+    const rowList = await Promise.all([...menteeIds].map((id) => cohortService.buildMenteeRow(id, preloads)));
     const rowById = new Map();
     for (const row of rowList) {
       if (row) rowById.set(row.id, row);
@@ -203,7 +205,9 @@ class ClanHealthService {
       for (const m of byClan.get(clan.id) || []) if (m.role === 'mentee') menteeIds.add(m.userId);
     }
     const ids = [...menteeIds];
-    const rowList = await Promise.all(ids.map((id) => cohortService.buildMenteeRow(id)));
+    // Bulk-load once, then build every row from memory — no per-mentee N+1.
+    const preloads = await cohortService.preloadMenteeData(ids);
+    const rowList = await Promise.all(ids.map((id) => cohortService.buildMenteeRow(id, preloads)));
     const rowById = new Map();
     for (const row of rowList) if (row) rowById.set(row.id, row);
 

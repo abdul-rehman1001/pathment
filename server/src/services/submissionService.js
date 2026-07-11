@@ -479,9 +479,11 @@ class SubmissionService {
     // Update mentor stats
     await this.updateMentorReviewStats(mentorId);
 
-    const reviewedSubmission = await this.getSubmissionById(submissionId);
-
-    const reviewedTitle = reviewedSubmission.assignedTask?.roadmapTask?.title || 'your task';
+    // The task's roadmapTask is already loaded on `submission.assignedTask` at the
+    // top of this method, so the title comes for free — no need to re-run the
+    // heavy 7-table getSubmissionById join just to notify (that read was a big
+    // chunk of this endpoint's latency, and the client ignores the response body).
+    const reviewedTitle = task.roadmapTask?.title || 'your task';
     const ratingNum = Number(rating);
     const ratingStr = Number.isFinite(ratingNum) && ratingNum > 0 ? `${ratingNum % 1 === 0 ? ratingNum : ratingNum.toFixed(1)}★` : null;
 
@@ -527,7 +529,9 @@ class SubmissionService {
       });
     }
 
-    return reviewedSubmission;
+    // The client only checks for success (it reloads / redirects), so return the
+    // in-hand submission rather than re-reading the full joined row.
+    return submission;
   }
 
   /**

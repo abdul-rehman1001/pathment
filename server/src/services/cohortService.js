@@ -721,50 +721,80 @@ class CohortService {
     });
   }
 
+  /**
+   * Bulk-load everything buildMenteeRow needs for a set of mentees in a handful
+   * of queries, so a caller can build MANY rows without the per-mentee N+1. Pass
+   * the returned object straight into buildMenteeRow(id, preloads). Shared by
+   * getCohort AND the admin clan-health / insights views.
+   */
+  async preloadMenteeData(menteeIds) {
+    const ids = [...new Set(menteeIds)].filter(Boolean);
+    if (!ids.length) return { users: {}, tasks: {}, delays: {}, blockers: {}, attendance: {} };
+    const inIds = { [Op.in]: ids };
+
+    const [allUsers, allTasks, allDelays, allBlockers] = await Promise.all([
+      models.User.findAll({
+        where: { id: inIds },
+        attributes: ['id', 'firstName', 'lastName', 'email', 'profilePictureUrl'],
+        include: [
+          { model: models.MenteeProfile, as: 'menteeProfile', attributes: ['lastActivityDate', 'currentOccupation'] },
+          {
+            model: models.Enrollment,
+            as: 'enrollments',
+            required: false,
+            include: [{ model: models.Program, as: 'program', attributes: ['id', 'name', 'totalDurationWeeks'] }]
+          }
+        ]
+      }),
+      models.AssignedTask.findAll({
+        where: { menteeId: inIds },
+        attributes: ['id', 'status', 'isLate', 'completedAt', 'dueDate', 'menteeId', 'enrollmentId']
+      }),
+      models.DelayEvent.findAll({
+        where: { menteeId: inIds },
+        attributes: ['days', 'accepted', 'category', 'menteeId']
+      }),
+      models.Blocker.findAll({
+        where: { menteeId: inIds, status: 'open' },
+        attributes: ['id', 'severity', 'menteeId']
+      })
+    ]);
+
+    // Most-recent attendance per mentee (same filter/order as _lastAttendance).
+    const attendance = {};
+    if (models.CohortReviewEntry && models.CohortReviewSession) {
+      const entries = await models.CohortReviewEntry.findAll({
+        where: { menteeId: inIds, attendance: { [Op.ne]: null } },
+        include: [{ model: models.CohortReviewSession, as: 'session', attributes: ['sessionDate'], required: true }],
+        order: [['menteeId', 'ASC'], [{ model: models.CohortReviewSession, as: 'session' }, 'session_date', 'DESC']]
+      });
+      for (const e of entries) {
+        if (!attendance[e.menteeId]) {
+          attendance[e.menteeId] = { status: e.attendance, date: e.session?.sessionDate || null };
+        }
+      }
+    }
+
+    const groupBy = (arr, key) => arr.reduce((acc, item) => {
+      (acc[item[key]] = acc[item[key]] || []).push(item);
+      return acc;
+    }, {});
+
+    return {
+      users: allUsers.reduce((acc, u) => { acc[u.id] = u; return acc; }, {}),
+      tasks: groupBy(allTasks, 'menteeId'),
+      delays: groupBy(allDelays, 'menteeId'),
+      blockers: groupBy(allBlockers, 'menteeId'),
+      attendance
+    };
+  }
+
   async getCohort(mentorId) {
     const menteeIds = await this.resolveMenteeIds(mentorId);
     if (!menteeIds.length) return { cohort: [], totals: { mentees: 0, pendingApprovals: 0, openBlockers: 0, atRisk: 0, onTimeRate: 0 } };
 
-    const inIds = { [Op.in]: menteeIds };
-
-    const [allUsers, allTasks, allDelays, allBlockers, clanMapRes] = await Promise.all([
-      (async () => {
-        const res = await models.User.findAll({
-          where: { id: inIds },
-          attributes: ['id', 'firstName', 'lastName', 'email', 'profilePictureUrl'],
-          include: [
-            { model: models.MenteeProfile, as: 'menteeProfile', attributes: ['lastActivityDate', 'currentOccupation'] },
-            {
-              model: models.Enrollment,
-              as: 'enrollments',
-              required: false,
-              include: [{ model: models.Program, as: 'program', attributes: ['id', 'name', 'totalDurationWeeks'] }]
-            }
-          ]
-        });
-        return res;
-      })(),
-      (async () => {
-        const res = await models.AssignedTask.findAll({
-          where: { menteeId: inIds },
-          attributes: ['id', 'status', 'isLate', 'completedAt', 'dueDate', 'menteeId', 'enrollmentId']
-        });
-        return res;
-      })(),
-      (async () => {
-        const res = await models.DelayEvent.findAll({
-          where: { menteeId: inIds },
-          attributes: ['days', 'accepted', 'category', 'menteeId']
-        });
-        return res;
-      })(),
-      (async () => {
-        const res = await models.Blocker.findAll({
-          where: { menteeId: inIds, status: 'open' },
-          attributes: ['id', 'severity', 'menteeId']
-        });
-        return res;
-      })(),
+    const [preloads, clanMapRes] = await Promise.all([
+      this.preloadMenteeData(menteeIds),
       (async () => {
         const { clanIds, clanNameById } = await this.mentorClanMap(mentorId);
         let menteeMemberships = [];
@@ -777,34 +807,6 @@ class CohortService {
         return { clanIds, clanNameById, menteeMemberships };
       })()
     ]);
-
-    // Fast-path attendance lookup (most recent for each mentee)
-    const attendances = {};
-    if (models.CohortReviewEntry && models.CohortReviewSession) {
-      const entries = await models.CohortReviewEntry.findAll({
-        where: { menteeId: inIds, attendance: { [Op.ne]: null } },
-        include: [{ model: models.CohortReviewSession, as: 'session', attributes: ['sessionDate'], required: true }],
-        order: [['menteeId', 'ASC'], [{ model: models.CohortReviewSession, as: 'session' }, 'session_date', 'DESC']]
-      });
-      for (const e of entries) {
-        if (!attendances[e.menteeId]) {
-          attendances[e.menteeId] = { status: e.attendance, date: e.session?.sessionDate || null };
-        }
-      }
-    }
-
-    const groupBy = (arr, key) => arr.reduce((acc, item) => {
-      (acc[item[key]] = acc[item[key]] || []).push(item);
-      return acc;
-    }, {});
-
-    const preloads = {
-      users: allUsers.reduce((acc, u) => { acc[u.id] = u; return acc; }, {}),
-      tasks: groupBy(allTasks, 'menteeId'),
-      delays: groupBy(allDelays, 'menteeId'),
-      blockers: groupBy(allBlockers, 'menteeId'),
-      attendance: attendances
-    };
 
     const rows = await Promise.all(menteeIds.map((id) => this.buildMenteeRow(id, preloads)));
     const cohort = rows.filter(Boolean);
