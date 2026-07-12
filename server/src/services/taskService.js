@@ -1176,11 +1176,13 @@ class TaskService {
 
     // Annotate each task with this mentee's assignment status, if asked.
     if (menteeId) {
+      const assignedTasks = await models.AssignedTask.findAll({
+        where: { menteeId, roadmapTaskId: { [Op.in]: tasks.map(t => t.id) } },
+        attributes: ['id', 'status', 'submittedAt', 'completedAt', 'roadmapTaskId']
+      });
+      const assignedByTaskId = new Map(assignedTasks.map(at => [at.roadmapTaskId, at]));
       for (const task of tasks) {
-        const assignedTask = await models.AssignedTask.findOne({
-          where: { menteeId, roadmapTaskId: task.id },
-          attributes: ['id', 'status', 'submittedAt', 'completedAt']
-        });
+        const assignedTask = assignedByTaskId.get(task.id);
         task.dataValues.assignmentStatus = assignedTask ? {
           isAssigned: true,
           taskId: assignedTask.id,
