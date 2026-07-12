@@ -406,52 +406,59 @@ class CohortService {
    * summary feature is wired in.
    */
   async getMenteeDetail(menteeId) {
-    const row = await this.buildMenteeRow(menteeId);
-    if (!row) return null;
-
-    const [blockers, delays, tasks, insights, menteeProfile] = await Promise.all([
+    const [mentee, allTasks, allDelays, allBlockers, insights, meetingNotes, collaborators, dailyLogs, lastAttendance] = await Promise.all([
+      models.User.findByPk(menteeId, {
+        attributes: ['id', 'firstName', 'lastName', 'email', 'profilePictureUrl'],
+        include: [
+          { model: models.MenteeProfile, as: 'menteeProfile', attributes: ['lastActivityDate', 'currentOccupation', 'personality'] },
+          { model: models.Enrollment, as: 'enrollments', required: false, include: [{ model: models.Program, as: 'program', attributes: ['id', 'name', 'totalDurationWeeks'] }] }
+        ]
+      }),
+      models.AssignedTask.findAll({
+        where: { menteeId },
+        attributes: ['id', 'status', 'dueDate', 'submittedAt', 'completedAt', 'isLate', 'finalRating', 'enrollmentId'],
+        include: [{ model: models.RoadmapTask, as: 'roadmapTask', attributes: ['title', 'type'] }],
+        order: [['dueDate', 'ASC']]
+      }),
+      models.DelayEvent.findAll({ where: { menteeId }, order: [['occurredAt', 'DESC']] }),
       models.Blocker.findAll({
         where: { menteeId },
         order: [['status', 'ASC'], ['openedAt', 'DESC']],
         include: [{ model: models.AssignedTask, as: 'task', attributes: ['id'], include: [{ model: models.RoadmapTask, as: 'roadmapTask', attributes: ['title'] }] }]
-      }),
-      models.DelayEvent.findAll({ where: { menteeId }, order: [['occurredAt', 'DESC']] }),
-      models.AssignedTask.findAll({
-        where: { menteeId },
-        attributes: ['id', 'status', 'dueDate', 'submittedAt', 'completedAt', 'isLate', 'finalRating'],
-        include: [{ model: models.RoadmapTask, as: 'roadmapTask', attributes: ['title', 'type'] }],
-        order: [['dueDate', 'ASC']]
       }),
       models.Insight.findAll({
         where: { menteeId },
         order: [['created_at', 'DESC']],
         include: [{ model: models.User, as: 'author', attributes: ['firstName', 'lastName'] }]
       }),
-      models.MenteeProfile.findOne({ where: { userId: menteeId }, attributes: ['personality'] })
+      models.MeetingNote.findAll({
+        where: { menteeId },
+        order: [['date', 'DESC']],
+        include: [{ model: models.User, as: 'author', attributes: ['firstName', 'lastName'] }]
+      }),
+      models.Collaborator.findAll({ where: { menteeId }, order: [['created_at', 'DESC']] }),
+      models.DailyLogEntry.findAll({ where: { menteeId }, order: [['dateKey', 'DESC']], limit: 7 }),
+      this._lastAttendance(menteeId)
     ]);
 
-    const meetingNotes = await models.MeetingNote.findAll({
-      where: { menteeId },
-      order: [['date', 'DESC']],
-      include: [{ model: models.User, as: 'author', attributes: ['firstName', 'lastName'] }]
-    });
+    if (!mentee) return null;
 
-    const collaborators = await models.Collaborator.findAll({
-      where: { menteeId },
-      order: [['created_at', 'DESC']]
-    });
+    const openBlockers = allBlockers.filter((b) => b.status === 'open');
+    const preloads = {
+      users: { [menteeId]: mentee },
+      tasks: { [menteeId]: allTasks },
+      delays: { [menteeId]: allDelays },
+      blockers: { [menteeId]: openBlockers },
+      attendance: { [menteeId]: lastAttendance }
+    };
 
-    const dailyLogs = await models.DailyLogEntry.findAll({
-      where: { menteeId },
-      order: [['dateKey', 'DESC']],
-      limit: 7
-    });
+    const row = await this.buildMenteeRow(menteeId, preloads);
+    if (!row) return null;
 
-    const completed = tasks.filter((t) => t.status === 'completed').length;
+    const completed = allTasks.filter((t) => t.status === 'completed').length;
 
-    // Group tasks by status for the profile's work history.
     const tasksByStatus = {};
-    tasks.forEach((t) => {
+    allTasks.forEach((t) => {
       const key = t.status || 'assigned';
       (tasksByStatus[key] = tasksByStatus[key] || []).push({
         id: t.id,
@@ -465,13 +472,13 @@ class CohortService {
     });
 
     const aiSummary = buildSummary(row);
-    const aiSignals = buildSignals(row, { completed }, delays);
+    const aiSignals = buildSignals(row, { completed }, allDelays);
 
     return {
       ...row,
       aiSummary,
       aiSignals,
-      blockers: blockers.map((b) => ({
+      blockers: allBlockers.map((b) => ({
         id: b.id,
         title: b.title,
         category: b.category,
@@ -480,7 +487,7 @@ class CohortService {
         daysOpen: Math.max(0, daysSince(b.openedAt)),
         taskTitle: b.task?.roadmapTask?.title || null
       })),
-      delays: delays.map((d) => ({
+      delays: allDelays.map((d) => ({
         id: d.id,
         reason: d.reason,
         kind: d.kind,
@@ -490,7 +497,7 @@ class CohortService {
         aiRationale: d.aiRationale,
         occurredAt: d.occurredAt
       })),
-      personality: menteeProfile?.personality || null,
+      personality: mentee.menteeProfile?.personality || null,
       insights: insights.map((i) => ({
         id: i.id,
         kind: i.kind,
