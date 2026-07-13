@@ -5,32 +5,61 @@ import Link from 'next/link';
 import { Trophy, Loader2, Award, TrendingUp, TrendingDown, Minus, Crown, Info } from 'lucide-react';
 import { useMentorCohort, type CohortMentee, type CohortMomentum } from '@/lib/hooks/mentor';
 
-// Real, honest signals only - no fabricated XP. Standings rank by EFFORT-WEIGHTED
-// fair progress: relative progress (output credited for logged, accepted blockers)
-// scaled by how much real work backs it, so a single custom task at 100% can't
-// outrank a mentee who has actually completed many tasks. Tie-broken by volume
-// then on-time reliability.
+// ─── Leaderboard scoring ────────────────────────────────────────────────────
 //
-// VOLUME_TARGET = completed tasks needed for the score to count at full weight.
-// Tunable: lower it to credit short roadmaps sooner; raise it to demand more
-// proof of work before someone tops the board.
-const VOLUME_TARGET = 4;
-const effortWeight = (m: CohortMentee) => Math.min(1, (m.tasksCompleted ?? 0) / VOLUME_TARGET);
-// The number shown on the board: fair progress, dampened until there's real
-// output behind it (0 completed tasks → 0%, not a hollow 100%).
-const fairScore = (m: CohortMentee) => Math.round(m.relativeProgress * effortWeight(m));
-const scoreOf = (m: CohortMentee) =>
-  fairScore(m) * 1000 + (m.tasksCompleted ?? 0) * 10 + (m.tasksCompleted > 0 ? m.onTimeRate : 0);
+// Five-factor weighted composite — displayed on the board as a 0–100 score.
+//
+//   35%  Points Earned      – harder tasks are worth more; reflects quality of work
+//   20%  Relative Progress  – credits approved blockers / accepted external delays
+//   20%  Tasks Completed    – rewards consistent output; soft-normalised so a
+//                             single task can't top the board
+//   15%  On-Time Rate       – measures submission discipline
+//   10%  Overall Progress   – raw enrollment progress (a sanity anchor)
+//
+// Each dimension is normalised to 0-100 before weighting. Points are normalised
+// against the cohort-max so a mentee with 0 pts can still rank (at 0 on that
+// axis) without destroying the rest of their score.
+
+const W_POINTS    = 0.35;
+const W_RELATIVE  = 0.20;
+const W_TASKS     = 0.20;
+const W_ONTIME    = 0.15;
+const W_OVERALL   = 0.10;
+
+// Tasks dimension: soft-normalise against a "full credit" target so a mentee
+// who has completed ≥ TASKS_FULL tasks gets 100 on this axis.  Raise to demand
+// more proof-of-work; lower for short roadmaps.
+const TASKS_FULL = 6;
+
+function compositeScore(m: CohortMentee, maxPoints: number): number {
+  const pointsNorm  = maxPoints > 0 ? Math.min(100, (m.pointsEarned / maxPoints) * 100) : 0;
+  const tasksNorm   = Math.min(100, ((m.tasksCompleted ?? 0) / TASKS_FULL) * 100);
+  // On-time rate only counts if there's any completed work; else neutral (50).
+  const onTimeNorm  = (m.tasksCompleted ?? 0) > 0 ? m.onTimeRate : 50;
+
+  return Math.round(
+    pointsNorm         * W_POINTS  +
+    m.relativeProgress * W_RELATIVE +
+    tasksNorm          * W_TASKS   +
+    onTimeNorm         * W_ONTIME  +
+    m.absoluteProgress * W_OVERALL,
+  );
+}
+
+// Tie-break: secondary sort by raw tasks completed, then on-time rate.
+const scoreKey = (m: CohortMentee, maxPoints: number) =>
+  compositeScore(m, maxPoints) * 10000 +
+  (m.tasksCompleted ?? 0) * 10 +
+  ((m.tasksCompleted ?? 0) > 0 ? m.onTimeRate : 0);
 
 function badgesOf(m: CohortMentee): string[] {
   const b: string[] = [];
-  // On-time / progress badges require real completed work, so an empty record
-  // can't earn them off the 100%-by-default signals.
   const hasOutput = (m.tasksCompleted ?? 0) > 0;
   if (hasOutput && m.onTimeRate >= 90) b.push('On-time hero');
   if (m.momentum === 'up') b.push('Building momentum');
   if (hasOutput && m.absoluteProgress >= 75) b.push('Top progress');
   if (hasOutput && m.relativeProgress >= 95) b.push('Steady hand');
+  if (m.pointsEarned >= 100) b.push('High scorer');
   return b;
 }
 
@@ -62,24 +91,37 @@ export default function MentorLeaderboard() {
 
   const programs = useMemo(() => Array.from(new Set(cohort.map((m) => m.program).filter(Boolean))), [cohort]);
 
+  // Cohort-max points — used to normalise the points dimension per render.
+  const maxPoints = useMemo(() => cohort.reduce((mx, m) => Math.max(mx, m.pointsEarned ?? 0), 0), [cohort]);
+
   const ranked = useMemo(() => {
     return cohort
       .filter((m) => program === 'all' || m.program === program)
       .slice()
-      .sort((a, b) => scoreOf(b) - scoreOf(a));
-  }, [cohort, program]);
+      .sort((a, b) => scoreKey(b, maxPoints) - scoreKey(a, maxPoints));
+  }, [cohort, program, maxPoints]);
 
   const leader = ranked[0] || null;
+  // Compute the composite scores once for ranked so every row has them.
+  const scoredRanked = useMemo(
+    () => ranked.map((m) => ({ m, score: compositeScore(m, maxPoints) })),
+    [ranked, maxPoints],
+  );
 
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
         <h1 className="text-slate-900 mb-1">Cohort standings</h1>
-        <p className="text-slate-600">Ranked by fair progress - no vanity points.</p>
+        <p className="text-slate-600">Ranked by a balanced score across 5 factors — not just task count.</p>
         <div className="mt-3 flex items-start gap-2 rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-2.5 max-w-xl">
           <Info className="w-4 h-4 text-brand-500 shrink-0 mt-0.5" />
           <p className="text-xs text-slate-500 leading-relaxed">
-            <span className="font-medium text-slate-700">Fair progress</span> credits output for logged, accepted blockers, and is weighted by how many tasks a mentee has actually completed - so a single custom task can&apos;t put an empty record at the top.
+            <span className="font-medium text-slate-700">Score = </span>
+            <span className="font-medium text-slate-600">35% points earned</span> (harder tasks score more) ·{' '}
+            <span className="font-medium text-slate-600">20% relative progress</span> (credits approved blockers &amp; delays) ·{' '}
+            <span className="font-medium text-slate-600">20% tasks completed</span> · <span className="font-medium text-slate-600">15% on-time rate</span> ·{' '}
+            <span className="font-medium text-slate-600">10% overall progress</span>.
+            A single easy task can&apos;t top the board.
           </p>
         </div>
       </div>
@@ -122,19 +164,19 @@ export default function MentorLeaderboard() {
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-600">Leading the cohort</p>
                 <p className="text-lg font-semibold text-slate-900 truncate">{leader.name}</p>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-0.5 text-xs text-slate-500">
-                  <span><strong className="text-slate-700">{fairScore(leader)}%</strong> fair progress</span>
-                  <span><strong className="text-slate-700">{leader.tasksCompleted > 0 ? `${leader.onTimeRate}%` : '—'}</strong> on-time</span>
+                  <span><strong className="text-slate-700">{compositeScore(leader, maxPoints)}%</strong> score</span>
+                  <span><strong className="text-slate-700">{leader.pointsEarned} pts</strong> earned</span>
+                  <span><strong className="text-slate-700">{leader.tasksCompleted > 0 ? `${leader.onTimeRate}%` : '\u2014'}</strong> on-time</span>
                   <Momentum m={leader.momentum} />
                 </div>
               </div>
             </div>
           )}
 
-          {/* Standings - one scannable board, fair-progress bar per row */}
+          {/* Standings list — composite score bar per row */}
           <div className="bg-card rounded-2xl border border-slate-200 divide-y divide-slate-100">
-            {ranked.map((m, i) => {
+            {scoredRanked.map(({ m, score }, i) => {
               const rs = rankStyle(i);
-              const fair = fairScore(m);
               return (
                 <div key={m.id} className={`flex items-center gap-3 px-4 py-3 ${i < 3 ? 'bg-slate-50/40' : ''}`}>
                   <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold tabular-nums shrink-0 ${rs.ring}`}>{i + 1}</span>
@@ -144,12 +186,19 @@ export default function MentorLeaderboard() {
                       <p className="text-sm font-medium text-slate-900 truncate">{m.name}</p>
                       <Momentum m={m.momentum} />
                     </div>
-                    {/* Fair-progress bar makes the ranking legible at a glance */}
+                    {/* Composite-score bar */}
                     <div className="mt-1.5 flex items-center gap-2">
                       <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                        <div className={`h-full rounded-full ${rs.bar}`} style={{ width: `${fair}%` }} />
+                        <div className={`h-full rounded-full ${rs.bar}`} style={{ width: `${score}%` }} />
                       </div>
-                      <span className="text-xs font-semibold text-slate-700 tabular-nums w-9 text-right">{fair}%</span>
+                      <span className="text-xs font-semibold text-slate-700 tabular-nums w-9 text-right">{score}%</span>
+                    </div>
+                    {/* Sub-stats row */}
+                    <div className="flex flex-wrap gap-x-2.5 gap-y-0.5 mt-1 text-[11px] text-slate-400">
+                      <span><span className="text-slate-600 font-medium">{m.pointsEarned}</span> pts</span>
+                      <span><span className="text-slate-600 font-medium">{m.tasksCompleted}</span> done</span>
+                      {m.tasksCompleted > 0 && <span><span className="text-slate-600 font-medium">{m.onTimeRate}%</span> on-time</span>}
+                      <span><span className="text-slate-600 font-medium">{m.absoluteProgress}%</span> overall</span>
                     </div>
                     {badgesOf(m).length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-1.5">
@@ -160,10 +209,6 @@ export default function MentorLeaderboard() {
                         ))}
                       </div>
                     )}
-                  </div>
-                  <div className="text-right shrink-0 hidden sm:block">
-                    <p className="text-sm font-semibold text-slate-900 tabular-nums">{m.tasksCompleted > 0 ? `${m.onTimeRate}%` : '—'}</p>
-                    <p className="text-[11px] text-slate-400">on-time</p>
                   </div>
                 </div>
               );
