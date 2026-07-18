@@ -901,6 +901,59 @@ class SubmissionService {
   }
 
   /**
+   * How many submissions are waiting on this mentor — the number behind the
+   * sidebar "Approvals" badge. Deliberately mirrors the "To review" tab exactly:
+   * work awaiting review of EVERY task type (project / assignment / interview /
+   * quiz / video), collapsed to one per assignment, EXCLUDING pending extension
+   * requests (those live in their own tab).
+   *
+   * Returns a per-clan breakdown alongside the total so the badge can follow the
+   * sidebar clan switcher without a refetch. Lighter than the full queue: no
+   * roadmap/user/settings includes, just the columns the count needs.
+   */
+  async getMentorApprovalsCount(mentorId) {
+    const submissions = await models.TaskSubmission.findAll({
+      where: { status: 'pending' },
+      attributes: ['id', 'assignedTaskId', 'version', 'extensionRequested', 'extensionStatus'],
+      include: [{
+        model: models.AssignedTask,
+        as: 'assignedTask',
+        required: true,
+        attributes: ['id', 'status', 'menteeId'],
+        where: await this._reviewableTaskWhere(mentorId),
+      }],
+    });
+
+    // Same shape as the queue: keep only the latest version per assignment, so a
+    // resubmission doesn't count twice.
+    const latestByTask = new Map();
+    for (const s of submissions) {
+      const t = s.assignedTask;
+      const counts = t?.status === 'submitted' || Boolean(s.extensionRequested && s.extensionStatus === 'pending');
+      if (!counts) continue;
+      const prev = latestByTask.get(s.assignedTaskId);
+      if (!prev || (s.version || 0) > (prev.version || 0)) latestByTask.set(s.assignedTaskId, s);
+    }
+
+    // Work to review only — an extension request is a separate tab/action.
+    const toReview = [...latestByTask.values()]
+      .filter((s) => !(s.extensionRequested && s.extensionStatus === 'pending'));
+
+    const clanByMentee = await this._clanByMentee(
+      mentorId,
+      [...new Set(toReview.map((s) => s.assignedTask?.menteeId).filter(Boolean))]
+    );
+
+    const byClan = {};
+    for (const s of toReview) {
+      const clanId = clanByMentee.get(s.assignedTask?.menteeId)?.id;
+      if (clanId) byClan[clanId] = (byClan[clanId] || 0) + 1;
+    }
+
+    return { total: toReview.length, byClan };
+  }
+
+  /**
    * The mentor's approvals queue: pending submissions across their assigned
    * tasks, shaped for the review UI (criteria checklist + submission content).
    */

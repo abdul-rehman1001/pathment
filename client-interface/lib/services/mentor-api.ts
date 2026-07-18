@@ -62,6 +62,8 @@ export const mentorApi = {
 
   // Approvals queue (pending reviews across the cohort) + bulk approve.
   getApprovals: () => apiClient.get('/mentor/approvals'),
+  /** Just the review-queue size (+ per-clan breakdown) for the sidebar badge. */
+  getApprovalsCount: () => apiClient.get('/mentor/approvals/count'),
   // Tasks the mentor sent back for changes, awaiting the mentee's resubmission.
   getChangesRequested: () => apiClient.get('/mentor/approvals/changes-requested'),
   // Tasks the mentor has already approved (the "Reviewed" history, with scores).

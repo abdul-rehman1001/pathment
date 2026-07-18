@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useClan, ALL_CLANS } from '@/lib/context/ClanContext';
 import { mentorApi } from '@/lib/services/mentor-api';
+import { notifyApprovalsChanged } from '@/lib/utils/approvals-badge';
 import { submissionService } from '@/lib/services/submissionService';
 
 export interface BulkReviewPayload {
@@ -112,6 +113,9 @@ export function useMentorApprovals(): UseMentorApprovalsReturn {
       setAllQueue(res?.data?.queue ?? []);
       setAllChangesRequested(changesRes?.data?.items ?? []);
       setAllReviewed(reviewedRes?.data?.items ?? []);
+      // The queue just changed (initial load or a post-review refetch) — nudge
+      // the sidebar badge so it never lags behind what's on screen.
+      notifyApprovalsChanged();
     } catch {
       setError('Failed to load the approvals queue');
       setAllQueue([]);
