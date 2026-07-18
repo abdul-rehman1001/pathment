@@ -874,6 +874,33 @@ class SubmissionService {
   }
 
   /**
+   * Which of THIS mentor's clans each mentee sits in, so the approvals lists can
+   * be scoped by the sidebar clan switcher the same way the cohort views are.
+   * Mirrors getCohort's clan-attach: one clan per mentee (their active mentee
+   * membership in a clan this mentor runs). Batched — no per-item queries.
+   */
+  async _clanByMentee(mentorId, menteeIds = []) {
+    const map = new Map();
+    if (!menteeIds.length) return map;
+    const cohortService = require('./cohortService');
+    const { clanIds, clanNameById } = await cohortService.mentorClanMap(mentorId);
+    if (!clanIds.length) return map;
+    const rows = await models.ClanMembership.findAll({
+      where: {
+        clanId: { [Op.in]: clanIds },
+        userId: { [Op.in]: menteeIds },
+        status: 'active',
+        role: 'mentee',
+      },
+      attributes: ['userId', 'clanId'],
+    });
+    for (const r of rows) {
+      if (!map.has(r.userId)) map.set(r.userId, { id: r.clanId, name: clanNameById.get(r.clanId) || null });
+    }
+    return map;
+  }
+
+  /**
    * The mentor's approvals queue: pending submissions across their assigned
    * tasks, shaped for the review UI (criteria checklist + submission content).
    */
@@ -925,6 +952,7 @@ class SubmissionService {
       ? await models.UserSettings.findAll({ where: { userId: { [Op.in]: menteeIds } }, attributes: ['userId', 'timezone'] })
       : [];
     const tzByUser = new Map(tzRows.map((r) => [r.userId, r.timezone || 'UTC']));
+    const clanByMentee = await this._clanByMentee(mentorId, menteeIds);
 
     return latest.map((s) => {
       const t = s.assignedTask;
@@ -932,6 +960,8 @@ class SubmissionService {
       return {
         submissionId: s.id,
         taskId: t.id,
+        // The clan this mentee is in (for the sidebar clan-scope filter).
+        clan: clanByMentee.get(t.menteeId) || null,
         // Stable peer-grouping key for the client's "group by task" view. Title
         // can be per-mentee overridden, so don't group by title.
         roadmapTaskId: t.roadmapTaskId || null,
@@ -991,6 +1021,11 @@ class SubmissionService {
       order: [['updatedAt', 'DESC']],
     });
 
+    const clanByMentee = await this._clanByMentee(
+      mentorId,
+      [...new Set(tasks.map((t) => t.menteeId).filter(Boolean))]
+    );
+
     return tasks.map((t) => {
       const m = t.mentee;
       // Latest "changes requested" feedback (newest first). isApproved=false covers
@@ -1000,6 +1035,7 @@ class SubmissionService {
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0] || null;
       return {
         taskId: t.id,
+        clan: clanByMentee.get(t.menteeId) || null,
         roadmapTaskId: t.roadmapTaskId || null,
         title: t.titleOverride || t.roadmapTask?.title || 'Task',
         type: t.roadmapTask?.type || null,
@@ -1044,6 +1080,11 @@ class SubmissionService {
       limit,
     });
 
+    const clanByMentee = await this._clanByMentee(
+      mentorId,
+      [...new Set(tasks.map((t) => t.menteeId).filter(Boolean))]
+    );
+
     return tasks.map((t) => {
       const m = t.mentee;
       const latestFb = (t.feedback || [])
@@ -1051,6 +1092,7 @@ class SubmissionService {
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0] || null;
       return {
         taskId: t.id,
+        clan: clanByMentee.get(t.menteeId) || null,
         roadmapTaskId: t.roadmapTaskId || null,
         title: t.titleOverride || t.roadmapTask?.title || 'Task',
         type: t.roadmapTask?.type || null,

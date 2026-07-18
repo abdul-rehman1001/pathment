@@ -24,6 +24,8 @@ import { NudgeButton } from '@/components/mentor/NudgeButton';
 import { ReviewDrawer } from '@/components/mentor/ReviewDrawer';
 import { AssignTaskDrawer } from '@/components/mentor/AssignTaskDrawer';
 import { MenteeTaskDrawer } from '@/components/mentor/MenteeTaskDrawer';
+import { InterviewReviewDrawer } from '@/components/mentor/InterviewReviewDrawer';
+import { QuizReviewDrawer } from '@/components/mentor/QuizReviewDrawer';
 import { Drawer } from '@/components/shared/Drawer';
 import { Avatar } from '@/components/shared/Avatar';
 import { useConfirm } from '@/lib/context/ConfirmContext';
@@ -1190,9 +1192,30 @@ export default function CohortReview() {
         )}
       </Drawer>
 
-      {reviewing && <ReviewDrawer item={reviewing} onClose={() => setReviewing(null)} onReviewed={refresh} />}
+      {/* Review the right way for the task's type — interview + quiz have their
+          own review UIs; everything else uses the generic ReviewDrawer. */}
+      {reviewing && reviewing.type === 'interview' && (
+        <InterviewReviewDrawer taskId={reviewing.taskId} onClose={() => setReviewing(null)} onFinalized={refresh} />
+      )}
+      {reviewing && reviewing.type === 'quiz' && (
+        <QuizReviewDrawer taskId={reviewing.taskId} onClose={() => setReviewing(null)} onReviewed={refresh} />
+      )}
+      {reviewing && reviewing.type !== 'interview' && reviewing.type !== 'quiz' && (
+        <ReviewDrawer item={reviewing} onClose={() => setReviewing(null)} onReviewed={refresh} />
+      )}
 
-      {taskDetail && <MenteeTaskDrawer task={taskDetail} onClose={() => setTaskDetail(null)} onChanged={refresh} />}
+      {/* Opening a task also respects its type, so an interview/quiz doesn't fall
+          into the generic task drawer. */}
+      {taskDetail && (() => {
+        const taskType = taskDetail.roadmapTask?.type || taskDetail.type;
+        if (taskType === 'interview') {
+          return <InterviewReviewDrawer taskId={taskDetail.id} onClose={() => setTaskDetail(null)} onFinalized={refresh} />;
+        }
+        if (taskType === 'quiz') {
+          return <QuizReviewDrawer taskId={taskDetail.id} onClose={() => setTaskDetail(null)} onReviewed={refresh} />;
+        }
+        return <MenteeTaskDrawer task={taskDetail} onClose={() => setTaskDetail(null)} onChanged={refresh} />;
+      })()}
 
       {assigning && mentee && (
         <AssignTaskDrawer
