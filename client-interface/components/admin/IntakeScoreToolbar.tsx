@@ -1,9 +1,11 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { Download, Upload, Sparkles, Loader2, X, AlertTriangle, Check } from 'lucide-react';
+import { Download, Upload, Sparkles, Loader2, X, AlertTriangle, Check, Send, MailCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { applicationApi } from '@/lib/services/intake-api';
+
+interface InviteResult { invited: { id: string; email?: string }[]; skipped: { id: string; email?: string; reason: string }[]; }
 
 interface ImportChange {
   applicationId: string;
@@ -37,6 +39,10 @@ export function IntakeScoreToolbar({
   const [pendingCsv, setPendingCsv] = useState<string>('');
   const [applying, setApplying] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  // Invite flow: confirm gate → batched send with progress → result summary.
+  const [confirmInvite, setConfirmInvite] = useState(false);
+  const [inviteProgress, setInviteProgress] = useState<{ done: number; total: number } | null>(null);
+  const [inviteResult, setInviteResult] = useState<InviteResult | null>(null);
 
   const doExport = async () => {
     setExporting(true);
@@ -82,6 +88,32 @@ export function IntakeScoreToolbar({
     reader.readAsText(file);
   };
 
+  // Send invites in batches so a big selection can't time out; accumulate results.
+  const sendInvites = async () => {
+    setConfirmInvite(false);
+    const CHUNK = 25;
+    const invited: InviteResult['invited'] = [];
+    const skipped: InviteResult['skipped'] = [];
+    setInviteProgress({ done: 0, total: selectedIds.length });
+    try {
+      for (let i = 0; i < selectedIds.length; i += CHUNK) {
+        const batch = selectedIds.slice(i, i + CHUNK);
+        try {
+          const res = await applicationApi.bulkAccept(cohortId, batch) as { data?: InviteResult };
+          invited.push(...(res?.data?.invited || []));
+          skipped.push(...(res?.data?.skipped || []));
+        } catch {
+          skipped.push(...batch.map((id) => ({ id, reason: 'request failed' })));
+        }
+        setInviteProgress({ done: Math.min(i + CHUNK, selectedIds.length), total: selectedIds.length });
+      }
+      setInviteResult({ invited, skipped });
+      onDone();
+    } finally {
+      setInviteProgress(null);
+    }
+  };
+
   const applyImport = async () => {
     setApplying(true);
     try {
@@ -112,7 +144,68 @@ export function IntakeScoreToolbar({
           <Upload className="w-4 h-4" /> Import scores
         </button>
         <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); if (fileRef.current) fileRef.current.value = ''; }} />
+        {selectedIds.length > 0 && (
+          <button
+            onClick={() => setConfirmInvite(true)}
+            disabled={!!inviteProgress}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+          >
+            {inviteProgress ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            {inviteProgress ? `Sending ${inviteProgress.done}/${inviteProgress.total}…` : `Send invites (${selectedIds.length})`}
+          </button>
+        )}
       </div>
+
+      {/* Irreversible action — always confirm, showing exactly how many emails. */}
+      {confirmInvite && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setConfirmInvite(false)}>
+          <div className="w-full max-w-md rounded-2xl bg-card shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 text-emerald-700">
+              <Send className="w-5 h-5" /><h3 className="font-semibold text-slate-900">Send {selectedIds.length} invite{selectedIds.length === 1 ? '' : 's'}?</h3>
+            </div>
+            <p className="mt-3 text-sm text-slate-600">
+              This <strong>emails each selected applicant</strong> a magic link to join the program, marks them <strong>accepted</strong>, and <strong>cannot be undone</strong>.
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              Anyone already accepted, already registered, or withdrawn is skipped automatically — so it's safe to run more than once.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button onClick={() => setConfirmInvite(false)} className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-700">Cancel</button>
+              <button onClick={sendInvites} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700">
+                <Send className="w-4 h-4" /> Send {selectedIds.length} invite{selectedIds.length === 1 ? '' : 's'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Result summary after sending. */}
+      {inviteResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setInviteResult(null)}>
+          <div className="w-full max-w-lg max-h-[85vh] overflow-hidden rounded-2xl bg-card shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
+              <div className="flex items-center gap-2 text-emerald-700"><MailCheck className="w-5 h-5" /><h3 className="font-semibold text-slate-900">Invites sent</h3></div>
+              <button onClick={() => setInviteResult(null)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="px-5 py-3 flex flex-wrap gap-4 text-sm border-b border-slate-100">
+              <span className="text-emerald-700 font-medium">{inviteResult.invited.length} invited</span>
+              {inviteResult.skipped.length > 0 && <span className="text-slate-500">{inviteResult.skipped.length} skipped</span>}
+            </div>
+            {inviteResult.skipped.length > 0 && (
+              <div className="overflow-y-auto p-5 space-y-1 text-xs">
+                <p className="text-slate-500 mb-1">Skipped:</p>
+                {inviteResult.skipped.slice(0, 40).map((s, i) => (
+                  <p key={i} className="text-slate-600">{s.email || s.id} — <span className="text-slate-400">{s.reason}</span></p>
+                ))}
+                {inviteResult.skipped.length > 40 && <p className="text-slate-400">…and {inviteResult.skipped.length - 40} more</p>}
+              </div>
+            )}
+            <div className="px-5 py-4 border-t border-slate-200 flex justify-end">
+              <button onClick={() => setInviteResult(null)} className="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700">Done</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Import preview modal — nothing is written until "Apply". */}
       {preview && (

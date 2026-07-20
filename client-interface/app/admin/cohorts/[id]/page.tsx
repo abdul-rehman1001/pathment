@@ -874,6 +874,17 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
           </button>
         ))}
         <div className="ml-auto mb-1 flex flex-wrap items-center gap-2">
+          {selected.size > 0 && (
+            <button onClick={() => setSelected(new Set())} className="text-xs text-slate-500 hover:text-slate-800">Clear ({selected.size})</button>
+          )}
+          {passThreshold != null && applications.some((a) => passOf(a) === 'pass') && (
+            <button
+              onClick={() => setSelected(new Set(applications.filter((a) => passOf(a) === 'pass').map((a) => a.id)))}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
+            >
+              <CheckSquare className="w-3.5 h-3.5" /> Select passed
+            </button>
+          )}
           <PassThresholdControl cohortId={id} value={passThreshold} onSaved={refetch} />
           <IntakeScoreToolbar cohortId={id} cohortName={cohort?.name || 'cohort'} selectedIds={[...selected]} onDone={() => { setSelected(new Set()); refetch(); }} />
           <button

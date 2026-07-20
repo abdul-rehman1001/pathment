@@ -45,5 +45,6 @@ router.post('/cohorts/:id/ai-grade', ...adminOnly, intakeController.aiGradeAppli
 router.get('/cohorts/:id/applications/export', ...adminOnly, intakeController.exportApplicationsCsv);
 router.post('/cohorts/:id/scores/import/preview', ...adminOnly, intakeController.previewScoreImport);
 router.post('/cohorts/:id/scores/import/apply', ...adminOnly, intakeController.applyScoreImport);
+router.post('/cohorts/:id/applications/bulk-accept', ...adminOnly, intakeController.bulkAcceptApplications);
 
 module.exports = router;

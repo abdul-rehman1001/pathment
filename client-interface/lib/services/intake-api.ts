@@ -59,6 +59,10 @@ export const applicationApi = {
     apiClient.post(`/intake/applications/${id}/accept`, { clanId }),
   reject: (id: string, reason?: string) =>
     apiClient.post(`/intake/applications/${id}/reject`, { reason }),
+  /** Accept + invite a batch of selected applicants (emails go out — irreversible).
+   *  Idempotent: already-accepted / registered / withdrawn are skipped with a reason. */
+  bulkAccept: (cohortId: string, applicationIds: string[], clanId?: string) =>
+    apiClient.post(`/intake/cohorts/${cohortId}/applications/bulk-accept`, { applicationIds, clanId }, { timeout: 120000 }),
 
   // ── AI scoring ──────────────────────────────────────────────────────────
   /** AI-score a batch of applicants' open-ended answers + a holistic score.

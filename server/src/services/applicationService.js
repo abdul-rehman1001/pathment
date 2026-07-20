@@ -254,6 +254,46 @@ class ApplicationService {
     return { application: app, invite };
   }
 
+  /**
+   * Accept + invite MANY applicants at once (the "send invites to the selected"
+   * action). Idempotent and resilient: each applicant is accepted via the same
+   * single path (issues a mentee invite + emails the magic link + marks accepted),
+   * and anyone already accepted / already registered / already invited / withdrawn
+   * is SKIPPED with a reason rather than failing the batch. Emails only go to the
+   * applicants that are newly invited here.
+   */
+  async bulkAccept(cohortId, applicationIds, { clanId } = {}, acceptedBy) {
+    const cohort = await models.Cohort.findByPk(cohortId);
+    if (!cohort) throw new NotFoundError('Cohort not found');
+    const ids = [...new Set((applicationIds || []).filter(Boolean))];
+    if (!ids.length) return { invited: [], skipped: [], total: 0 };
+
+    // Only applicants that actually belong to this cohort (defensive scoping).
+    const apps = await models.Application.findAll({
+      where: { id: ids, cohortId }, attributes: ['id', 'email', 'firstName', 'lastName', 'status'],
+    });
+    const found = new Set(apps.map((a) => a.id));
+
+    const invited = [];
+    const skipped = [];
+    for (const id of ids) {
+      if (!found.has(id)) { skipped.push({ id, reason: 'not in this cohort' }); continue; }
+      const app = apps.find((a) => a.id === id);
+      if (app.status === 'accepted') { skipped.push({ id, email: app.email, reason: 'already accepted' }); continue; }
+      if (app.status === 'withdrawn') { skipped.push({ id, email: app.email, reason: 'withdrawn' }); continue; }
+      try {
+        const { invite } = await this.acceptApplication(id, { clanId }, acceptedBy);
+        invited.push({ id, email: app.email, inviteId: invite.id });
+      } catch (e) {
+        // createRegistrationInvite throws ConflictError when the person already
+        // has an account or a live invite — a skip, not a failure.
+        const reason = /already/i.test(e.message) ? e.message : e.message || 'could not invite';
+        skipped.push({ id, email: app.email, reason });
+      }
+    }
+    return { invited, skipped, total: ids.length };
+  }
+
   async rejectApplication(applicationId, { reason } = {}, reviewerId) {
     const app = await models.Application.findByPk(applicationId);
     if (!app) throw new NotFoundError('Application not found');

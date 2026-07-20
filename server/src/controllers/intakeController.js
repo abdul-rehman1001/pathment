@@ -156,6 +156,17 @@ const applyScoreImport = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Import applied', result));
 });
 
+// Accept + invite a batch of selected applicants (irreversible — emails go out).
+const bulkAcceptApplications = catchAsync(async (req, res) => {
+  const result = await applicationService.bulkAccept(
+    req.params.id,
+    Array.isArray(req.body?.applicationIds) ? req.body.applicationIds : [],
+    { clanId: req.body?.clanId },
+    req.user.id
+  );
+  res.status(200).json(successResponse('Invites sent', result));
+});
+
 const importApplications = catchAsync(async (req, res) => {
   const { rows, allowExceed } = req.body;
   const report = await applicationService.importApplications(req.params.id, rows, req.user.id, { allowExceed: !!allowExceed });
@@ -200,6 +211,7 @@ module.exports = {
   createApplication,
   updateApplication,
   acceptApplication,
+  bulkAcceptApplications,
   rejectApplication,
   aiGradeApplications,
   aiGradeSubmission,
