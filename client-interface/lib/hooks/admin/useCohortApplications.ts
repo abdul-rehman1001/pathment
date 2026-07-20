@@ -21,6 +21,9 @@ export interface Application {
   level?: string | null;
   assignedAssessmentId?: string | null;
   assessmentScore?: number | null;
+  /** Max points of the applicant's submission + AI's holistic score (list view). */
+  maxScore?: number | null;
+  aiOverall?: number | null;
   reviewerNotes?: string | null;
   decisionReason?: string | null;
   decidedAt?: string | null;
@@ -44,6 +47,7 @@ export function useCohortApplications(cohortId: string) {
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<ApplicationStatus | 'all'>('all');
+  const [passThreshold, setPassThreshold] = useState<number | null>(null);
 
   const fetchCohort = useCallback(async () => {
     try {
@@ -59,6 +63,7 @@ export function useCohortApplications(cohortId: string) {
       setLoading(true);
       const res = await applicationApi.list(cohortId, statusFilter === 'all' ? undefined : statusFilter);
       setApplications(res?.data?.applications ?? []);
+      setPassThreshold(res?.data?.passThreshold ?? null);
     } catch {
       toast.error('Failed to load applications');
       setApplications([]);
@@ -122,6 +127,7 @@ export function useCohortApplications(cohortId: string) {
     loading,
     statusFilter,
     setStatusFilter,
+    passThreshold,
     refetch,
     importRows,
     updateApplication,

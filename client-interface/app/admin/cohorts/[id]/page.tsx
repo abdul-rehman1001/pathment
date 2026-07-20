@@ -1,12 +1,12 @@
 'use client';
 
-import { use, useEffect, useRef, useState } from 'react';
+import { use, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import {
   ArrowLeft, Upload, Loader2, X, CheckCircle2, XCircle, FileSpreadsheet,
   Mail, Phone, Check, Link2, Copy, Power, ClipboardCheck, Pencil, Eye, CopyPlus, FormInput, Plus,
-  Trash2, CalendarRange, Layers, RefreshCw,
+  Trash2, CalendarRange, Layers, RefreshCw, CheckSquare, Square, Sparkles,
 } from 'lucide-react';
 import {
   useCohortApplications,
@@ -17,6 +17,7 @@ import { cohortApi, applicationApi } from '@/lib/services/intake-api';
 import { assessmentApi, type Assessment } from '@/lib/services/assessment-api';
 import { IntakeFormBuilder } from '@/components/admin/IntakeFormBuilder';
 import { AssessmentDrawer } from '@/components/admin/AssessmentDrawer';
+import { IntakeScoreToolbar } from '@/components/admin/IntakeScoreToolbar';
 import { Drawer } from '@/components/shared/Drawer';
 import { getBrowserTimeZone } from '@/lib/utils/datetime';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
@@ -105,11 +106,10 @@ function ApplicationDrawer({
 
   // Load the assessment submission (if any) for this application.
   const [detail, setDetail] = useState<any>(null);
-  useEffect(() => {
-    let active = true;
-    applicationApi.get(app.id).then((res: any) => { if (active) setDetail(res?.data || null); }).catch(() => {});
-    return () => { active = false; };
+  const reloadDetail = useCallback(() => {
+    applicationApi.get(app.id).then((res: any) => setDetail(res?.data || null)).catch(() => {});
   }, [app.id]);
+  useEffect(() => { reloadDetail(); }, [reloadDetail]);
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -203,7 +203,7 @@ function ApplicationDrawer({
 
           {/* Assessment submission */}
           {detail?.submission && detail?.assessment && (
-            <AssessmentSubmissionView assessment={detail.assessment} submission={detail.submission} />
+            <AssessmentSubmissionView assessment={detail.assessment} submission={detail.submission} onChanged={reloadDetail} />
           )}
         </div>
 
@@ -620,11 +620,28 @@ function ApplyFormPreview({ fields, levels, hasAssessment, required }: { fields:
 }
 
 /** Read-only view of an applicant's assessment answers + manual grading. */
-function AssessmentSubmissionView({ assessment, submission }: { assessment: any; submission: any }) {
+function AssessmentSubmissionView({ assessment, submission, onChanged }: { assessment: any; submission: any; onChanged?: () => void }) {
   const [total, setTotal] = useState(submission.totalScore != null ? String(submission.totalScore) : '');
   const [busy, setBusy] = useState(false);
+  const [aiBusy, setAiBusy] = useState<'grade' | 'apply' | null>(null);
   const questions = (assessment.questions || []).slice().sort((a: any, b: any) => a.position - b.position);
   const answers = submission.answers || {};
+  const ai = submission.aiDraft || null;
+  const hasOpenEnded = questions.some((q: any) => q.type === 'short_text' || q.type === 'long_text');
+  const hasAiScores = !!(ai && ai.perQuestion && Object.keys(ai.perQuestion).length);
+
+  const runAi = async () => {
+    setAiBusy('grade');
+    try { await applicationApi.aiGradeSubmission(submission.id); toast.success('AI scored — review the suggestions'); onChanged?.(); }
+    catch { toast.error('AI scoring failed — check Settings → AI Connections'); }
+    finally { setAiBusy(null); }
+  };
+  const applyAi = async () => {
+    setAiBusy('apply');
+    try { await applicationApi.applyAi(submission.id); toast.success('AI scores applied'); onChanged?.(); }
+    catch { toast.error('Could not apply AI scores'); }
+    finally { setAiBusy(null); }
+  };
 
   const renderAnswer = (q: any) => {
     const a = answers[q.id] || {};
@@ -648,6 +665,7 @@ function AssessmentSubmissionView({ assessment, submission }: { assessment: any;
     try {
       await applicationApi.gradeSubmission(submission.id, { totalScore: total === '' ? undefined : Number(total) });
       toast.success('Score saved');
+      onChanged?.();
     } catch { toast.error('Could not save score'); }
     finally { setBusy(false); }
   };
@@ -666,15 +684,32 @@ function AssessmentSubmissionView({ assessment, submission }: { assessment: any;
           {submission.totalScore != null ? ` · Final ${submission.totalScore}` : ''}
         </span>
       </div>
+      {ai && ai.overall != null && (
+        <div className="mt-3 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2">
+          <p className="text-xs font-medium text-violet-800">AI overall fit: {ai.overall}/100</p>
+          {ai.summary && <p className="mt-0.5 text-xs text-violet-700">{ai.summary}</p>}
+        </div>
+      )}
       <div className="mt-3 space-y-3">
-        {questions.map((q: any, i: number) => (
-          <div key={q.id} className="text-sm">
-            <p className="text-slate-500">{i + 1}. {q.prompt}</p>
-            <div className="mt-0.5">{renderAnswer(q)}</div>
-          </div>
-        ))}
+        {questions.map((q: any, i: number) => {
+          const per = ai && ai.perQuestion && ai.perQuestion[q.id];
+          return (
+            <div key={q.id} className="text-sm">
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-slate-500">{i + 1}. {q.prompt}</p>
+                {per && (
+                  <span title={per.note || ''} className="shrink-0 rounded-full bg-violet-100 text-violet-700 px-1.5 py-0.5 text-[10px] font-semibold">
+                    AI {per.suggestedPoints}/{q.points ?? 0}
+                  </span>
+                )}
+              </div>
+              <div className="mt-0.5">{renderAnswer(q)}</div>
+              {per && per.note && <p className="mt-0.5 text-[11px] text-violet-500 italic">{per.note}</p>}
+            </div>
+          );
+        })}
       </div>
-      <div className="mt-4 flex items-end gap-2">
+      <div className="mt-4 flex flex-wrap items-end gap-2">
         <div>
           <label className="block text-xs text-slate-500 mb-1">Final score (override)</label>
           <input type="number" value={total} onChange={(e) => setTotal(e.target.value)} className="w-28 px-3 py-1.5 border border-slate-200 rounded-lg text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500" />
@@ -682,7 +717,51 @@ function AssessmentSubmissionView({ assessment, submission }: { assessment: any;
         <button onClick={saveGrade} disabled={busy} className="px-3 py-1.5 rounded-lg bg-brand-600 text-white text-sm font-medium disabled:opacity-50 inline-flex items-center gap-1.5">
           {busy && <Loader2 className="w-4 h-4 animate-spin" />} Save score
         </button>
+        {hasOpenEnded && (
+          <button onClick={runAi} disabled={aiBusy !== null} className="px-3 py-1.5 rounded-lg border border-violet-200 bg-violet-50 text-violet-700 text-sm font-medium disabled:opacity-50 inline-flex items-center gap-1.5">
+            {aiBusy === 'grade' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} {hasAiScores ? 'Re-run AI' : 'AI score'}
+          </button>
+        )}
+        {hasAiScores && (
+          <button onClick={applyAi} disabled={aiBusy !== null} className="px-3 py-1.5 rounded-lg bg-violet-600 text-white text-sm font-medium disabled:opacity-50 inline-flex items-center gap-1.5">
+            {aiBusy === 'apply' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Apply AI → score
+          </button>
+        )}
       </div>
+    </div>
+  );
+}
+
+/** Inline "Pass ≥ N%" gate for the cohort — an applicant passes when their score
+ *  reaches this percent of the assessment max. Blank removes the gate. */
+function PassThresholdControl({ cohortId, value, onSaved }: { cohortId: string; value: number | null; onSaved: () => void }) {
+  const [v, setV] = useState(value != null ? String(value) : '');
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setV(value != null ? String(value) : ''); }, [value]);
+  const save = async () => {
+    const trimmed = v.trim();
+    const n = trimmed === '' ? null : Number(trimmed);
+    if (n != null && (!Number.isFinite(n) || n < 0 || n > 100)) { toast.error('Pass % must be 0–100'); return; }
+    if ((value ?? null) === n) return;
+    setSaving(true);
+    try { await cohortApi.update(cohortId, { passThreshold: n }); onSaved(); toast.success(n == null ? 'Pass gate removed' : `Pass set at ${n}%`); }
+    catch { toast.error('Could not save pass threshold'); }
+    finally { setSaving(false); }
+  };
+  return (
+    <div className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600" title="Applicants at/above this % of the assessment max are marked PASS">
+      <span className="text-slate-500">Pass ≥</span>
+      <input
+        value={v}
+        onChange={(e) => setV(e.target.value)}
+        onBlur={save}
+        onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+        inputMode="numeric"
+        placeholder="—"
+        className="w-9 text-center bg-transparent focus:outline-none"
+      />
+      <span className="text-slate-500">%</span>
+      {saving && <Loader2 className="w-3 h-3 animate-spin" />}
     </div>
   );
 }
@@ -691,10 +770,19 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
   const { id } = use(params);
   const {
     cohort, applications, loading, statusFilter, setStatusFilter,
-    refetch, importRows, updateApplication, acceptApplication, rejectApplication,
+    passThreshold, refetch, importRows, updateApplication, acceptApplication, rejectApplication,
   } = useCohortApplications(id);
 
   const [open, setOpen] = useState<Application | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const toggleOne = (rowId: string) => setSelected((prev) => { const n = new Set(prev); n.has(rowId) ? n.delete(rowId) : n.add(rowId); return n; });
+  const allSelected = applications.length > 0 && applications.every((a) => selected.has(a.id));
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(applications.map((a) => a.id)));
+  // Pass/fail from the cohort threshold (percent of the applicant's max score).
+  const passOf = (a: Application): 'pass' | 'fail' | null => {
+    if (passThreshold == null || a.maxScore == null || !a.maxScore || a.assessmentScore == null) return null;
+    return (Number(a.assessmentScore) / a.maxScore) * 100 >= passThreshold ? 'pass' : 'fail';
+  };
   const [importing, setImporting] = useState(false);
   // Rows held back by the application cap — offer a one-click "import anyway".
   const [capHeld, setCapHeld] = useState<{ rows: Record<string, string>[]; skipped: number } | null>(null);
@@ -785,14 +873,18 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
             {t.label}
           </button>
         ))}
-        <button
-          onClick={() => refetch()}
-          disabled={loading}
-          title="Refresh applicants"
-          className="ml-auto mb-1 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:border-brand-300 hover:text-brand-700 disabled:opacity-50"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
-        </button>
+        <div className="ml-auto mb-1 flex flex-wrap items-center gap-2">
+          <PassThresholdControl cohortId={id} value={passThreshold} onSaved={refetch} />
+          <IntakeScoreToolbar cohortId={id} cohortName={cohort?.name || 'cohort'} selectedIds={[...selected]} onDone={() => { setSelected(new Set()); refetch(); }} />
+          <button
+            onClick={() => refetch()}
+            disabled={loading}
+            title="Refresh applicants"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:border-brand-300 hover:text-brand-700 disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -807,6 +899,11 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-slate-500">
               <tr>
+                <th className="w-10 px-4 py-3">
+                  <button onClick={toggleAll} title="Select all" className="text-slate-400 hover:text-brand-600 align-middle">
+                    {allSelected ? <CheckSquare className="w-4 h-4 text-brand-600" /> : <Square className="w-4 h-4" />}
+                  </button>
+                </th>
                 <th className="text-left font-medium px-4 py-3">Applicant</th>
                 <th className="text-left font-medium px-4 py-3 hidden md:table-cell">Wants</th>
                 {(cohort?.levels?.length ?? 0) > 0 && <th className="text-left font-medium px-4 py-3 hidden lg:table-cell">Level</th>}
@@ -817,7 +914,12 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
             </thead>
             <tbody className="divide-y divide-slate-100">
               {applications.map((a) => (
-                <tr key={a.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => setOpen(a)}>
+                <tr key={a.id} className={`hover:bg-slate-50 cursor-pointer ${selected.has(a.id) ? 'bg-brand-50/40' : ''}`} onClick={() => setOpen(a)}>
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                    <button onClick={() => toggleOne(a.id)} className="text-slate-400 hover:text-brand-600 align-middle">
+                      {selected.has(a.id) ? <CheckSquare className="w-4 h-4 text-brand-600" /> : <Square className="w-4 h-4" />}
+                    </button>
+                  </td>
                   <td className="px-4 py-3">
                     <p className="font-medium text-slate-900">{fullName(a)}</p>
                     <p className="text-xs text-slate-500">{a.email}</p>
@@ -827,7 +929,14 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_CHIP[a.status]}`}>{a.status.replace(/_/g, ' ')}</span>
                   </td>
-                  <td className="px-4 py-3 hidden sm:table-cell text-slate-600">{a.assessmentScore != null ? a.assessmentScore : '-'}</td>
+                  <td className="px-4 py-3 hidden sm:table-cell">
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-700">{a.assessmentScore != null ? `${a.assessmentScore}${a.maxScore ? `/${a.maxScore}` : ''}` : '-'}</span>
+                      {passOf(a) === 'pass' && <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-semibold">PASS</span>}
+                      {passOf(a) === 'fail' && <span className="px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 text-[10px] font-semibold">FAIL</span>}
+                      {a.aiOverall != null && <span title="AI overall fit score" className="text-[10px] font-medium text-violet-600">AI {a.aiOverall}</span>}
+                    </div>
+                  </td>
                   <td className="px-4 py-3 text-right">
                     <span className="text-brand-600 text-xs font-medium">Review</span>
                   </td>

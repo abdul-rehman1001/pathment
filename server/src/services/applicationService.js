@@ -28,7 +28,7 @@ class ApplicationService {
     const where = { cohortId };
     if (status) where.status = status;
 
-    return models.Application.findAll({
+    const applications = await models.Application.findAll({
       where,
       include: [
         { model: models.User, as: 'reviewer', attributes: ['id', 'firstName', 'lastName'] },
@@ -36,6 +36,28 @@ class ApplicationService {
       ],
       order: [['createdAt', 'DESC']]
     });
+
+    // Attach each applicant's max score + AI overall (for the table's grade /
+    // pass-fail column) in ONE batched query — no per-row N+1.
+    const ids = applications.map((a) => a.id);
+    if (ids.length) {
+      const subs = await models.AssessmentSubmission.findAll({
+        where: { applicationId: ids },
+        attributes: ['applicationId', 'maxScore', 'submittedAt', 'aiDraft'],
+      });
+      const byApp = new Map();
+      for (const s of subs) {
+        const prev = byApp.get(s.applicationId);
+        if (!prev || new Date(s.submittedAt || 0) > new Date(prev.submittedAt || 0)) byApp.set(s.applicationId, s);
+      }
+      applications.forEach((a) => {
+        const s = byApp.get(a.id);
+        a.setDataValue('maxScore', s && s.maxScore != null ? Number(s.maxScore) : null);
+        a.setDataValue('aiOverall', s && s.aiDraft && s.aiDraft.overall != null ? s.aiDraft.overall : null);
+      });
+    }
+    // The cohort's pass threshold rides along so the client can render pass/fail.
+    return { applications, passThreshold: cohort.passThreshold != null ? Number(cohort.passThreshold) : null };
   }
 
   /**

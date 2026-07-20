@@ -59,4 +59,39 @@ export const applicationApi = {
     apiClient.post(`/intake/applications/${id}/accept`, { clanId }),
   reject: (id: string, reason?: string) =>
     apiClient.post(`/intake/applications/${id}/reject`, { reason }),
+
+  // ── AI scoring ──────────────────────────────────────────────────────────
+  /** AI-score a batch of applicants' open-ended answers + a holistic score.
+   *  The client pages through selected rows so a big cohort never times out. */
+  aiGrade: (cohortId: string, applicationIds: string[]) =>
+    apiClient.post(`/intake/cohorts/${cohortId}/ai-grade`, { applicationIds }, { timeout: 120000 }),
+  /** AI-score one submission (from the review drawer). */
+  aiGradeSubmission: (submissionId: string) =>
+    apiClient.post(`/intake/assessment-submissions/${submissionId}/ai-grade`, {}, { timeout: 60000 }),
+  /** Commit the AI's suggested per-question scores to the real score. */
+  applyAi: (submissionId: string) =>
+    apiClient.post(`/intake/assessment-submissions/${submissionId}/apply-ai`, {}),
+
+  // ── CSV score round-trip ────────────────────────────────────────────────
+  /** Download the applications sheet (auth'd) and trigger a browser save. */
+  exportCsv: async (cohortId: string, cohortName: string, status?: string) => {
+    const data = await apiClient.get<Blob>(`/intake/cohorts/${cohortId}/applications/export`, {
+      params: status && status !== 'all' ? { status } : {},
+      responseType: 'blob',
+    });
+    const blob = data instanceof Blob ? data : new Blob([data as BlobPart], { type: 'text/csv;charset=utf-8' });
+    const safe = (cohortName || 'cohort').replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+    const stamp = new Date().toISOString().slice(0, 10);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `applications-${safe}-${stamp}.csv`;
+    document.body.appendChild(a); a.click();
+    a.remove(); URL.revokeObjectURL(url);
+  },
+  /** Preview an edited sheet (diff, no writes). */
+  previewScoreImport: (cohortId: string, csv: string) =>
+    apiClient.post(`/intake/cohorts/${cohortId}/scores/import/preview`, { csv }),
+  /** Apply the edited sheet (writes the changed scores/status/notes). */
+  applyScoreImport: (cohortId: string, csv: string) =>
+    apiClient.post(`/intake/cohorts/${cohortId}/scores/import/apply`, { csv }),
 };

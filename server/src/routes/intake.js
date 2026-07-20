@@ -37,5 +37,13 @@ router.patch('/applications/:id', ...adminOnly, intakeController.updateApplicati
 router.post('/applications/:id/accept', ...adminOnly, intakeController.acceptApplication);
 router.post('/applications/:id/reject', ...adminOnly, intakeController.rejectApplication);
 router.post('/assessment-submissions/:submissionId/grade', ...adminOnly, intakeController.gradeAssessmentSubmission);
+router.post('/assessment-submissions/:submissionId/ai-grade', ...adminOnly, intakeController.aiGradeSubmission);
+router.post('/assessment-submissions/:submissionId/apply-ai', ...adminOnly, intakeController.applyAiScores);
+
+// ─── AI scoring + CSV score round-trip ─────────────────────────────────────────
+router.post('/cohorts/:id/ai-grade', ...adminOnly, intakeController.aiGradeApplications);
+router.get('/cohorts/:id/applications/export', ...adminOnly, intakeController.exportApplicationsCsv);
+router.post('/cohorts/:id/scores/import/preview', ...adminOnly, intakeController.previewScoreImport);
+router.post('/cohorts/:id/scores/import/apply', ...adminOnly, intakeController.applyScoreImport);
 
 module.exports = router;

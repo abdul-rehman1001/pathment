@@ -3,6 +3,16 @@ const { successResponse } = require('../utils/responses');
 const cohortIntakeService = require('../services/cohortIntakeService');
 const applicationService = require('../services/applicationService');
 const assessmentService = require('../services/assessmentService');
+const intakeExportService = require('../services/intakeExportService');
+const { parseCsv } = require('../utils/csv');
+
+// The score-import body may arrive as { csv: "<raw text>" } (preferred — server
+// parses it robustly) or { rows: [...] } (already parsed). Normalize to rows.
+function parseImportBody(body) {
+  if (body && typeof body.csv === 'string') return parseCsv(body.csv).rows;
+  if (body && Array.isArray(body.rows)) return body.rows;
+  return [];
+}
 const authzService = require('../services/authzService');
 
 // ─── Cohorts ─────────────────────────────────────────────────────────────────
@@ -79,8 +89,8 @@ const setCohortAssessments = catchAsync(async (req, res) => {
 // ─── Applications ──────────────────────────────────────────────────────────────
 
 const listApplications = catchAsync(async (req, res) => {
-  const applications = await applicationService.listApplications(req.params.id, { status: req.query.status });
-  res.status(200).json(successResponse('Applications retrieved', { applications }));
+  const { applications, passThreshold } = await applicationService.listApplications(req.params.id, { status: req.query.status });
+  res.status(200).json(successResponse('Applications retrieved', { applications, passThreshold }));
 });
 
 const getApplication = catchAsync(async (req, res) => {
@@ -95,6 +105,55 @@ const gradeAssessmentSubmission = catchAsync(async (req, res) => {
     req.user.id
   );
   res.status(200).json(successResponse('Submission graded', { submission }));
+});
+
+// ─── AI scoring ────────────────────────────────────────────────────────────
+// AI-score a batch of applicants (the client pages through selected rows so a
+// big cohort never times out in one request). Resilient: one bad row doesn't
+// sink the batch.
+const aiGradeApplications = catchAsync(async (req, res) => {
+  const ids = Array.isArray(req.body?.applicationIds) ? req.body.applicationIds : [];
+  const results = [];
+  for (const id of ids) {
+    try {
+      results.push(await assessmentService.aiGradeApplication(id, req.user.id));
+    } catch (e) {
+      results.push({ applicationId: id, graded: false, reason: e.message });
+    }
+  }
+  res.status(200).json(successResponse('AI scoring run', { results }));
+});
+
+// AI-score ONE submission (from the review drawer).
+const aiGradeSubmission = catchAsync(async (req, res) => {
+  const result = await assessmentService.aiGradeSubmission(req.params.submissionId, req.user.id);
+  res.status(200).json(successResponse('AI scoring run', result));
+});
+
+// Commit the AI's suggested scores to the real score (explicit admin action).
+const applyAiScores = catchAsync(async (req, res) => {
+  const submission = await assessmentService.applyAiScores(req.params.submissionId, req.user.id);
+  res.status(200).json(successResponse('AI scores applied', { submission }));
+});
+
+// ─── CSV export / import (score round-trip) ──────────────────────────────────
+const exportApplicationsCsv = catchAsync(async (req, res) => {
+  const { filename, csv } = await intakeExportService.exportCsv(req.params.id, { status: req.query.status });
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.status(200).send(csv);
+});
+
+const previewScoreImport = catchAsync(async (req, res) => {
+  const rows = parseImportBody(req.body);
+  const preview = await intakeExportService.previewImport(req.params.id, rows);
+  res.status(200).json(successResponse('Import preview', preview));
+});
+
+const applyScoreImport = catchAsync(async (req, res) => {
+  const rows = parseImportBody(req.body);
+  const result = await intakeExportService.applyImport(req.params.id, rows, req.user.id);
+  res.status(200).json(successResponse('Import applied', result));
 });
 
 const importApplications = catchAsync(async (req, res) => {
@@ -141,5 +200,11 @@ module.exports = {
   createApplication,
   updateApplication,
   acceptApplication,
-  rejectApplication
+  rejectApplication,
+  aiGradeApplications,
+  aiGradeSubmission,
+  applyAiScores,
+  exportApplicationsCsv,
+  previewScoreImport,
+  applyScoreImport
 };

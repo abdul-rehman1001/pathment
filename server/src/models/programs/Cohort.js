@@ -98,6 +98,12 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: false,
       field: 'assessment_required'
     },
+    // Percent (0-100). An applicant passes when total/max*100 >= this. null = no gate.
+    passThreshold: {
+      type: DataTypes.DECIMAL(5, 2),
+      allowNull: true,
+      field: 'pass_threshold'
+    },
     // Optional separate deadline for the assessment. Null = use applyClosesAt.
     assessmentDeadline: {
       type: DataTypes.DATE,
