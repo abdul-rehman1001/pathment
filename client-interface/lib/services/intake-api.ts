@@ -71,8 +71,12 @@ export const applicationApi = {
    *  Shown to the admin before anything runs. */
   aiGradePlan: (cohortId: string, applicationIds: string[]) =>
     apiClient.post(`/intake/cohorts/${cohortId}/ai-grade/plan`, { applicationIds }),
-  aiGrade: (cohortId: string, applicationIds: string[]) =>
-    apiClient.post(`/intake/cohorts/${cohortId}/ai-grade`, { applicationIds }, { timeout: 120000 }),
+  aiGrade: (cohortId: string, applicationIds: string[], opts?: { applyScores?: boolean; recommendLevels?: boolean }) =>
+    apiClient.post(`/intake/cohorts/${cohortId}/ai-grade`, {
+      applicationIds,
+      applyScores: opts?.applyScores !== false,
+      recommendLevels: opts?.recommendLevels !== false,
+    }, { timeout: 120000 }),
   /** AI-score one submission (from the review drawer). */
   aiGradeSubmission: (submissionId: string) =>
     apiClient.post(`/intake/assessment-submissions/${submissionId}/ai-grade`, {}, { timeout: 60000 }),

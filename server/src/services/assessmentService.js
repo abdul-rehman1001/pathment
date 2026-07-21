@@ -531,7 +531,7 @@ class AssessmentService {
     if (!submission) return { applicationId, graded: false, reason: 'no_submission' };
     if (submission.status === 'in_progress') return { applicationId, graded: false, reason: 'not_submitted' };
     const res = await this.aiGradeSubmission(submission.id, graderId);
-    return { applicationId, graded: true, aiDraft: res.aiDraft };
+    return { applicationId, graded: true, submissionId: submission.id, aiDraft: res.aiDraft };
   }
 
   /**

@@ -114,15 +114,39 @@ const gradeAssessmentSubmission = catchAsync(async (req, res) => {
 // sink the batch.
 const aiGradeApplications = catchAsync(async (req, res) => {
   const ids = Array.isArray(req.body?.applicationIds) ? req.body.applicationIds : [];
+  // Both default ON: a run that leaves 300 drafts needing 300 manual clicks is
+  // not a usable batch action. The admin can still override any single score,
+  // and nothing here sends an email or accepts anyone.
+  const applyScores = req.body?.applyScores !== false;
+  const recommendLevels = req.body?.recommendLevels !== false;
+
   const results = [];
   for (const id of ids) {
+    const row = { applicationId: id, graded: false, applied: false, levelChecked: false };
     try {
-      results.push(await assessmentService.aiGradeApplication(id, req.user.id));
+      const graded = await assessmentService.aiGradeApplication(id, req.user.id);
+      Object.assign(row, graded);
+      if (applyScores && graded.graded && graded.submissionId) {
+        try {
+          await assessmentService.applyAiScores(graded.submissionId, req.user.id);
+          row.applied = true;
+        } catch (e) { row.applyError = e.message; }
+      }
     } catch (e) {
-      results.push({ applicationId: id, graded: false, reason: e.message });
+      row.reason = e.message;
     }
+    // Level is judged from the same evidence — run it in the same pass so one
+    // action gives both a score and a placement.
+    if (recommendLevels) {
+      try {
+        const lvl = await levelRecommendationService.recommendForApplication(id, req.user.id);
+        row.levelChecked = !!lvl.recommended;
+        row.recommendedLevel = lvl.recommendedLevel || null;
+      } catch (e) { row.levelError = e.message; }
+    }
+    results.push(row);
   }
-  res.status(200).json(successResponse('AI scoring run', { results }));
+  res.status(200).json(successResponse('AI review run', { results }));
 });
 
 // What an AI run would grade on (questions + rubrics + who's in scope) — shown

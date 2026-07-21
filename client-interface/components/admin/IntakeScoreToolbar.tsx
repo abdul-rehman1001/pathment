@@ -79,22 +79,30 @@ export function IntakeScoreToolbar({
   };
 
   // AI-score in small batches so a big cohort never times out; resilient + live progress.
-  const doAiScore = async () => {
+  const doAiScore = async (opts: { applyScores: boolean; recommendLevels: boolean } = { applyScores: true, recommendLevels: true }) => {
     if (!selectedIds.length) return;
     const CHUNK = 5;
-    let done = 0, graded = 0, skipped = 0;
+    let done = 0, graded = 0, skipped = 0, scored = 0, levelled = 0;
     setAiProgress({ done: 0, total: selectedIds.length });
     try {
       for (let i = 0; i < selectedIds.length; i += CHUNK) {
         const batch = selectedIds.slice(i, i + CHUNK);
         try {
-          const res = await applicationApi.aiGrade(cohortId, batch) as { data?: { results?: { graded: boolean }[] } };
-          for (const r of (res?.data?.results || [])) r.graded ? graded++ : skipped++;
+          const res = await applicationApi.aiGrade(cohortId, batch, opts) as { data?: { results?: { graded: boolean; applied?: boolean; levelChecked?: boolean }[] } };
+          for (const r of (res?.data?.results || [])) {
+            r.graded ? graded++ : skipped++;
+            if (r.applied) scored++;
+            if (r.levelChecked) levelled++;
+          }
         } catch { skipped += batch.length; }
         done += batch.length;
         setAiProgress({ done, total: selectedIds.length });
       }
-      toast.success(`AI scored ${graded} · ${skipped} skipped (no submission)`);
+      const bits = [`${graded} reviewed`];
+      if (scored) bits.push(`${scored} scored`);
+      if (levelled) bits.push(`${levelled} level-checked`);
+      if (skipped) bits.push(`${skipped} skipped (no submission)`);
+      toast.success(bits.join(' · '));
       onDone();
     } finally {
       setAiProgress(null);
@@ -161,7 +169,7 @@ export function IntakeScoreToolbar({
             className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-medium text-violet-700 hover:bg-violet-100 disabled:opacity-60"
           >
             {aiProgress ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-            {aiProgress ? `AI scoring ${aiProgress.done}/${aiProgress.total}…` : `AI score (${selectedIds.length})`}
+            {aiProgress ? `AI reviewing ${aiProgress.done}/${aiProgress.total}…` : `AI review (${selectedIds.length})`}
           </button>
         )}
         {selectedIds.length > 0 && (
@@ -200,7 +208,7 @@ export function IntakeScoreToolbar({
           cohortId={cohortId}
           applicationIds={selectedIds}
           onClose={() => setPreflight(false)}
-          onRun={() => { setPreflight(false); doAiScore(); }}
+          onRun={(opts) => { setPreflight(false); doAiScore(opts); }}
         />
       )}
 

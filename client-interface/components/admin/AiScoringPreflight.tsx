@@ -30,13 +30,17 @@ export function AiScoringPreflight({
   cohortId: string;
   applicationIds: string[];
   onClose: () => void;
-  onRun: () => void;
+  onRun: (opts: { applyScores: boolean; recommendLevels: boolean }) => void;
 }) {
   const [plan, setPlan] = useState<ScoringPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   // Local edits, keyed by question id / `holistic:<assessmentId>`.
   const [edits, setEdits] = useState<Record<string, string>>({});
+  // Both on by default — a run that leaves everything as a draft needing a
+  // click per applicant isn't usable at cohort scale.
+  const [applyScores, setApplyScores] = useState(true);
+  const [recommendLevels, setRecommendLevels] = useState(true);
 
   useEffect(() => {
     let alive = true;
@@ -88,7 +92,7 @@ export function AiScoringPreflight({
         }
       }
       if (dirty) toast.success('Rubrics saved');
-      onRun();
+      onRun({ applyScores, recommendLevels });
     } catch {
       toast.error('Could not save the rubrics — nothing was scored');
     } finally {
@@ -184,6 +188,17 @@ export function AiScoringPreflight({
               ))}
             </div>
 
+            <div className="px-5 pb-1 pt-2 space-y-2 border-t border-slate-100">
+              <label className="flex items-start gap-2 text-xs text-slate-700 cursor-pointer">
+                <input type="checkbox" checked={applyScores} onChange={(e) => setApplyScores(e.target.checked)} className="mt-0.5" />
+                <span><strong>Set the score</strong> from the AI&apos;s marks — you can still change any score afterwards. Untick to only save suggestions.</span>
+              </label>
+              <label className="flex items-start gap-2 text-xs text-slate-700 cursor-pointer">
+                <input type="checkbox" checked={recommendLevels} onChange={(e) => setRecommendLevels(e.target.checked)} className="mt-0.5" />
+                <span><strong>Also check their level</strong> against your criteria, and flag anyone whose level looks wrong.</span>
+              </label>
+            </div>
+
             <div className="px-5 py-4 border-t border-slate-200 flex items-center justify-between gap-2">
               <p className="text-[11px] text-slate-400">
                 Rubric edits are saved to the assessment, so every applicant is scored to the same standard.
@@ -196,7 +211,7 @@ export function AiScoringPreflight({
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 disabled:opacity-50"
                 >
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                  {dirty ? 'Save rubrics & score' : `Score ${plan.applicants.withSubmission}`}
+                  {dirty ? 'Save rubrics & run' : `Review ${plan.applicants.withSubmission}`}
                 </button>
               </div>
             </div>
