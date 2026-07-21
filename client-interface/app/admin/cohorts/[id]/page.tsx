@@ -1375,6 +1375,7 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-slate-500">
               <tr>
+                <th className="w-10 px-4 py-3 text-right font-medium text-slate-400 tabular-nums">#</th>
                 <th className="w-10 px-4 py-3">
                   <button onClick={toggleAll} title="Select all" className="text-slate-400 hover:text-brand-600 align-middle">
                     {allSelected ? <CheckSquare className="w-4 h-4 text-brand-600" /> : <Square className="w-4 h-4" />}
@@ -1392,6 +1393,7 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
                 const globalIndex = (page - 1) * PAGE_SIZE + i;
                 return (
                 <tr key={a.id} className={`hover:bg-slate-50 cursor-pointer ${selected.has(a.id) ? 'bg-brand-50/40' : ''}`} onClick={() => setOpen(a)}>
+                  <td className="px-4 py-3 text-right text-xs text-slate-400 tabular-nums">{globalIndex + 1}</td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <button
                       onClick={(e) => toggleOne(a.id, globalIndex, e.shiftKey)}
