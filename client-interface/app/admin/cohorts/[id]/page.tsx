@@ -91,10 +91,12 @@ function fullName(a: Application) {
 }
 
 function ApplicationDrawer({
-  app, onClose, onUpdate, onAccept, onReject,
+  app, onClose, onUpdate, onAccept, onReject, levelLabel,
 }: {
   app: Application;
   onClose: () => void;
+  /** Level key → the admin's own label, for the placement panel. */
+  levelLabel: (k: string) => string;
   onUpdate: (id: string, data: { status?: string; assessmentScore?: number; reviewerNotes?: string; decisionReason?: string }) => Promise<void>;
   onAccept: (id: string) => Promise<void>;
   onReject: (id: string, reason?: string) => Promise<void>;
@@ -203,6 +205,11 @@ function ApplicationDrawer({
               </dl>
             )}
           </div>
+
+          {/* Level placement — evidence-backed, with the proof for each criterion */}
+          {app.levelEvidence && (
+            <LevelEvidencePanel app={app} levelLabel={levelLabel} onApplied={onClose} />
+          )}
 
           {/* Assessment submission */}
           {detail?.submission && detail?.assessment && (
@@ -623,6 +630,58 @@ function ApplyFormPreview({ fields, levels, hasAssessment, required }: { fields:
 }
 
 /** Read-only view of an applicant's assessment answers + manual grading. */
+/** Shows WHY a level was recommended: each criterion with the applicant's own
+ *  words as proof, plus a one-click apply. */
+function LevelEvidencePanel({ app, levelLabel, onApplied }: { app: Application; levelLabel: (k: string) => string; onApplied: () => void }) {
+  const ev = app.levelEvidence;
+  const [busy, setBusy] = useState(false);
+  if (!ev) return null;
+  const differs = app.recommendedLevel && app.recommendedLevel !== app.level;
+  const mark = (v: boolean | null) => (v === true ? '✓' : v === false ? '✗' : '?');
+  const tone = (v: boolean | null) => (v === true ? 'text-emerald-600' : v === false ? 'text-rose-500' : 'text-slate-400');
+
+  const apply = async () => {
+    setBusy(true);
+    try { await applicationApi.applyLevel(app.id); toast.success('Level updated'); onApplied(); }
+    catch { toast.error('Could not apply the level'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className={`rounded-xl border p-4 ${differs ? 'border-amber-200 bg-amber-50/60 dark:bg-amber-500/10' : 'border-slate-200'}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-sm font-medium text-slate-800">Level placement</p>
+          <p className="mt-0.5 text-xs text-slate-600">
+            They picked <strong>{levelLabel(ev.selfSelected || '') || ev.selfSelected || '—'}</strong>
+            {' · '}evidence suggests <strong>{levelLabel(app.recommendedLevel || '') || app.recommendedLevel}</strong>
+            {differs ? ' ⚠' : ' ✓'}
+          </p>
+        </div>
+        {differs && (
+          <button onClick={apply} disabled={busy} className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50">
+            {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Apply {levelLabel(app.recommendedLevel || '') || app.recommendedLevel}
+          </button>
+        )}
+      </div>
+
+      {ev.reason && <p className="mt-2 text-xs text-slate-700">{ev.reason}</p>}
+      {ev.coherence && <p className="mt-1 text-xs text-amber-700">⚠ {ev.coherence}</p>}
+
+      <div className="mt-3 space-y-1.5">
+        {Object.entries(ev.criteria || {}).map(([key, c]) => (
+          <div key={key} className="text-xs">
+            <span className={`font-semibold ${tone(c.verdict)}`}>{mark(c.verdict)}</span>{' '}
+            <span className="text-slate-700">{key.replace(/_/g, ' ')}</span>
+            {c.quote && <p className="ml-4 mt-0.5 text-slate-500 italic">&ldquo;{c.quote}&rdquo;</p>}
+            {!c.quote && c.note && <p className="ml-4 mt-0.5 text-slate-400">{c.note}</p>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function AssessmentSubmissionView({ assessment, submission, onChanged }: { assessment: any; submission: any; onChanged?: () => void }) {
   const [total, setTotal] = useState(submission.totalScore != null ? String(submission.totalScore) : '');
   const [busy, setBusy] = useState(false);
@@ -788,6 +847,7 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
   // ── Filters (all client-side: the whole cohort is already loaded) ──────────
   const [query, setQuery] = useState('');
   const [scoreFilter, setScoreFilter] = useState<'all' | 'scored' | 'unscored' | 'pass' | 'fail'>('all');
+  const [levelFit, setLevelFit] = useState<'all' | 'mismatch' | 'match' | 'unchecked'>('all');
   const [levelFilter, setLevelFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'recent' | 'score_desc' | 'score_asc' | 'name'>('recent');
 
@@ -807,6 +867,9 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
       if (scoreFilter === 'unscored' && a.assessmentScore != null) return false;
       if (scoreFilter === 'pass' && passOf(a) !== 'pass') return false;
       if (scoreFilter === 'fail' && passOf(a) !== 'fail') return false;
+      if (levelFit === 'mismatch' && !(a.recommendedLevel && a.recommendedLevel !== a.level)) return false;
+      if (levelFit === 'match' && !(a.recommendedLevel && a.recommendedLevel === a.level)) return false;
+      if (levelFit === 'unchecked' && a.recommendedLevel) return false;
       if (q) {
         const hay = `${a.firstName || ''} ${a.lastName || ''} ${a.email}`.toLowerCase();
         if (!hay.includes(q)) return false;
@@ -820,7 +883,7 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
       if (sortBy === 'name') return fullName(a).localeCompare(fullName(b));
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
-  }, [applications, statusFilter, levelFilter, scoreFilter, query, sortBy, passThreshold]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [applications, statusFilter, levelFilter, scoreFilter, levelFit, query, sortBy, passThreshold]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Headline numbers for the cohort (always the full set, not the filter).
   const stats = useMemo(() => {
@@ -829,13 +892,14 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
     const awaiting = applications.filter((a) => a.status === 'assessment_sent').length;
     const passed = applications.filter((a) => passOf(a) === 'pass').length;
     const accepted = applications.filter((a) => a.status === 'accepted').length;
-    return { total: applications.length, scored, submitted, awaiting, passed, accepted };
+    const levelMismatch = applications.filter((a) => a.recommendedLevel && a.recommendedLevel !== a.level).length;
+    return { total: applications.length, scored, submitted, awaiting, passed, accepted, levelMismatch };
   }, [applications, passThreshold]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Paginate the filtered view — 305 rows in one DOM table is needlessly heavy.
   const PAGE_SIZE = 25;
   const [page, setPage] = useState(1);
-  useEffect(() => { setPage(1); }, [statusFilter, levelFilter, scoreFilter, query, sortBy]);
+  useEffect(() => { setPage(1); }, [statusFilter, levelFilter, scoreFilter, levelFit, query, sortBy]);
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const visible = useMemo(() => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [filtered, page]);
   const filteredIds = useMemo(() => filtered.map((a) => a.id), [filtered]);
@@ -924,7 +988,7 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
 
       {/* Headline numbers for the whole cohort */}
       {applications.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2">
           {[
             { label: 'Applicants', value: stats.total, tone: 'text-slate-900' },
             { label: 'Not submitted', value: stats.awaiting, tone: 'text-blue-700' },
@@ -932,6 +996,7 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
             { label: 'Scored', value: stats.scored, tone: 'text-slate-900' },
             { label: passThreshold != null ? `Passed (≥${passThreshold}%)` : 'Passed', value: passThreshold != null ? stats.passed : '—', tone: 'text-emerald-700' },
             { label: 'Accepted', value: stats.accepted, tone: 'text-emerald-700' },
+            { label: 'Level mismatch', value: stats.levelMismatch, tone: stats.levelMismatch ? 'text-amber-700' : 'text-slate-900' },
           ].map((s) => (
             <div key={s.label} className="rounded-xl border border-slate-200 bg-card px-3 py-2">
               <p className="text-[11px] text-slate-500">{s.label}</p>
@@ -1000,6 +1065,14 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
           <option value="fail">Failed</option>
         </select>
         {(cohort?.levels?.length ?? 0) > 0 && (
+          <select value={levelFit} onChange={(e) => setLevelFit(e.target.value as typeof levelFit)} className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500">
+            <option value="all">Any level fit</option>
+            <option value="mismatch">Level mismatch</option>
+            <option value="match">Level confirmed</option>
+            <option value="unchecked">Not level-checked</option>
+          </select>
+        )}
+        {(cohort?.levels?.length ?? 0) > 0 && (
           <select value={levelFilter} onChange={(e) => setLevelFilter(e.target.value)} className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500">
             <option value="all">All levels</option>
             {(cohort?.levels || []).map((l) => <option key={l.key} value={l.key}>{l.label}</option>)}
@@ -1014,8 +1087,8 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
         <span className="text-xs text-slate-500 tabular-nums">
           {filtered.length} of {applications.length}
         </span>
-        {(query || scoreFilter !== 'all' || levelFilter !== 'all' || statusFilter !== 'all') && (
-          <button onClick={() => { setQuery(''); setScoreFilter('all'); setLevelFilter('all'); setStatusFilter('all'); }} className="text-xs text-slate-500 hover:text-slate-800 underline">Clear filters</button>
+        {(query || scoreFilter !== 'all' || levelFilter !== 'all' || statusFilter !== 'all' || levelFit !== 'all') && (
+          <button onClick={() => { setQuery(''); setScoreFilter('all'); setLevelFilter('all'); setStatusFilter('all'); setLevelFit('all'); }} className="text-xs text-slate-500 hover:text-slate-800 underline">Clear filters</button>
         )}
       </div>
 
@@ -1061,7 +1134,21 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
                     <p className="text-xs text-slate-500">{a.email}</p>
                   </td>
                   <td className="px-4 py-3 hidden md:table-cell text-slate-600">{a.programPreference || '-'}</td>
-                  {(cohort?.levels?.length ?? 0) > 0 && <td className="px-4 py-3 hidden lg:table-cell text-slate-600">{a.level ? levelLabel(a.level) : '—'}</td>}
+                  {(cohort?.levels?.length ?? 0) > 0 && (
+                    <td className="px-4 py-3 hidden lg:table-cell text-slate-600">
+                      <div className="flex items-center gap-1.5">
+                        <span>{a.level ? levelLabel(a.level) : '—'}</span>
+                        {a.recommendedLevel && a.recommendedLevel !== a.level && (
+                          <span title={a.levelEvidence?.reason || ''} className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                            → {levelLabel(a.recommendedLevel)}
+                          </span>
+                        )}
+                        {a.recommendedLevel && a.recommendedLevel === a.level && (
+                          <span title="Recommendation matches what they picked" className="text-emerald-600 text-[10px] font-semibold">✓</span>
+                        )}
+                      </div>
+                    </td>
+                  )}
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_CHIP[a.status]}`}>{a.status.replace(/_/g, ' ')}</span>
                   </td>
@@ -1102,6 +1189,7 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
           onUpdate={updateApplication}
           onAccept={acceptApplication}
           onReject={rejectApplication}
+          levelLabel={levelLabel}
         />
       )}
     </div>

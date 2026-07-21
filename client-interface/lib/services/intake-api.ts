@@ -80,6 +80,16 @@ export const applicationApi = {
   applyAi: (submissionId: string) =>
     apiClient.post(`/intake/assessment-submissions/${submissionId}/apply-ai`, {}),
 
+  // ── Level recommendation ────────────────────────────────────────────────
+  /** The cohort's level entry criteria (auto-seeded with defaults when unset). */
+  getLevelRules: (cohortId: string) => apiClient.get(`/intake/cohorts/${cohortId}/level-rules`),
+  setLevelRules: (cohortId: string, rules: unknown) => apiClient.put(`/intake/cohorts/${cohortId}/level-rules`, rules),
+  /** Recommend levels for a batch, from evidence in their own answers. */
+  recommendLevels: (cohortId: string, applicationIds: string[]) =>
+    apiClient.post(`/intake/cohorts/${cohortId}/recommend-levels`, { applicationIds }, { timeout: 120000 }),
+  /** Set the applicant's level to the recommendation (explicit admin action). */
+  applyLevel: (id: string) => apiClient.post(`/intake/applications/${id}/apply-level`, {}),
+
   // ── CSV score round-trip ────────────────────────────────────────────────
   /** Download the applications sheet (auth'd) and trigger a browser save. */
   exportCsv: async (cohortId: string, cohortName: string, ids?: string[]) => {

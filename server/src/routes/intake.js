@@ -42,6 +42,12 @@ router.post('/assessment-submissions/:submissionId/apply-ai', ...adminOnly, inta
 
 // ─── AI scoring + CSV score round-trip ─────────────────────────────────────────
 router.post('/cohorts/:id/ai-grade/plan', ...adminOnly, intakeController.getScoringPlan);
+
+// ─── Level recommendation (evidence-based placement) ──────────────────────────
+router.get('/cohorts/:id/level-rules', ...adminOnly, intakeController.getLevelRules);
+router.put('/cohorts/:id/level-rules', ...adminOnly, intakeController.setLevelRules);
+router.post('/cohorts/:id/recommend-levels', ...adminOnly, intakeController.recommendLevels);
+router.post('/applications/:id/apply-level', ...adminOnly, intakeController.applyLevelRecommendation);
 router.post('/cohorts/:id/ai-grade', ...adminOnly, intakeController.aiGradeApplications);
 router.get('/cohorts/:id/applications/export', ...adminOnly, intakeController.exportApplicationsCsv);
 router.post('/cohorts/:id/applications/export', ...adminOnly, intakeController.exportApplicationsCsv);

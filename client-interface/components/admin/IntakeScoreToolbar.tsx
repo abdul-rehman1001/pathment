@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { Download, Upload, Sparkles, Loader2, X, AlertTriangle, Check, Send, MailCheck } from 'lucide-react';
+import { Download, Upload, Sparkles, Loader2, X, AlertTriangle, Check, Send, MailCheck, Layers } from 'lucide-react';
 import { toast } from 'sonner';
 import { applicationApi } from '@/lib/services/intake-api';
 import { AiScoringPreflight } from '@/components/admin/AiScoringPreflight';
@@ -48,6 +48,28 @@ export function IntakeScoreToolbar({
   const [inviteResult, setInviteResult] = useState<InviteResult | null>(null);
   // AI scoring always goes through a pre-flight so it's never a black box.
   const [preflight, setPreflight] = useState(false);
+  const [levelProgress, setLevelProgress] = useState<{ done: number; total: number } | null>(null);
+
+  // Recommend levels for the selection — batched, resilient, same shape as AI scoring.
+  const doRecommendLevels = async () => {
+    if (!selectedIds.length) return;
+    const CHUNK = 5;
+    let done = 0, ok = 0, skipped = 0;
+    setLevelProgress({ done: 0, total: selectedIds.length });
+    try {
+      for (let i = 0; i < selectedIds.length; i += CHUNK) {
+        const batch = selectedIds.slice(i, i + CHUNK);
+        try {
+          const res = await applicationApi.recommendLevels(cohortId, batch) as { data?: { results?: { recommended: boolean }[] } };
+          for (const r of (res?.data?.results || [])) r.recommended ? ok++ : skipped++;
+        } catch { skipped += batch.length; }
+        done += batch.length;
+        setLevelProgress({ done, total: selectedIds.length });
+      }
+      toast.success(`Levels checked for ${ok}${skipped ? ` · ${skipped} skipped` : ''}`);
+      onDone();
+    } finally { setLevelProgress(null); }
+  };
 
   const doExport = async () => {
     setExporting(true);
@@ -140,6 +162,17 @@ export function IntakeScoreToolbar({
           >
             {aiProgress ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
             {aiProgress ? `AI scoring ${aiProgress.done}/${aiProgress.total}…` : `AI score (${selectedIds.length})`}
+          </button>
+        )}
+        {selectedIds.length > 0 && (
+          <button
+            onClick={doRecommendLevels}
+            disabled={!!levelProgress}
+            title="Check each applicant's level against your criteria, using evidence from their own answers"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-60"
+          >
+            {levelProgress ? <Loader2 className="w-4 h-4 animate-spin" /> : <Layers className="w-4 h-4" />}
+            {levelProgress ? `Checking ${levelProgress.done}/${levelProgress.total}…` : `Check levels (${selectedIds.length})`}
           </button>
         )}
         <button onClick={doExport} disabled={exporting} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:border-brand-300 hover:text-brand-700 disabled:opacity-60">

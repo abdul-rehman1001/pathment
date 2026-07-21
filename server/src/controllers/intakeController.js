@@ -4,6 +4,7 @@ const cohortIntakeService = require('../services/cohortIntakeService');
 const applicationService = require('../services/applicationService');
 const assessmentService = require('../services/assessmentService');
 const intakeExportService = require('../services/intakeExportService');
+const levelRecommendationService = require('../services/levelRecommendationService');
 const { parseCsv } = require('../utils/csv');
 
 // The score-import body may arrive as { csv: "<raw text>" } (preferred — server
@@ -144,6 +145,36 @@ const applyAiScores = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('AI scores applied', { submission }));
 });
 
+// ─── Level recommendation ────────────────────────────────────────────────────
+const getLevelRules = catchAsync(async (req, res) => {
+  const rules = await levelRecommendationService.getRules(req.params.id);
+  res.status(200).json(successResponse('Level rules', rules));
+});
+
+const setLevelRules = catchAsync(async (req, res) => {
+  const rules = await levelRecommendationService.setRules(req.params.id, req.body || {});
+  res.status(200).json(successResponse('Level rules saved', rules));
+});
+
+// Batch: the client pages through the selection so a big cohort never times out.
+const recommendLevels = catchAsync(async (req, res) => {
+  const ids = Array.isArray(req.body?.applicationIds) ? req.body.applicationIds : [];
+  const results = [];
+  for (const id of ids) {
+    try {
+      results.push(await levelRecommendationService.recommendForApplication(id, req.user.id));
+    } catch (e) {
+      results.push({ applicationId: id, recommended: false, reason: e.message });
+    }
+  }
+  res.status(200).json(successResponse('Level recommendation run', { results }));
+});
+
+const applyLevelRecommendation = catchAsync(async (req, res) => {
+  const application = await levelRecommendationService.applyRecommendation(req.params.id);
+  res.status(200).json(successResponse('Level applied', { application }));
+});
+
 // ─── CSV export / import (score round-trip) ──────────────────────────────────
 const exportApplicationsCsv = catchAsync(async (req, res) => {
   const status = req.body?.status || req.query.status;
@@ -225,6 +256,10 @@ module.exports = {
   rejectApplication,
   aiGradeApplications,
   getScoringPlan,
+  getLevelRules,
+  setLevelRules,
+  recommendLevels,
+  applyLevelRecommendation,
   aiGradeSubmission,
   applyAiScores,
   exportApplicationsCsv,

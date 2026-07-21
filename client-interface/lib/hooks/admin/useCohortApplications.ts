@@ -24,6 +24,15 @@ export interface Application {
   /** Max points of the applicant's submission + AI's holistic score (list view). */
   maxScore?: number | null;
   aiOverall?: number | null;
+  /** Evidence-based placement: the level the rules landed on + the proof. */
+  recommendedLevel?: string | null;
+  levelEvidence?: {
+    criteria: Record<string, { verdict: boolean | null; quote: string; note: string }>;
+    reason: string;
+    coherence?: string;
+    selfSelected?: string | null;
+    matchesSelfSelected?: boolean;
+  } | null;
   reviewerNotes?: string | null;
   decisionReason?: string | null;
   decidedAt?: string | null;
