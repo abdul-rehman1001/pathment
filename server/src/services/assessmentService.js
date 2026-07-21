@@ -427,6 +427,100 @@ class AssessmentService {
     return { submissionId: submission.id, applicationId: submission.applicationId, aiDraft };
   }
 
+  /**
+   * What an AI-scoring run would actually grade on — shown to the admin BEFORE
+   * anything runs, so "AI score" is never a black box. A cohort can use a POOL
+   * of assessments (level-aware, randomly assigned), so different applicants in
+   * the same selection can sit different papers: this groups the selection by
+   * the assessment each applicant was actually assigned, and lists exactly the
+   * questions the AI will read, with their points and rubric.
+   */
+  async getScoringPlan(cohortId, applicationIds = []) {
+    const cohort = await models.Cohort.findByPk(cohortId);
+    if (!cohort) throw new NotFoundError('Cohort not found');
+
+    const where = { cohortId };
+    if (Array.isArray(applicationIds) && applicationIds.length) where.id = applicationIds;
+    const apps = await models.Application.findAll({
+      where, attributes: ['id', 'assignedAssessmentId'],
+    });
+
+    // Who actually has something to grade.
+    const subs = apps.length
+      ? await models.AssessmentSubmission.findAll({
+        where: { applicationId: apps.map((a) => a.id) },
+        attributes: ['applicationId', 'status'],
+      })
+      : [];
+    const submittedIds = new Set(subs.filter((s) => s.status !== 'in_progress').map((s) => s.applicationId));
+
+    // Group the selection by the assessment each applicant was assigned.
+    const countByAssessment = new Map();
+    for (const a of apps) {
+      const aid = a.assignedAssessmentId || cohort.assessmentId;
+      if (!aid) continue;
+      countByAssessment.set(String(aid), (countByAssessment.get(String(aid)) || 0) + 1);
+    }
+
+    const ids = [...countByAssessment.keys()];
+    const assessments = ids.length
+      ? await models.Assessment.findAll({
+        where: { id: ids },
+        include: [{ model: models.AssessmentQuestion, as: 'questions' }],
+      })
+      : [];
+
+    const aiTypes = this._aiGradableTypes();
+    const plan = assessments.map((asmt) => {
+      const questions = [...(asmt.questions || [])].sort((a, b) => a.position - b.position);
+      const gradable = questions.filter((q) => aiTypes.includes(q.type));
+      return {
+        id: asmt.id,
+        title: asmt.title,
+        aiRubric: asmt.aiRubric || null,
+        applicantCount: countByAssessment.get(String(asmt.id)) || 0,
+        autoGradedCount: questions.filter((q) => AUTO_GRADED.includes(q.type)).length,
+        questions: gradable.map((q) => ({
+          id: q.id,
+          prompt: q.prompt,
+          type: q.type,
+          points: q.points || 0,
+          rubric: q.rubric || null,
+        })),
+      };
+    }).sort((a, b) => b.applicantCount - a.applicantCount);
+
+    return {
+      applicants: {
+        selected: apps.length,
+        withSubmission: apps.filter((a) => submittedIds.has(a.id)).length,
+        withoutSubmission: apps.filter((a) => !submittedIds.has(a.id)).length,
+      },
+      assessments: plan,
+    };
+  }
+
+  // ── Reusable rubric snippets ─────────────────────────────────────────────
+  async listSnippets() {
+    const rows = await models.RubricSnippet.findAll({ order: [['title', 'ASC']] });
+    return rows.map((r) => r.toJSON());
+  }
+
+  async createSnippet({ title, body }, createdBy) {
+    const t = String(title || '').trim();
+    const b = String(body || '').trim();
+    if (!t) throw new ValidationError('Give the snippet a name');
+    if (!b) throw new ValidationError('A snippet needs some rubric text');
+    return models.RubricSnippet.create({ title: t.slice(0, 160), body: b, createdBy });
+  }
+
+  async deleteSnippet(id) {
+    const row = await models.RubricSnippet.findByPk(id);
+    if (!row) throw new NotFoundError('Snippet not found');
+    await row.destroy();
+    return { deleted: true };
+  }
+
   /** AI-grade by applicationId (resolves the latest submission). Returns a
    *  per-application result so a bulk caller can page through selected rows. */
   async aiGradeApplication(applicationId, graderId) {

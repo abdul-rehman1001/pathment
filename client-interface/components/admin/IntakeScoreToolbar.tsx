@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { Download, Upload, Sparkles, Loader2, X, AlertTriangle, Check, Send, MailCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { applicationApi } from '@/lib/services/intake-api';
+import { AiScoringPreflight } from '@/components/admin/AiScoringPreflight';
 
 interface InviteResult { invited: { id: string; email?: string }[]; skipped: { id: string; email?: string; reason: string }[]; }
 
@@ -45,6 +46,8 @@ export function IntakeScoreToolbar({
   const [confirmInvite, setConfirmInvite] = useState(false);
   const [inviteProgress, setInviteProgress] = useState<{ done: number; total: number } | null>(null);
   const [inviteResult, setInviteResult] = useState<InviteResult | null>(null);
+  // AI scoring always goes through a pre-flight so it's never a black box.
+  const [preflight, setPreflight] = useState(false);
 
   const doExport = async () => {
     setExporting(true);
@@ -131,7 +134,7 @@ export function IntakeScoreToolbar({
       <div className="flex items-center gap-2">
         {selectedIds.length > 0 && (
           <button
-            onClick={doAiScore}
+            onClick={() => setPreflight(true)}
             disabled={!!aiProgress}
             className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-medium text-violet-700 hover:bg-violet-100 disabled:opacity-60"
           >
@@ -158,6 +161,15 @@ export function IntakeScoreToolbar({
           </button>
         )}
       </div>
+
+      {preflight && (
+        <AiScoringPreflight
+          cohortId={cohortId}
+          applicationIds={selectedIds}
+          onClose={() => setPreflight(false)}
+          onRun={() => { setPreflight(false); doAiScore(); }}
+        />
+      )}
 
       {/* Irreversible action — always confirm, showing exactly how many emails. */}
       {confirmInvite && (

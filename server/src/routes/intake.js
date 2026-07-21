@@ -41,6 +41,7 @@ router.post('/assessment-submissions/:submissionId/ai-grade', ...adminOnly, inta
 router.post('/assessment-submissions/:submissionId/apply-ai', ...adminOnly, intakeController.applyAiScores);
 
 // ─── AI scoring + CSV score round-trip ─────────────────────────────────────────
+router.post('/cohorts/:id/ai-grade/plan', ...adminOnly, intakeController.getScoringPlan);
 router.post('/cohorts/:id/ai-grade', ...adminOnly, intakeController.aiGradeApplications);
 router.get('/cohorts/:id/applications/export', ...adminOnly, intakeController.exportApplicationsCsv);
 router.post('/cohorts/:id/applications/export', ...adminOnly, intakeController.exportApplicationsCsv);

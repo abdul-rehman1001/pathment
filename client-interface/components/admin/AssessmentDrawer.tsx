@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { assessmentApi, type Assessment, type AssessmentQuestionType } from '@/lib/services/assessment-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { Drawer } from '@/components/shared/Drawer';
+import { RubricField } from '@/components/admin/RubricField';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 
 interface Option { id: string; label: string }
@@ -220,12 +221,12 @@ export function AssessmentDrawer({
               <label className="block text-xs font-medium text-slate-500 mb-1">
                 AI scoring guide <span className="text-slate-400 font-normal">— what a strong candidate looks like</span>
               </label>
-              <textarea
-                rows={3}
+              <RubricField
                 value={meta.aiRubric}
-                onChange={(e) => setMeta({ ...meta, aiRubric: e.target.value })}
-                placeholder="e.g. Strong candidates have shipped a real project, can explain their choices, and show they can learn independently."
-                className="w-full border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500"
+                onChange={(v) => setMeta({ ...meta, aiRubric: v })}
+                placeholder="e.g. Strong candidates have shipped a real project and can explain their choices."
+                rows={3}
+                tone="slate"
               />
               <p className="mt-1 text-xs text-slate-400">Used for the AI&apos;s overall fit score. Never shown to applicants.</p>
             </div>
@@ -289,12 +290,10 @@ function QuestionCard({
               <label className="block text-[11px] font-medium text-violet-800 mb-1">
                 Grading rubric <span className="font-normal text-violet-600">— how the AI should score this answer</span>
               </label>
-              <textarea
-                rows={2}
+              <RubricField
                 value={q.rubric}
-                onChange={(e) => onPatch({ rubric: e.target.value })}
+                onChange={(v) => onPatch({ rubric: v })}
                 placeholder="e.g. Full marks: names a specific project AND their own role. Partial: vague. Zero: no real project."
-                className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-violet-400"
               />
             </div>
           )}

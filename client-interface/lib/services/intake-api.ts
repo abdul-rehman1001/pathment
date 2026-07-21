@@ -67,6 +67,10 @@ export const applicationApi = {
   // ── AI scoring ──────────────────────────────────────────────────────────
   /** AI-score a batch of applicants' open-ended answers + a holistic score.
    *  The client pages through selected rows so a big cohort never times out. */
+  /** What an AI run would grade on — questions, rubrics and who's in scope.
+   *  Shown to the admin before anything runs. */
+  aiGradePlan: (cohortId: string, applicationIds: string[]) =>
+    apiClient.post(`/intake/cohorts/${cohortId}/ai-grade/plan`, { applicationIds }),
   aiGrade: (cohortId: string, applicationIds: string[]) =>
     apiClient.post(`/intake/cohorts/${cohortId}/ai-grade`, { applicationIds }, { timeout: 120000 }),
   /** AI-score one submission (from the review drawer). */

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { RubricField } from '@/components/admin/RubricField';
 import { ArrowLeft, ChevronDown, ChevronUp, GripVertical, Loader2, Plus, Save, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -232,12 +233,12 @@ export default function AssessmentBuilderPage() {
           <label className="block text-xs font-medium text-slate-500 mb-1">
             AI scoring guide <span className="text-slate-400 font-normal">— what a strong candidate looks like</span>
           </label>
-          <textarea
-            rows={3}
+          <RubricField
             value={meta.aiRubric}
-            onChange={(e) => setMeta({ ...meta, aiRubric: e.target.value })}
-            placeholder="e.g. Strong candidates have shipped a real project, can explain their choices, and show they can learn independently. Weak: vague answers, no concrete work."
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500"
+            onChange={(v) => setMeta({ ...meta, aiRubric: v })}
+            placeholder="e.g. Strong candidates have shipped a real project, can explain their choices, and show they can learn independently."
+            rows={3}
+            tone="slate"
           />
           <p className="mt-1 text-xs text-slate-400">
             Used for the AI&apos;s overall 0–100 fit score and summary. Never shown to applicants.
@@ -327,12 +328,10 @@ function QuestionCard({
               <label className="block text-xs font-medium text-violet-800 mb-1">
                 Grading rubric <span className="font-normal text-violet-600">— how the AI should score this answer</span>
               </label>
-              <textarea
-                rows={2}
+              <RubricField
                 value={q.rubric}
-                onChange={(e) => onPatch({ rubric: e.target.value })}
+                onChange={(v) => onPatch({ rubric: v })}
                 placeholder="e.g. Full marks: names a specific project AND their own role. Partial: vague or team-only. Zero: no real project."
-                className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-violet-400"
               />
               <p className="mt-1 text-[11px] text-violet-600">
                 Scored out of this question&apos;s points. Leave blank to judge on relevance and clarity. Never shown to applicants.

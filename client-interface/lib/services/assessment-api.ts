@@ -31,6 +31,9 @@ export interface Assessment {
   questions?: (AssessmentQuestionInput & { id: string })[];
 }
 
+/** A reusable piece of rubric text. */
+export interface RubricSnippet { id: string; title: string; body: string }
+
 /** Assessment authoring - admin only. */
 export const assessmentApi = {
   list: (params?: { programId?: string; status?: string }) =>
@@ -41,4 +44,11 @@ export const assessmentApi = {
   setQuestions: (id: string, questions: AssessmentQuestionInput[]) =>
     apiClient.put<any>(`/assessments/${id}/questions`, { questions }).then((r) => r.data?.assessment as Assessment),
   remove: (id: string) => apiClient.delete<any>(`/assessments/${id}`),
+
+  // ── Reusable rubric snippets ────────────────────────────────────────────
+  listSnippets: () =>
+    apiClient.get<any>('/assessments/snippets').then((r) => (r.data?.snippets || []) as RubricSnippet[]),
+  createSnippet: (data: { title: string; body: string }) =>
+    apiClient.post<any>('/assessments/snippets', data).then((r) => r.data?.snippet as RubricSnippet),
+  deleteSnippet: (id: string) => apiClient.delete<any>(`/assessments/snippets/${id}`),
 };

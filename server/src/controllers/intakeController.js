@@ -124,6 +124,14 @@ const aiGradeApplications = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('AI scoring run', { results }));
 });
 
+// What an AI run would grade on (questions + rubrics + who's in scope) — shown
+// to the admin BEFORE anything runs.
+const getScoringPlan = catchAsync(async (req, res) => {
+  const ids = Array.isArray(req.body?.applicationIds) ? req.body.applicationIds : [];
+  const plan = await assessmentService.getScoringPlan(req.params.id, ids);
+  res.status(200).json(successResponse('Scoring plan', plan));
+});
+
 // AI-score ONE submission (from the review drawer).
 const aiGradeSubmission = catchAsync(async (req, res) => {
   const result = await assessmentService.aiGradeSubmission(req.params.submissionId, req.user.id);
@@ -216,6 +224,7 @@ module.exports = {
   bulkAcceptApplications,
   rejectApplication,
   aiGradeApplications,
+  getScoringPlan,
   aiGradeSubmission,
   applyAiScores,
   exportApplicationsCsv,
