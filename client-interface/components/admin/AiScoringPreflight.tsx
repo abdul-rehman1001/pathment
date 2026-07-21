@@ -195,7 +195,10 @@ export function AiScoringPreflight({
               </label>
               <label className="flex items-start gap-2 text-xs text-slate-700 cursor-pointer">
                 <input type="checkbox" checked={recommendLevels} onChange={(e) => setRecommendLevels(e.target.checked)} className="mt-0.5" />
-                <span><strong>Also check their level</strong> against your criteria, and flag anyone whose level looks wrong.</span>
+                <span>
+                  <strong>Also check their level</strong> against your criteria, and flag anyone whose level looks wrong.
+                  {' '}<span className="text-slate-400">Edit the criteria in Admissions settings → Level criteria.</span>
+                </span>
               </label>
             </div>
 

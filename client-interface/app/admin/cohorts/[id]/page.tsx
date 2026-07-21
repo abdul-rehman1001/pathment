@@ -18,6 +18,7 @@ import { assessmentApi, type Assessment } from '@/lib/services/assessment-api';
 import { IntakeFormBuilder } from '@/components/admin/IntakeFormBuilder';
 import { AssessmentDrawer } from '@/components/admin/AssessmentDrawer';
 import { IntakeScoreToolbar } from '@/components/admin/IntakeScoreToolbar';
+import { LevelCriteriaEditor } from '@/components/admin/LevelCriteriaEditor';
 import { Drawer } from '@/components/shared/Drawer';
 import { getBrowserTimeZone } from '@/lib/utils/datetime';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
@@ -262,6 +263,7 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
   const [assessDeadlineDate, setAssessDeadlineDate] = useState<string>(splitLocal(cohort?.assessmentDeadline).date);
   const [assessDeadlineTime, setAssessDeadlineTime] = useState<string>(splitLocal(cohort?.assessmentDeadline).time);
   const [levelLabels, setLevelLabels] = useState<string[]>((cohort?.levels || []).map((l: any) => l.label));
+  const [criteriaOpen, setCriteriaOpen] = useState(false);
   const [pool, setPool] = useState<{ assessmentId: string; level: string | null }[]>([]);
   const [formFields, setFormFields] = useState<IntakeFormField[]>(cohort?.intakeFormSchema || []);
   const [showPreview, setShowPreview] = useState(false);
@@ -489,6 +491,26 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
           ))}
           <button onClick={() => setLevelLabels((prev) => [...prev, ''])} className="inline-flex items-center gap-1.5 text-xs font-medium text-brand-700 hover:text-brand-800"><Plus className="w-3.5 h-3.5" /> Add level</button>
         </div>
+
+        {/* What qualifies someone for each level — drives the AI level check. */}
+        {(cohort?.levels?.length ?? 0) > 1 && (
+          <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/50 p-3">
+            <button
+              onClick={() => setCriteriaOpen((v) => !v)}
+              aria-expanded={criteriaOpen}
+              className="flex w-full items-center gap-2 text-left"
+            >
+              <h4 className="text-sm font-medium text-slate-900">Level criteria</h4>
+              <span className="text-xs text-slate-500">what qualifies someone for each level</span>
+              <ChevronDown className={`ml-auto w-4 h-4 text-slate-400 transition-transform ${criteriaOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {criteriaOpen && (
+              <div className="mt-3">
+                <LevelCriteriaEditor cohortId={cohortId} />
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Application form builder */}
