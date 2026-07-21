@@ -61,7 +61,9 @@ export function useCohortApplications(cohortId: string) {
   const fetchApplications = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await applicationApi.list(cohortId, statusFilter === 'all' ? undefined : statusFilter);
+      // Fetch the WHOLE cohort once; the page filters client-side so every tab
+      // can show a real count and switching filters is instant (no round-trip).
+      const res = await applicationApi.list(cohortId);
       setApplications(res?.data?.applications ?? []);
       setPassThreshold(res?.data?.passThreshold ?? null);
     } catch {
@@ -70,7 +72,7 @@ export function useCohortApplications(cohortId: string) {
     } finally {
       setLoading(false);
     }
-  }, [cohortId, statusFilter]);
+  }, [cohortId]);
 
   useEffect(() => { fetchCohort(); }, [fetchCohort]);
   useEffect(() => { fetchApplications(); }, [fetchApplications]);

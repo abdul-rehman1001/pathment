@@ -26,11 +26,13 @@ interface ImportPreview {
  * confirm). Kept out of the big page so it stays low-risk and testable.
  */
 export function IntakeScoreToolbar({
-  cohortId, cohortName, selectedIds, onDone,
+  cohortId, cohortName, selectedIds, visibleIds, onDone,
 }: {
   cohortId: string;
   cohortName: string;
   selectedIds: string[];
+  /** The rows currently matching the filters — what "Export CSV" writes out. */
+  visibleIds?: string[];
   onDone: () => void;
 }) {
   const [exporting, setExporting] = useState(false);
@@ -46,7 +48,7 @@ export function IntakeScoreToolbar({
 
   const doExport = async () => {
     setExporting(true);
-    try { await applicationApi.exportCsv(cohortId, cohortName); }
+    try { await applicationApi.exportCsv(cohortId, cohortName, selectedIds.length ? selectedIds : visibleIds); }
     catch { toast.error('Export failed'); }
     finally { setExporting(false); }
   };
@@ -138,7 +140,8 @@ export function IntakeScoreToolbar({
           </button>
         )}
         <button onClick={doExport} disabled={exporting} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:border-brand-300 hover:text-brand-700 disabled:opacity-60">
-          {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} Export CSV
+          {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+          Export CSV{selectedIds.length ? ` (${selectedIds.length})` : visibleIds && visibleIds.length ? ` (${visibleIds.length})` : ''}
         </button>
         <button onClick={() => fileRef.current?.click()} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:border-brand-300 hover:text-brand-700">
           <Upload className="w-4 h-4" /> Import scores

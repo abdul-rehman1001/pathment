@@ -1,12 +1,12 @@
 'use client';
 
-import { use, useCallback, useEffect, useRef, useState } from 'react';
+import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import {
   ArrowLeft, Upload, Loader2, X, CheckCircle2, XCircle, FileSpreadsheet,
   Mail, Phone, Check, Link2, Copy, Power, ClipboardCheck, Pencil, Eye, CopyPlus, FormInput, Plus,
-  Trash2, CalendarRange, Layers, RefreshCw, CheckSquare, Square, Sparkles,
+  Trash2, CalendarRange, Layers, RefreshCw, CheckSquare, Square, Sparkles, Search,
 } from 'lucide-react';
 import {
   useCohortApplications,
@@ -51,7 +51,10 @@ function normLevels(labels: string[]): { key: string; label: string }[] {
 const STATUS_TABS: { key: ApplicationStatus | 'all'; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'pending', label: 'Pending' },
-  { key: 'under_review', label: 'Under review' },
+  // Assigned an assessment but NOT submitted yet (was missing — rows showed this
+  // status with no way to filter to them).
+  { key: 'assessment_sent', label: 'Assessment sent' },
+  { key: 'under_review', label: 'Submitted · to score' },
   { key: 'accepted', label: 'Accepted' },
   { key: 'rejected', label: 'Rejected' },
   { key: 'waitlisted', label: 'Waitlisted' },
@@ -776,13 +779,70 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
   const [open, setOpen] = useState<Application | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const toggleOne = (rowId: string) => setSelected((prev) => { const n = new Set(prev); n.has(rowId) ? n.delete(rowId) : n.add(rowId); return n; });
-  const allSelected = applications.length > 0 && applications.every((a) => selected.has(a.id));
-  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(applications.map((a) => a.id)));
   // Pass/fail from the cohort threshold (percent of the applicant's max score).
   const passOf = (a: Application): 'pass' | 'fail' | null => {
     if (passThreshold == null || a.maxScore == null || !a.maxScore || a.assessmentScore == null) return null;
     return (Number(a.assessmentScore) / a.maxScore) * 100 >= passThreshold ? 'pass' : 'fail';
   };
+
+  // ── Filters (all client-side: the whole cohort is already loaded) ──────────
+  const [query, setQuery] = useState('');
+  const [scoreFilter, setScoreFilter] = useState<'all' | 'scored' | 'unscored' | 'pass' | 'fail'>('all');
+  const [levelFilter, setLevelFilter] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<'recent' | 'score_desc' | 'score_asc' | 'name'>('recent');
+
+  // Live count per status tab, from the FULL set (not the filtered view).
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: applications.length };
+    for (const a of applications) counts[a.status] = (counts[a.status] || 0) + 1;
+    return counts;
+  }, [applications]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const rows = applications.filter((a) => {
+      if (statusFilter !== 'all' && a.status !== statusFilter) return false;
+      if (levelFilter !== 'all' && (a.level || '') !== levelFilter) return false;
+      if (scoreFilter === 'scored' && a.assessmentScore == null) return false;
+      if (scoreFilter === 'unscored' && a.assessmentScore != null) return false;
+      if (scoreFilter === 'pass' && passOf(a) !== 'pass') return false;
+      if (scoreFilter === 'fail' && passOf(a) !== 'fail') return false;
+      if (q) {
+        const hay = `${a.firstName || ''} ${a.lastName || ''} ${a.email}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+    const score = (a: Application) => (a.assessmentScore == null ? -1 : Number(a.assessmentScore));
+    return [...rows].sort((a, b) => {
+      if (sortBy === 'score_desc') return score(b) - score(a);
+      if (sortBy === 'score_asc') return score(a) - score(b);
+      if (sortBy === 'name') return fullName(a).localeCompare(fullName(b));
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+  }, [applications, statusFilter, levelFilter, scoreFilter, query, sortBy, passThreshold]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Headline numbers for the cohort (always the full set, not the filter).
+  const stats = useMemo(() => {
+    const scored = applications.filter((a) => a.assessmentScore != null).length;
+    const submitted = applications.filter((a) => a.status === 'under_review').length;
+    const awaiting = applications.filter((a) => a.status === 'assessment_sent').length;
+    const passed = applications.filter((a) => passOf(a) === 'pass').length;
+    const accepted = applications.filter((a) => a.status === 'accepted').length;
+    return { total: applications.length, scored, submitted, awaiting, passed, accepted };
+  }, [applications, passThreshold]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Paginate the filtered view — 305 rows in one DOM table is needlessly heavy.
+  const PAGE_SIZE = 25;
+  const [page, setPage] = useState(1);
+  useEffect(() => { setPage(1); }, [statusFilter, levelFilter, scoreFilter, query, sortBy]);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const visible = useMemo(() => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [filtered, page]);
+  const filteredIds = useMemo(() => filtered.map((a) => a.id), [filtered]);
+
+  // Select-all acts on what you're actually looking at (the filtered set).
+  const allSelected = filteredIds.length > 0 && filteredIds.every((fid) => selected.has(fid));
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(filteredIds));
   const [importing, setImporting] = useState(false);
   // Rows held back by the application cap — offer a one-click "import anyway".
   const [capHeld, setCapHeld] = useState<{ rows: Record<string, string>[]; skipped: number } | null>(null);
@@ -862,17 +922,40 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
         </div>
       )}
 
-      {/* Filter tabs */}
+      {/* Headline numbers for the whole cohort */}
+      {applications.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+          {[
+            { label: 'Applicants', value: stats.total, tone: 'text-slate-900' },
+            { label: 'Not submitted', value: stats.awaiting, tone: 'text-blue-700' },
+            { label: 'To score', value: stats.submitted, tone: 'text-amber-700' },
+            { label: 'Scored', value: stats.scored, tone: 'text-slate-900' },
+            { label: passThreshold != null ? `Passed (≥${passThreshold}%)` : 'Passed', value: passThreshold != null ? stats.passed : '—', tone: 'text-emerald-700' },
+            { label: 'Accepted', value: stats.accepted, tone: 'text-emerald-700' },
+          ].map((s) => (
+            <div key={s.label} className="rounded-xl border border-slate-200 bg-card px-3 py-2">
+              <p className="text-[11px] text-slate-500">{s.label}</p>
+              <p className={`text-lg font-semibold tabular-nums ${s.tone}`}>{s.value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Filter tabs — each with a live count from the full cohort */}
       <div className="flex flex-wrap items-center gap-0 border-b border-slate-200">
-        {STATUS_TABS.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setStatusFilter(t.key)}
-            className={`-mb-px border-b-2 px-3.5 py-2 text-sm font-medium transition-colors ${statusFilter === t.key ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
-          >
-            {t.label}
-          </button>
-        ))}
+        {STATUS_TABS.map((t) => {
+          const n = statusCounts[t.key] || 0;
+          return (
+            <button
+              key={t.key}
+              onClick={() => setStatusFilter(t.key)}
+              className={`-mb-px border-b-2 px-3.5 py-2 text-sm font-medium transition-colors inline-flex items-center gap-1.5 ${statusFilter === t.key ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500 hover:text-slate-800'} ${n === 0 && t.key !== 'all' ? 'opacity-40' : ''}`}
+            >
+              {t.label}
+              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums ${statusFilter === t.key ? 'bg-brand-100 text-brand-700' : 'bg-slate-100 text-slate-500'}`}>{n}</span>
+            </button>
+          );
+        })}
         <div className="ml-auto mb-1 flex flex-wrap items-center gap-2">
           {selected.size > 0 && (
             <button onClick={() => setSelected(new Set())} className="text-xs text-slate-500 hover:text-slate-800">Clear ({selected.size})</button>
@@ -886,7 +969,7 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
             </button>
           )}
           <PassThresholdControl cohortId={id} value={passThreshold} onSaved={refetch} />
-          <IntakeScoreToolbar cohortId={id} cohortName={cohort?.name || 'cohort'} selectedIds={[...selected]} onDone={() => { setSelected(new Set()); refetch(); }} />
+          <IntakeScoreToolbar cohortId={id} cohortName={cohort?.name || 'cohort'} selectedIds={[...selected]} visibleIds={filteredIds} onDone={() => { setSelected(new Set()); refetch(); }} />
           <button
             onClick={() => refetch()}
             disabled={loading}
@@ -898,12 +981,54 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
         </div>
       </div>
 
+      {/* Search + score / level / sort */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-56">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search name or email…"
+            className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500"
+          />
+        </div>
+        <select value={scoreFilter} onChange={(e) => setScoreFilter(e.target.value as typeof scoreFilter)} className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500">
+          <option value="all">Any score</option>
+          <option value="scored">Scored</option>
+          <option value="unscored">Not scored</option>
+          <option value="pass">Passed</option>
+          <option value="fail">Failed</option>
+        </select>
+        {(cohort?.levels?.length ?? 0) > 0 && (
+          <select value={levelFilter} onChange={(e) => setLevelFilter(e.target.value)} className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500">
+            <option value="all">All levels</option>
+            {(cohort?.levels || []).map((l) => <option key={l.key} value={l.key}>{l.label}</option>)}
+          </select>
+        )}
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value as typeof sortBy)} className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500">
+          <option value="recent">Newest first</option>
+          <option value="score_desc">Score: high → low</option>
+          <option value="score_asc">Score: low → high</option>
+          <option value="name">Name A–Z</option>
+        </select>
+        <span className="text-xs text-slate-500 tabular-nums">
+          {filtered.length} of {applications.length}
+        </span>
+        {(query || scoreFilter !== 'all' || levelFilter !== 'all' || statusFilter !== 'all') && (
+          <button onClick={() => { setQuery(''); setScoreFilter('all'); setLevelFilter('all'); setStatusFilter('all'); }} className="text-xs text-slate-500 hover:text-slate-800 underline">Clear filters</button>
+        )}
+      </div>
+
       {loading ? (
         <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-brand-600" /></div>
-      ) : applications.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <div className="bg-card rounded-2xl border border-slate-200 py-16 text-center">
           <FileSpreadsheet className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-          <p className="text-slate-600">No applications here yet - import a CSV to bring applicants in.</p>
+          <p className="text-slate-600">
+            {applications.length === 0
+              ? 'No applications here yet - import a CSV to bring applicants in.'
+              : 'No applicants match these filters.'}
+          </p>
         </div>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-card">
@@ -924,7 +1049,7 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {applications.map((a) => (
+              {visible.map((a) => (
                 <tr key={a.id} className={`hover:bg-slate-50 cursor-pointer ${selected.has(a.id) ? 'bg-brand-50/40' : ''}`} onClick={() => setOpen(a)}>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <button onClick={() => toggleOne(a.id)} className="text-slate-400 hover:text-brand-600 align-middle">
@@ -955,6 +1080,18 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
               ))}
             </tbody>
           </table>
+          {pageCount > 1 && (
+            <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-sm">
+              <span className="text-slate-500 tabular-nums">
+                {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
+              </span>
+              <div className="flex items-center gap-1">
+                <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-40 hover:border-brand-300">Previous</button>
+                <span className="px-2 text-slate-500 tabular-nums">{page} / {pageCount}</span>
+                <button onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={page === pageCount} className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-40 hover:border-brand-300">Next</button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

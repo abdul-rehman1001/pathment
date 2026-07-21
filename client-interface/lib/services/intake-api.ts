@@ -78,11 +78,14 @@ export const applicationApi = {
 
   // ── CSV score round-trip ────────────────────────────────────────────────
   /** Download the applications sheet (auth'd) and trigger a browser save. */
-  exportCsv: async (cohortId: string, cohortName: string, status?: string) => {
-    const data = await apiClient.get<Blob>(`/intake/cohorts/${cohortId}/applications/export`, {
-      params: status && status !== 'all' ? { status } : {},
-      responseType: 'blob',
-    });
+  exportCsv: async (cohortId: string, cohortName: string, ids?: string[]) => {
+    // POST so the (possibly long) id list of the filtered view fits — the sheet
+    // then contains exactly the rows the admin is looking at.
+    const data = await apiClient.post<Blob>(
+      `/intake/cohorts/${cohortId}/applications/export`,
+      ids && ids.length ? { ids } : {},
+      { responseType: 'blob', timeout: 120000 },
+    );
     const blob = data instanceof Blob ? data : new Blob([data as BlobPart], { type: 'text/csv;charset=utf-8' });
     const safe = (cohortName || 'cohort').replace(/[^a-z0-9]+/gi, '-').toLowerCase();
     const stamp = new Date().toISOString().slice(0, 10);

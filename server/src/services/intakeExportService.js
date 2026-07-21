@@ -38,12 +38,15 @@ function renderAnswer(q, answers) {
 
 class IntakeExportService {
   /** Cohort + its applications (filtered) + submissions + the questions in play. */
-  async _load(cohortId, { status } = {}) {
+  async _load(cohortId, { status, ids } = {}) {
     const cohort = await models.Cohort.findByPk(cohortId);
     if (!cohort) throw new NotFoundError('Cohort not found');
 
     const where = { cohortId };
     if (status && status !== 'all') where.status = status;
+    // An explicit id list wins — it's exactly the filtered rows on screen, so
+    // the sheet always matches what the admin is looking at.
+    if (Array.isArray(ids) && ids.length) where.id = ids;
     const applications = await models.Application.findAll({ where, order: [['createdAt', 'DESC']] });
 
     const submissions = await models.AssessmentSubmission.findAll({ where: { applicationId: applications.map((a) => a.id) } });
@@ -71,8 +74,8 @@ class IntakeExportService {
     return { cohort, applications, subByApp, questions };
   }
 
-  async exportCsv(cohortId, { status } = {}) {
-    const { cohort, applications, subByApp, questions } = await this._load(cohortId, { status });
+  async exportCsv(cohortId, { status, ids } = {}) {
+    const { cohort, applications, subByApp, questions } = await this._load(cohortId, { status, ids });
     const threshold = num(cohort.passThreshold);
 
     // Union of intake response keys, so every applicant's answers get a column.

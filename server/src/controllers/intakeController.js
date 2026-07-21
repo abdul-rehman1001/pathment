@@ -138,7 +138,9 @@ const applyAiScores = catchAsync(async (req, res) => {
 
 // ─── CSV export / import (score round-trip) ──────────────────────────────────
 const exportApplicationsCsv = catchAsync(async (req, res) => {
-  const { filename, csv } = await intakeExportService.exportCsv(req.params.id, { status: req.query.status });
+  const status = req.body?.status || req.query.status;
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids : undefined;
+  const { filename, csv } = await intakeExportService.exportCsv(req.params.id, { status, ids });
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   res.status(200).send(csv);
