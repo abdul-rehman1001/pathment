@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import {
   ArrowLeft, Upload, Loader2, X, CheckCircle2, XCircle, FileSpreadsheet,
   Mail, Phone, Check, Link2, Copy, Power, ClipboardCheck, Pencil, Eye, CopyPlus, FormInput, Plus,
-  Trash2, CalendarRange, Layers, RefreshCw, CheckSquare, Square, Sparkles, Search,
+  Trash2, CalendarRange, Layers, RefreshCw, CheckSquare, Square, Sparkles, Search, Settings, ChevronDown, Columns3,
 } from 'lucide-react';
 import {
   useCohortApplications,
@@ -837,6 +837,13 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
 
   const [open, setOpen] = useState<Application | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  useEffect(() => {
+    if (typeof window !== 'undefined') setSettingsOpen(localStorage.getItem(`pathment-cohort-settings-open:${id}`) === '1');
+  }, [id]);
+  useEffect(() => {
+    if (typeof window !== 'undefined') localStorage.setItem(`pathment-cohort-settings-open:${id}`, settingsOpen ? '1' : '0');
+  }, [id, settingsOpen]);
   const toggleOne = (rowId: string) => setSelected((prev) => { const n = new Set(prev); n.has(rowId) ? n.delete(rowId) : n.add(rowId); return n; });
   // Pass/fail from the cohort threshold (percent of the applicant's max score).
   const passOf = (a: Application): 'pass' | 'fail' | null => {
@@ -903,6 +910,98 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const visible = useMemo(() => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [filtered, page]);
   const filteredIds = useMemo(() => filtered.map((a) => a.id), [filtered]);
+
+  // ── Configurable columns ──────────────────────────────────────────────────
+  // Built-ins plus every field on the cohort's own intake form, so you can show
+  // exactly what you triage on (e.g. GitHub, city, years of experience).
+  const availableColumns = useMemo(() => {
+    const base = [
+      { key: 'wants', label: 'Wants' },
+      ...((cohort?.levels?.length ?? 0) > 0 ? [{ key: 'level', label: 'Level' }] : []),
+      { key: 'status', label: 'Status' },
+      { key: 'score', label: 'Score' },
+      { key: 'email', label: 'Email' },
+      { key: 'phone', label: 'Phone' },
+      { key: 'applied', label: 'Applied on' },
+    ];
+    const formFields = ((cohort?.intakeFormSchema as { key: string; label: string }[] | undefined) || [])
+      .filter((f) => f && f.key && f.label)
+      .map((f) => ({ key: `resp:${f.key}`, label: f.label }));
+    // Anything present in the data but not on the form (imported columns).
+    const seen = new Set([...base.map((c) => c.key), ...formFields.map((c) => c.key)]);
+    const extra: { key: string; label: string }[] = [];
+    for (const a of applications) {
+      for (const k of Object.keys(a.responses || {})) {
+        const key = `resp:${k}`;
+        if (!seen.has(key)) { seen.add(key); extra.push({ key, label: k }); }
+      }
+    }
+    return [...base, ...formFields, ...extra];
+  }, [cohort, applications]);
+
+  const DEFAULT_COLS = ['wants', 'level', 'status', 'score'];
+  const [visibleCols, setVisibleCols] = useState<string[]>(DEFAULT_COLS);
+  const [colsOpen, setColsOpen] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const saved = localStorage.getItem(`pathment-cohort-cols:${id}`);
+    if (saved) { try { setVisibleCols(JSON.parse(saved)); } catch { /* keep defaults */ } }
+  }, [id]);
+  const toggleCol = (key: string) => setVisibleCols((prev) => {
+    const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
+    if (typeof window !== 'undefined') localStorage.setItem(`pathment-cohort-cols:${id}`, JSON.stringify(next));
+    return next;
+  });
+  // Keep the admin's chosen order stable (as listed in availableColumns).
+  const shownColumns = useMemo(
+    () => availableColumns.filter((c) => visibleCols.includes(c.key)),
+    [availableColumns, visibleCols]
+  );
+
+  /** One cell's content for a row. */
+  const renderCell = (a: Application, key: string) => {
+    if (key === 'wants') return a.programPreference || '-';
+    if (key === 'email') return a.email;
+    if (key === 'phone') return a.phone || '-';
+    if (key === 'applied') return a.createdAt ? new Date(a.createdAt).toLocaleDateString() : '-';
+    if (key === 'level') {
+      return (
+        <div className="flex items-center gap-1.5">
+          <span>{a.level ? levelLabel(a.level) : '—'}</span>
+          {a.recommendedLevel && a.recommendedLevel !== a.level && (
+            <span title={a.levelEvidence?.reason || ''} className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+              → {levelLabel(a.recommendedLevel)}
+            </span>
+          )}
+          {a.recommendedLevel && a.recommendedLevel === a.level && (
+            <span title="Recommendation matches what they picked" className="text-emerald-600 text-[10px] font-semibold">✓</span>
+          )}
+        </div>
+      );
+    }
+    if (key === 'status') {
+      return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_CHIP[a.status]}`}>{a.status.replace(/_/g, ' ')}</span>;
+    }
+    if (key === 'score') {
+      return (
+        <div className="flex items-center gap-2">
+          <span className="text-slate-700">{a.assessmentScore != null ? `${a.assessmentScore}${a.maxScore ? `/${a.maxScore}` : ''}` : '-'}</span>
+          {passOf(a) === 'pass' && <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-semibold">PASS</span>}
+          {passOf(a) === 'fail' && <span className="px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 text-[10px] font-semibold">FAIL</span>}
+          {a.aiOverall != null && <span title="AI overall fit score" className="text-[10px] font-medium text-violet-600">AI {a.aiOverall}</span>}
+        </div>
+      );
+    }
+    if (key.startsWith('resp:')) {
+      const v = (a.responses || {})[key.slice(5)];
+      if (v == null || v === '') return '-';
+      const text = typeof v === 'string' ? v : JSON.stringify(v);
+      return /^https?:\/\//.test(text)
+        ? <a href={text} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-brand-600 underline break-all">{text.length > 40 ? `${text.slice(0, 40)}…` : text}</a>
+        : <span title={text}>{text.length > 60 ? `${text.slice(0, 60)}…` : text}</span>;
+    }
+    return '-';
+  };
 
   // Select-all acts on what you're actually looking at (the filtered set).
   const allSelected = filteredIds.length > 0 && filteredIds.every((fid) => selected.has(fid));
@@ -971,8 +1070,31 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
         </div>
       </div>
 
-      {/* Public intake link + assessment */}
-      {cohort && <IntakePanel cohortId={id} cohort={cohort} onChange={refetch} />}
+      {/* Admissions settings — collapsed by default so the applicant list is the
+          focus; open it when you actually need to change the intake. */}
+      {cohort && (
+        <div className="rounded-2xl border border-slate-200 bg-card">
+          <button
+            onClick={() => setSettingsOpen((v) => !v)}
+            aria-expanded={settingsOpen}
+            className="flex w-full items-center gap-2 px-4 py-3 text-left"
+          >
+            <Settings className="w-4 h-4 text-slate-400 shrink-0" />
+            <span className="text-sm font-medium text-slate-800">Admissions settings</span>
+            <span className="text-xs text-slate-400 truncate">
+              {cohort.publicSlug ? 'public link on' : 'public link off'}
+              {cohort.assessmentRequired ? ' · assessment required' : ''}
+              {(cohort.levels?.length ?? 0) > 0 ? ` · ${cohort.levels?.length} levels` : ''}
+            </span>
+            <ChevronDown className={`ml-auto w-4 h-4 text-slate-400 transition-transform ${settingsOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {settingsOpen && (
+            <div className="border-t border-slate-200 p-4">
+              <IntakePanel cohortId={id} cohort={cohort} onChange={refetch} />
+            </div>
+          )}
+        </div>
+      )}
 
       {capHeld && (
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm">
@@ -1087,6 +1209,34 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
         <span className="text-xs text-slate-500 tabular-nums">
           {filtered.length} of {applications.length}
         </span>
+        <div className="relative">
+          <button
+            onClick={() => setColsOpen((v) => !v)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:border-brand-300 hover:text-brand-700"
+          >
+            <Columns3 className="w-4 h-4" /> Columns
+          </button>
+          {colsOpen && (
+            <>
+              <div className="fixed inset-0 z-20" onClick={() => setColsOpen(false)} />
+              <div className="absolute right-0 z-30 mt-1 w-64 max-h-72 overflow-y-auto rounded-lg border border-slate-200 bg-card shadow-lg p-1">
+                <p className="px-2 py-1.5 text-[11px] text-slate-400">Show columns — including anything from your intake form</p>
+                {availableColumns.map((c) => (
+                  <button
+                    key={c.key}
+                    onClick={() => toggleCol(c.key)}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-slate-50"
+                  >
+                    {visibleCols.includes(c.key)
+                      ? <CheckSquare className="w-3.5 h-3.5 text-brand-600 shrink-0" />
+                      : <Square className="w-3.5 h-3.5 text-slate-300 shrink-0" />}
+                    <span className="truncate text-slate-700">{c.label}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
         {(query || scoreFilter !== 'all' || levelFilter !== 'all' || statusFilter !== 'all' || levelFit !== 'all') && (
           <button onClick={() => { setQuery(''); setScoreFilter('all'); setLevelFilter('all'); setStatusFilter('all'); setLevelFit('all'); }} className="text-xs text-slate-500 hover:text-slate-800 underline">Clear filters</button>
         )}
@@ -1114,10 +1264,9 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
                   </button>
                 </th>
                 <th className="text-left font-medium px-4 py-3">Applicant</th>
-                <th className="text-left font-medium px-4 py-3 hidden md:table-cell">Wants</th>
-                {(cohort?.levels?.length ?? 0) > 0 && <th className="text-left font-medium px-4 py-3 hidden lg:table-cell">Level</th>}
-                <th className="text-left font-medium px-4 py-3">Status</th>
-                <th className="text-left font-medium px-4 py-3 hidden sm:table-cell">Score</th>
+                {shownColumns.map((c) => (
+                  <th key={c.key} className="text-left font-medium px-4 py-3 whitespace-nowrap">{c.label}</th>
+                ))}
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
@@ -1133,33 +1282,9 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
                     <p className="font-medium text-slate-900">{fullName(a)}</p>
                     <p className="text-xs text-slate-500">{a.email}</p>
                   </td>
-                  <td className="px-4 py-3 hidden md:table-cell text-slate-600">{a.programPreference || '-'}</td>
-                  {(cohort?.levels?.length ?? 0) > 0 && (
-                    <td className="px-4 py-3 hidden lg:table-cell text-slate-600">
-                      <div className="flex items-center gap-1.5">
-                        <span>{a.level ? levelLabel(a.level) : '—'}</span>
-                        {a.recommendedLevel && a.recommendedLevel !== a.level && (
-                          <span title={a.levelEvidence?.reason || ''} className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
-                            → {levelLabel(a.recommendedLevel)}
-                          </span>
-                        )}
-                        {a.recommendedLevel && a.recommendedLevel === a.level && (
-                          <span title="Recommendation matches what they picked" className="text-emerald-600 text-[10px] font-semibold">✓</span>
-                        )}
-                      </div>
-                    </td>
-                  )}
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_CHIP[a.status]}`}>{a.status.replace(/_/g, ' ')}</span>
-                  </td>
-                  <td className="px-4 py-3 hidden sm:table-cell">
-                    <div className="flex items-center gap-2">
-                      <span className="text-slate-700">{a.assessmentScore != null ? `${a.assessmentScore}${a.maxScore ? `/${a.maxScore}` : ''}` : '-'}</span>
-                      {passOf(a) === 'pass' && <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-semibold">PASS</span>}
-                      {passOf(a) === 'fail' && <span className="px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 text-[10px] font-semibold">FAIL</span>}
-                      {a.aiOverall != null && <span title="AI overall fit score" className="text-[10px] font-medium text-violet-600">AI {a.aiOverall}</span>}
-                    </div>
-                  </td>
+                  {shownColumns.map((c) => (
+                    <td key={c.key} className="px-4 py-3 text-slate-600 max-w-xs">{renderCell(a, c.key)}</td>
+                  ))}
                   <td className="px-4 py-3 text-right">
                     <span className="text-brand-600 text-xs font-medium">Review</span>
                   </td>
