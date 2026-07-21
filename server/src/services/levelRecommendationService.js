@@ -33,46 +33,36 @@ function defaultCriteriaForTopLevel() {
   return [
     {
       key: 'experience_1yr',
-      label: '1+ year of real software experience',
-      how: 'True only when the answers clearly show at least 12 months of real, paid or professional software work (role, organisation, dates). Substantive dated internships count. Course projects, bootcamps and tutorial work do NOT count. Use unclear when the answers are too sparse to tell.',
+      label: '1+ year of real experience',
+      how: 'True only when the answers clearly show at least 12 months of real software work — a job title, company or client, with dates. Substantive dated internships count. Course projects, bootcamps and tutorial work do NOT count. Use unclear when there is nothing to judge from.',
       soloQualifies: true,
     },
     {
-      key: 'production_project',
-      label: 'Production-grade / real-world project',
-      how: 'True when they describe a project real people actually used — deployed, with users, or built for a client or employer — not a tutorial clone or a course assignment. A detailed description of scope, their own role and the hard parts is the signal. Portfolio or repo links that back the claim strengthen it.',
+      key: 'production_fullstack',
+      label: 'Multi-vendor / production-grade full-stack project',
+      how: 'True when they describe a real production full-stack effort — multi-vendor, multi-tenant, or genuinely deployed and used by real people, with frontend, backend and persistence. Their own role and the hard parts should be clear. Tutorial clones and course assignments do NOT count.',
       soloQualifies: false,
     },
     {
-      key: 'problem_solving_depth',
-      label: 'Strong problem-solving / CS fundamentals',
-      how: 'True when there is concrete evidence of algorithmic or CS depth — a substantial solved-problem count on a practice platform (roughly 150+), competition or contest history, or answers that reason clearly about complexity, data structures or trade-offs. Generic claims like "I practise coding" are not enough.',
+      key: 'leetcode_150_plus',
+      label: 'LeetCode 150–200+ problems solved',
+      how: 'True when they state a solved count of roughly 150 or more, link a profile with credible activity, or show contest history. A count below 150, or a generic "I practise LeetCode" with no number, is False.',
       soloQualifies: false,
     },
     {
-      key: 'certification',
-      label: 'Relevant certification or credential',
-      how: 'True when they name a specific, verifiable technical certification or credential relevant to the program. Vague claims of "certified" with no issuer or name do not count.',
+      key: 'dw_bronze',
+      label: 'Dev Weekends bronze certification',
+      how: 'True when they name a Dev Weekends credential — bronze or above (silver, gold). Otherwise False.',
       soloQualifies: false,
     },
   ];
 }
 
 function defaultCriteriaForMiddleLevel() {
-  return [
-    {
-      key: 'beyond_tutorials',
-      label: 'Has built something beyond tutorials',
-      how: 'True when they describe at least one project they designed or extended themselves — their own idea, or a meaningful extension of an exercise — and can explain what they built and why. Following a tutorial step by step does not count.',
-      soloQualifies: false,
-    },
-    {
-      key: 'language_comfort',
-      label: 'Comfortable in at least one language or stack',
-      how: 'True when the answers show working familiarity with a specific language or stack — naming tools, describing how they used them, or explaining choices. Simply listing technologies is not enough.',
-      soloQualifies: false,
-    },
-  ];
+  // DW's model has no separate bar for L1: it is where a coding-track applicant
+  // lands when they don't clear the top level. Add criteria here only if you
+  // want a middle level someone must actively qualify for.
+  return [];
 }
 
 class LevelRecommendationService {
@@ -91,9 +81,14 @@ class LevelRecommendationService {
     if (stored && Array.isArray(stored.levels) && stored.levels.length) {
       // Drop rules whose level no longer exists (the admin renamed/removed it).
       const valid = new Set(levels.map((l) => l.key));
+      const baseKey = valid.has(stored.baseLevelKey) ? stored.baseLevelKey : (levels[0] ? levels[0].key : null);
       return {
         levels: stored.levels.filter((r) => valid.has(r.levelKey)),
-        baseLevelKey: valid.has(stored.baseLevelKey) ? stored.baseLevelKey : (levels[0] ? levels[0].key : null),
+        baseLevelKey: baseKey,
+        fallthroughLevelKey: valid.has(stored.fallthroughLevelKey)
+          ? stored.fallthroughLevelKey
+          : (levels[1] ? levels[1].key : baseKey),
+        baseLevelLocked: stored.baseLevelLocked !== false,
         cohortLevels: levels,
         seeded: false,
       };
@@ -119,7 +114,16 @@ class LevelRecommendationService {
       ...middles.map((m) => ({ levelKey: m.key, minMet: 1, criteria: defaultCriteriaForMiddleLevel() })),
     ];
     // Highest first — the engine takes the first level whose bar is cleared.
-    return { levels: rules, baseLevelKey: base.key };
+    // Anyone who applied ABOVE the base level and clears nothing lands on the
+    // lowest non-base level, NOT the base: the base track sits a different
+    // assessment entirely, so dropping a coding-track applicant into it would
+    // be a placement error, not a demotion.
+    return {
+      levels: rules,
+      baseLevelKey: base.key,
+      fallthroughLevelKey: ordered[1] ? ordered[1].key : base.key,
+      baseLevelLocked: true,
+    };
   }
 
   /** Replace the cohort's rules (validated). */
@@ -158,8 +162,17 @@ class LevelRecommendationService {
    * least `minMet` of its criteria are met. Otherwise fall through to base.
    * Pure and synchronous — same inputs always give the same placement.
    */
-  decide(rules, verdicts = {}) {
+  decide(rules, verdicts = {}, selfSelectedLevel = null) {
     const trail = [];
+    const baseKey = rules.baseLevelKey || null;
+
+    // Someone who applied on the BASE track sat a different assessment, so
+    // there's nothing comparable to promote them on — leave them where they
+    // are. (Turn off with baseLevelLocked: false to let the criteria move them.)
+    if (rules.baseLevelLocked !== false && baseKey && selfSelectedLevel === baseKey) {
+      return { levelKey: baseKey, via: 'base-locked', metKeys: [], trail };
+    }
+
     for (const rule of (rules.levels || [])) {
       const met = (rule.criteria || []).filter((c) => isMet(verdicts[c.key]));
       const solo = met.find((c) => c.soloQualifies);
@@ -173,12 +186,20 @@ class LevelRecommendationService {
       }
       trail.push({ levelKey: rule.levelKey, reached: false, met: met.map((c) => c.key), needed: rule.minMet });
     }
-    return { levelKey: rules.baseLevelKey || null, via: 'base', metKeys: [], trail };
+    // Cleared nothing. A base-track applicant stays at base; anyone who applied
+    // above it lands on the lowest non-base level rather than being dropped
+    // into a track they never applied for.
+    const appliedAboveBase = selfSelectedLevel && baseKey && selfSelectedLevel !== baseKey;
+    const landing = appliedAboveBase ? (rules.fallthroughLevelKey || baseKey) : baseKey;
+    return { levelKey: landing, via: appliedAboveBase ? 'fallthrough' : 'base', metKeys: [], trail };
   }
 
   /** Plain-English "why", so the reviewer never sees an unexplained level. */
   buildReason(rules, decision, verdicts, labelFor) {
     const nameOf = (lvlKey) => labelFor(lvlKey) || lvlKey || 'the base level';
+    if (decision.via === 'base-locked') {
+      return `Kept at ${nameOf(decision.levelKey)}: they applied on this track and sat its assessment, so there is nothing comparable to move them on.`;
+    }
     if (decision.via === 'solo') {
       const c = (rules.levels || []).flatMap((r) => r.criteria || []).find((x) => x.key === decision.soloCriterion);
       return `Placed at ${nameOf(decision.levelKey)}: met "${c ? c.label : decision.soloCriterion}", which qualifies on its own.`;
@@ -188,13 +209,14 @@ class LevelRecommendationService {
       const labels = (rule?.criteria || []).filter((c) => decision.metKeys.includes(c.key)).map((c) => `"${c.label}"`);
       return `Placed at ${nameOf(decision.levelKey)}: met ${decision.metKeys.length} of the ${rule?.criteria.length || 0} criteria (${labels.join(', ')}), meeting the bar of ${rule?.minMet}.`;
     }
+    const via = decision.via === 'fallthrough' ? 'Placed at' : 'Placed at';
     const missed = (rules.levels || []).map((r) => {
       const met = (r.criteria || []).filter((c) => isMet(verdicts[c.key])).length;
       return `${nameOf(r.levelKey)} (met ${met} of ${r.criteria.length}, needs ${r.minMet})`;
     });
     return missed.length
-      ? `Placed at ${nameOf(decision.levelKey)}: did not clear ${missed.join('; ')}.`
-      : `Placed at ${nameOf(decision.levelKey)}.`;
+      ? `${via} ${nameOf(decision.levelKey)}: did not clear ${missed.join('; ')}.`
+      : `${via} ${nameOf(decision.levelKey)}.`;
   }
 
   // ── The AI evidence pass ─────────────────────────────────────────────────
@@ -313,7 +335,7 @@ class LevelRecommendationService {
       if (!(c.key in verdicts)) { verdicts[c.key] = null; details[c.key] = { verdict: null, quote: '', note: 'not assessed' }; }
     }
 
-    const decision = this.decide(rules, verdicts);
+    const decision = this.decide(rules, verdicts, application.level || null);
     const reason = this.buildReason(rules, decision, verdicts, labelFor);
 
     // If nothing could be judged, the criteria don't match what this cohort's
