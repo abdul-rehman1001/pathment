@@ -10,6 +10,8 @@ export interface AssessmentQuestionInput {
   points?: number;
   options?: { id?: string; label: string }[];
   correctOptionIds?: string[];
+  /** Grading guidance the AI scores an open-ended answer against. */
+  rubric?: string | null;
   config?: Record<string, unknown>;
 }
 
@@ -20,6 +22,8 @@ export interface Assessment {
   instructions?: string;
   programId?: string | null;
   passingScore?: number | null;
+  /** Holistic "what a strong candidate looks like" guidance for the AI's overall score. */
+  aiRubric?: string | null;
   timeLimitMins?: number | null;
   status: 'draft' | 'published' | 'archived';
   questionCount?: number;

@@ -19,6 +19,8 @@ interface QuestionDraft {
   points: number;
   options: Option[];
   correctOptionIds: string[];
+  /** AI grading guidance for open-ended answers. */
+  rubric: string;
   config: Record<string, unknown>;
 }
 
@@ -31,6 +33,8 @@ const TYPE_LABELS: Record<AssessmentQuestionType, string> = {
   external_link: 'External link',
 };
 const AUTO_GRADED: AssessmentQuestionType[] = ['mcq', 'multi_select'];
+// Types the AI can read + score from text — these get a rubric box.
+const AI_GRADABLE: AssessmentQuestionType[] = ['short_text', 'long_text'];
 
 const newId = () =>
   (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
@@ -45,7 +49,7 @@ export default function AssessmentBuilderPage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [meta, setMeta] = useState({ title: '', description: '', instructions: '', status: 'draft', passingScore: '' as string | number, timeLimitMins: '' as string | number });
+  const [meta, setMeta] = useState({ title: '', description: '', instructions: '', status: 'draft', passingScore: '' as string | number, timeLimitMins: '' as string | number, aiRubric: '' });
   const [questions, setQuestions] = useState<QuestionDraft[]>([]);
 
   const load = useCallback(() => {
@@ -60,6 +64,7 @@ export default function AssessmentBuilderPage() {
           instructions: a.instructions || '',
           status: a.status || 'draft',
           passingScore: a.passingScore ?? '',
+          aiRubric: a.aiRubric ?? '',
           timeLimitMins: a.timeLimitMins ?? '',
         });
         setQuestions((a.questions || []).map((q) => ({
@@ -68,6 +73,7 @@ export default function AssessmentBuilderPage() {
           prompt: q.prompt,
           required: q.required !== false,
           points: q.points || 0,
+          rubric: q.rubric ?? '',
           options: (q.options || []).map((o) => ({ id: o.id || newId(), label: o.label })),
           correctOptionIds: q.correctOptionIds || [],
           config: q.config || {},
@@ -79,7 +85,7 @@ export default function AssessmentBuilderPage() {
   useEffect(load, [load]);
 
   const addQuestion = (type: AssessmentQuestionType) => {
-    const base: QuestionDraft = { id: newId(), type, prompt: '', required: true, points: AUTO_GRADED.includes(type) ? 10 : 0, options: [], correctOptionIds: [], config: {} };
+    const base: QuestionDraft = { id: newId(), type, prompt: '', required: true, points: AUTO_GRADED.includes(type) ? 10 : 0, options: [], correctOptionIds: [], rubric: '', config: {} };
     if (AUTO_GRADED.includes(type)) base.options = [{ id: newId(), label: '' }, { id: newId(), label: '' }];
     setQuestions((prev) => [...prev, base]);
   };
@@ -130,6 +136,7 @@ export default function AssessmentBuilderPage() {
         prompt: q.prompt.trim(),
         required: q.required,
         points: q.points,
+        rubric: AI_GRADABLE.includes(q.type) ? q.rubric.trim() || null : null,
         options: AUTO_GRADED.includes(q.type) ? q.options.filter((o) => o.label.trim()) : [],
         correctOptionIds: q.correctOptionIds,
         config: q.config,
@@ -140,6 +147,7 @@ export default function AssessmentBuilderPage() {
         instructions: meta.instructions.trim() || undefined,
         status: meta.status as 'draft' | 'published' | 'archived',
         passingScore: meta.passingScore === '' ? null : Number(meta.passingScore),
+        aiRubric: meta.aiRubric.trim() || null,
         timeLimitMins: meta.timeLimitMins === '' ? null : Number(meta.timeLimitMins),
       });
       toast.success('Assessment saved');
@@ -220,6 +228,21 @@ export default function AssessmentBuilderPage() {
             <input type="number" min={1} value={meta.timeLimitMins} onChange={(e) => setMeta({ ...meta, timeLimitMins: e.target.value.replace(/^0+(?=\d)/, '') })} placeholder="-" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500" />
           </div>
         </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">
+            AI scoring guide <span className="text-slate-400 font-normal">— what a strong candidate looks like</span>
+          </label>
+          <textarea
+            rows={3}
+            value={meta.aiRubric}
+            onChange={(e) => setMeta({ ...meta, aiRubric: e.target.value })}
+            placeholder="e.g. Strong candidates have shipped a real project, can explain their choices, and show they can learn independently. Weak: vague answers, no concrete work."
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500"
+          />
+          <p className="mt-1 text-xs text-slate-400">
+            Used for the AI&apos;s overall 0–100 fit score and summary. Never shown to applicants.
+          </p>
+        </div>
         <p className="text-xs text-slate-400">{questions.length} questions · {totalPoints} auto-graded points</p>
       </div>
 
@@ -298,6 +321,24 @@ function QuestionCard({
             placeholder={`Question ${idx + 1} prompt`}
             className="mt-3 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-card"
           />
+
+          {AI_GRADABLE.includes(q.type) && (
+            <div className="mt-3 rounded-lg border border-violet-200 bg-violet-50/60 dark:bg-violet-500/10 p-3">
+              <label className="block text-xs font-medium text-violet-800 mb-1">
+                Grading rubric <span className="font-normal text-violet-600">— how the AI should score this answer</span>
+              </label>
+              <textarea
+                rows={2}
+                value={q.rubric}
+                onChange={(e) => onPatch({ rubric: e.target.value })}
+                placeholder="e.g. Full marks: names a specific project AND their own role. Partial: vague or team-only. Zero: no real project."
+                className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-violet-400"
+              />
+              <p className="mt-1 text-[11px] text-violet-600">
+                Scored out of this question&apos;s points. Leave blank to judge on relevance and clarity. Never shown to applicants.
+              </p>
+            </div>
+          )}
 
           {isChoice && (
             <div className="mt-3 space-y-2">

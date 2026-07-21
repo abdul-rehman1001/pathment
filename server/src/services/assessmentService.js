@@ -64,6 +64,7 @@ class AssessmentService {
       instructions: data.instructions || null,
       programId: data.programId || null,
       passingScore: (data.passingScore ?? '') === '' ? null : Number(data.passingScore),
+      aiRubric: data.aiRubric && String(data.aiRubric).trim() ? String(data.aiRubric).trim() : null,
       timeLimitMins: (data.timeLimitMins ?? '') === '' ? null : Number(data.timeLimitMins),
       // A brand-new assessment has no questions yet, so it cannot be published.
       // Publishing is a deliberate step after adding at least one question.
@@ -76,7 +77,7 @@ class AssessmentService {
     const assessment = await models.Assessment.findByPk(assessmentId);
     if (!assessment) throw new NotFoundError('Assessment not found');
     this._validateMeta(data);
-    const allowed = ['title', 'description', 'instructions', 'programId', 'passingScore', 'timeLimitMins', 'status'];
+    const allowed = ['title', 'description', 'instructions', 'programId', 'passingScore', 'timeLimitMins', 'status', 'aiRubric'];
     const patch = {};
     for (const key of allowed) if (data[key] !== undefined) patch[key] = data[key];
     if (patch.status && !['draft', 'published', 'archived'].includes(patch.status)) {
@@ -127,6 +128,9 @@ class AssessmentService {
         points: Number.isFinite(Number(q.points)) ? Math.max(0, Math.trunc(Number(q.points))) : 0,
         options,
         correctOptionIds,
+        // Grading guidance the AI scores an open-ended answer against. Stored
+        // for any type (harmless), surfaced in the builder for text questions.
+        rubric: q.rubric && String(q.rubric).trim() ? String(q.rubric).trim() : null,
         config: q.config && typeof q.config === 'object' ? q.config : {}
       };
     });
