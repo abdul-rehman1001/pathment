@@ -687,6 +687,13 @@ function LevelEvidencePanel({ app, levelLabel, onApplied }: { app: Application; 
         )}
       </div>
 
+      {ev.evidenceThin && (
+        <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+          None of your {ev.criteriaCount ?? 0} criteria could be judged from what this applicant was asked — so this is a
+          fallback placement, not a finding. Either the form/assessment doesn&apos;t ask about them, or the criteria need
+          rewording (Admissions settings → Level criteria).
+        </p>
+      )}
       {ev.reason && <p className="mt-2 text-xs text-slate-700">{ev.reason}</p>}
       {ev.coherence && <p className="mt-1 text-xs text-amber-700">⚠ {ev.coherence}</p>}
 

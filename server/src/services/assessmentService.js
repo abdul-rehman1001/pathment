@@ -360,11 +360,10 @@ class AssessmentService {
     const profileLines = [];
     if (app) {
       if (app.level) profileLines.push(`Level chosen: ${app.level}`);
-      const resp = app.responses || {};
-      for (const [k, v] of Object.entries(resp)) {
-        if (v == null || v === '') continue;
-        profileLines.push(`${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`);
-      }
+      // Answers keyed by the QUESTION that was asked, not the raw field key.
+      const { labelledResponses } = require('../utils/intakeResponses');
+      const cohort = await models.Cohort.findByPk(app.cohortId, { attributes: ['intakeFormSchema'] });
+      profileLines.push(...labelledResponses(app.responses, cohort && cohort.intakeFormSchema));
     }
 
     const qBody = blocks.map((b, i) => (

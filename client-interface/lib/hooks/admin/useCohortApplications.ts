@@ -27,6 +27,11 @@ export interface Application {
   /** Evidence-based placement: the level the rules landed on + the proof. */
   recommendedLevel?: string | null;
   levelEvidence?: {
+    /** True when NO criterion could be judged — the criteria don't match what
+     *  this cohort actually asks, so the placement is a fallback not a finding. */
+    evidenceThin?: boolean;
+    judgedCount?: number;
+    criteriaCount?: number;
     criteria: Record<string, { verdict: boolean | null; quote: string; note: string }>;
     reason: string;
     coherence?: string;

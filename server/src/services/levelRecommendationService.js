@@ -1,5 +1,6 @@
 const { models } = require('../db');
 const { NotFoundError, ValidationError } = require('../utils/errors/errorTypes');
+const { labelledResponses } = require('../utils/intakeResponses');
 
 /**
  * Evidence-based level placement for intake applicants.
@@ -199,12 +200,10 @@ class LevelRecommendationService {
   // ── The AI evidence pass ─────────────────────────────────────────────────
   /** Everything the applicant actually wrote, as grading context. */
   async _evidenceFor(application) {
-    const lines = [];
-    const resp = application.responses || {};
-    for (const [k, v] of Object.entries(resp)) {
-      if (v == null || v === '') continue;
-      lines.push(`${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`);
-    }
+    // Resolve each answer against the question that was actually asked — the
+    // model can't judge "1+ year of experience" from `q_1a2b3c: 2 years`.
+    const cohort = await models.Cohort.findByPk(application.cohortId, { attributes: ['intakeFormSchema'] });
+    const lines = labelledResponses(application.responses, cohort && cohort.intakeFormSchema);
 
     let answerBlock = '';
     const sub = await models.AssessmentSubmission.findOne({
@@ -317,7 +316,17 @@ class LevelRecommendationService {
     const decision = this.decide(rules, verdicts);
     const reason = this.buildReason(rules, decision, verdicts, labelFor);
 
+    // If nothing could be judged, the criteria don't match what this cohort's
+    // form/assessment actually asks — surface that instead of silently placing
+    // everyone at the base level.
+    const judged = Object.values(details).filter((d) => d.verdict !== null).length;
+    const quoted = Object.values(details).filter((d) => d.quote).length;
+
     const evidence = {
+      evidenceThin: judged === 0,
+      judgedCount: judged,
+      quotedCount: quoted,
+      criteriaCount: allCriteria.length,
       criteria: details,
       decision: { via: decision.via, metKeys: decision.metKeys, trail: decision.trail },
       reason,
