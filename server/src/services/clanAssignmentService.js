@@ -29,17 +29,16 @@ const applicationService = require('./applicationService');
 class ClanAssignmentService {
   _norm(v) { return v == null ? '' : String(v).trim().toLowerCase(); }
 
-  /** Candidate gender from their application responses (pre-registration). */
-  _candidateGender(app) {
-    const r = app.responses || {};
-    return this._norm(r.gender);
-  }
+  /** Candidate gender / country from their application responses (pre-registration). */
+  _candidateGender(app) { return this._norm((app.responses || {}).gender); }
+  _candidateCountry(app) { return this._norm((app.responses || {}).country); }
 
   _defaults(settings = {}) {
     return {
       capacity: settings.capacity != null && settings.capacity !== '' ? Math.max(1, parseInt(settings.capacity, 10) || 0) : null,
       matchLevel: settings.matchLevel !== false,
       matchGender: !!settings.matchGender,
+      matchCountry: !!settings.matchCountry,
       excludeClanIds: Array.isArray(settings.excludeClanIds) ? settings.excludeClanIds : [],
       balanceMode: settings.balanceMode === 'fill' ? 'fill' : 'even',
       allowLevelOverflow: !!settings.allowLevelOverflow,
@@ -54,7 +53,7 @@ class ClanAssignmentService {
   async _clanPool(programId, capacityOverride) {
     const clans = await models.Clan.findAll({
       where: { programId, status: 'active' },
-      attributes: ['id', 'name', 'levels', 'maxMentees', 'leadMentorId'],
+      attributes: ['id', 'name', 'levels', 'countries', 'maxMentees', 'leadMentorId'],
       include: [{ model: models.User, as: 'leadMentor', attributes: ['id', 'gender'] }],
     });
     if (!clans.length) return new Map();
@@ -72,6 +71,7 @@ class ClanAssignmentService {
         id: c.id,
         name: c.name,
         levels: Array.isArray(c.levels) ? c.levels : [],
+        countries: (Array.isArray(c.countries) ? c.countries : []).map((x) => this._norm(x)),
         leadGender: this._norm(c.leadMentor && c.leadMentor.gender),
         cap: capacityOverride != null ? capacityOverride : (c.maxMentees || 25),
         fill: fillById.get(c.id) || 0,
@@ -81,27 +81,37 @@ class ClanAssignmentService {
   }
 
   /** Clans (from the pool) with room, filtered by the given constraints. */
-  _candidates(pool, { level, gender, useLevel, useGender, excludeSet }) {
+  _candidates(pool, { level, gender, country, useLevel, useGender, useCountry, excludeSet }) {
     const out = [];
     for (const c of pool.values()) {
       if (excludeSet.has(c.id)) continue;
       if (c.fill >= c.cap) continue;                                   // full
       if (useLevel && level && c.levels.length && !c.levels.includes(level)) continue;
+      if (useCountry && country && c.countries.length && !c.countries.includes(country)) continue;
       if (useGender && gender && c.leadGender && c.leadGender !== gender) continue;
       out.push(c);
     }
     return out;
   }
 
-  /** Pick one clan by balance mode: most room first (even), or first with room (fill). */
-  _pick(list, balanceMode) {
-    if (!list.length) return null;
-    if (balanceMode === 'fill') {
-      return [...list].sort((a, b) => (b.cap - b.fill) - (a.cap - a.fill) || a.name.localeCompare(b.name))
-        .reverse().find((c) => c.cap - c.fill > 0) || null; // fewest-remaining-but-nonzero → top up
-    }
-    // 'even': most remaining room first (lowest fill ratio), name as tiebreak.
-    return [...list].sort((a, b) => (b.cap - b.fill) - (a.cap - a.fill) || a.name.localeCompare(b.name))[0] || null;
+  /**
+   * Pick one clan. A clan that SPECIFICALLY serves the candidate's country/level
+   * always beats a catch-all clan — "these countries go to this clan" should win
+   * over a generic clan. Among equally-specific clans, balance decides: most room
+   * first ('even') or least-room-but-nonzero ('fill', to top a clan up).
+   */
+  _pick(list, balanceMode, ctx = {}) {
+    const room = (c) => c.cap - c.fill;
+    const withRoom = list.filter((c) => room(c) > 0);
+    if (!withRoom.length) return null;
+    const spec = (c) =>
+      (ctx.country && c.countries.includes(ctx.country) ? 1 : 0) +
+      (ctx.level && c.levels.includes(ctx.level) ? 1 : 0);
+    return [...withRoom].sort((a, b) =>
+      (spec(b) - spec(a)) ||                                             // specific clans first
+      (balanceMode === 'fill' ? room(a) - room(b) : room(b) - room(a)) || // then balance
+      a.name.localeCompare(b.name)
+    )[0] || null;
   }
 
   /**
@@ -111,47 +121,43 @@ class ClanAssignmentService {
   _resolve(pool, app, s) {
     const level = app.level || null;
     const gender = this._candidateGender(app);
+    const country = this._candidateCountry(app);
     const excludeSet = new Set(s.excludeClanIds);
-    const base = { excludeSet };
+    const ctx = { level, gender, country };
+    const tier = (useLevel, useCountry, useGender) =>
+      this._pick(this._candidates(pool, { ...ctx, excludeSet, useLevel, useCountry, useGender }), s.balanceMode, ctx);
 
-    // Tier 1 — full strength: level + gender.
-    let list = this._candidates(pool, { ...base, level, gender, useLevel: s.matchLevel, useGender: s.matchGender });
-    let pick = this._pick(list, s.balanceMode);
-    if (pick) return { clan: pick, reason: this._reason('match', pick, level, gender, s) };
+    // Relax softest → hardest: gender, then country, then (only if allowed) level.
+    let pick = tier(s.matchLevel, s.matchCountry, s.matchGender);
+    if (pick) return { clan: pick, reason: this._reason('match', pick, ctx, s) };
 
-    // Tier 2 — drop gender (level still respected).
     if (s.matchGender) {
-      list = this._candidates(pool, { ...base, level, gender, useLevel: s.matchLevel, useGender: false });
-      pick = this._pick(list, s.balanceMode);
-      if (pick) return { clan: pick, reason: this._reason('gender_relaxed', pick, level, gender, s) };
+      pick = tier(s.matchLevel, s.matchCountry, false);
+      if (pick) return { clan: pick, reason: this._reason('gender_relaxed', pick, ctx, s) };
     }
-
-    // Tier 3 — drop level (only if allowed). Keep gender if requested.
+    if (s.matchCountry) {
+      pick = tier(s.matchLevel, false, false);
+      if (pick) return { clan: pick, reason: this._reason('country_relaxed', pick, ctx, s) };
+    }
     if (s.matchLevel && s.allowLevelOverflow) {
-      list = this._candidates(pool, { ...base, level, gender, useLevel: false, useGender: s.matchGender });
-      pick = this._pick(list, s.balanceMode);
-      if (pick) return { clan: pick, reason: this._reason('level_overflow', pick, level, gender, s) };
-
-      // Tier 4 — drop both.
-      if (s.matchGender) {
-        list = this._candidates(pool, { ...base, level, gender, useLevel: false, useGender: false });
-        pick = this._pick(list, s.balanceMode);
-        if (pick) return { clan: pick, reason: this._reason('any', pick, level, gender, s) };
-      }
+      pick = tier(false, false, false);
+      if (pick) return { clan: pick, reason: this._reason('level_overflow', pick, ctx, s) };
     }
-
     return { clan: null, reason: this._noFitReason(pool, s) };
   }
 
   _fillStr(c) { return `${c.fill + 1}/${c.cap}`; }
-  _reason(kind, c, level, gender, s) {
-    const lvl = level ? `L:${level}` : 'any level';
-    const g = s.matchGender && gender ? ` · lead ${gender}` : '';
+  _reason(kind, c, ctx, s) {
+    const lvl = ctx.level ? `L:${ctx.level}` : 'any level';
+    const parts = [lvl];
+    if (s.matchCountry && ctx.country) parts.push(ctx.country);
+    if (s.matchGender && ctx.gender) parts.push(`lead ${ctx.gender}`);
+    const desc = parts.join(' · ');
     switch (kind) {
-      case 'match': return `${lvl}${g} ✓ · ${this._fillStr(c)}`;
-      case 'gender_relaxed': return `${lvl} ✓ · no ${gender}-lead clan free → placed with a different lead · ${this._fillStr(c)}`;
-      case 'level_overflow': return `${lvl} clans full → overflow into ${c.name} (level relaxed) · ${this._fillStr(c)}`;
-      case 'any': return `All matching clans full → ${c.name} · ${this._fillStr(c)}`;
+      case 'match': return `${desc} ✓ · ${this._fillStr(c)}`;
+      case 'gender_relaxed': return `${lvl}${s.matchCountry && ctx.country ? ` · ${ctx.country}` : ''} ✓ · no ${ctx.gender}-lead clan free → different lead · ${this._fillStr(c)}`;
+      case 'country_relaxed': return `${lvl} ✓ · no ${ctx.country} clan free → overflow into ${c.name} · ${this._fillStr(c)}`;
+      case 'level_overflow': return `all matching clans full → ${c.name} (level relaxed) · ${this._fillStr(c)}`;
       default: return `${c.name} · ${this._fillStr(c)}`;
     }
   }
@@ -192,7 +198,7 @@ class ClanAssignmentService {
         status: clan ? 'assigned' : 'unassigned', reason });
     }
 
-    const clansOut = [...pool.values()].map((c) => ({ id: c.id, name: c.name, levels: c.levels, leadGender: c.leadGender, cap: c.cap, projectedFill: c.fill }));
+    const clansOut = [...pool.values()].map((c) => ({ id: c.id, name: c.name, levels: c.levels, countries: c.countries, leadGender: c.leadGender, cap: c.cap, projectedFill: c.fill }));
     const summary = {
       total: rows.length,
       assigned: rows.filter((r) => r.status === 'assigned').length,

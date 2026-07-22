@@ -32,7 +32,7 @@ export function AssignToClansDrawer({
   onDone: () => void;
 }) {
   const [settings, setSettings] = useState<ClanAssignSettings>({
-    capacity: null, matchLevel: true, matchGender: false,
+    capacity: null, matchLevel: true, matchGender: false, matchCountry: false,
     excludeClanIds: [], balanceMode: 'even', allowLevelOverflow: false,
   });
   const [rows, setRows] = useState<Row[]>([]);
@@ -138,6 +138,7 @@ export function AssignToClansDrawer({
           <div className="flex flex-wrap items-center gap-4 text-sm">
             <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={settings.matchLevel} onChange={(e) => setSettings((s) => ({ ...s, matchLevel: e.target.checked }))} /> Match level</label>
             <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={settings.matchGender} onChange={(e) => setSettings((s) => ({ ...s, matchGender: e.target.checked }))} /> Match gender to clan lead</label>
+            <label className="flex items-center gap-1.5 cursor-pointer" title="Send candidates to a clan that serves their country. Clans with no country set take anyone."><input type="checkbox" checked={settings.matchCountry} onChange={(e) => setSettings((s) => ({ ...s, matchCountry: e.target.checked }))} /> Match country</label>
             <label className="flex items-center gap-1.5 cursor-pointer" title="When a candidate's level clans are all full, allow placing them in another level's clan"><input type="checkbox" checked={settings.allowLevelOverflow} onChange={(e) => setSettings((s) => ({ ...s, allowLevelOverflow: e.target.checked }))} /> Allow level overflow</label>
           </div>
           {/* Exclusions */}

@@ -138,6 +138,7 @@ export interface ClanAssignSettings {
   capacity?: number | null;
   matchLevel?: boolean;
   matchGender?: boolean;
+  matchCountry?: boolean;
   excludeClanIds?: string[];
   balanceMode?: 'even' | 'fill';
   allowLevelOverflow?: boolean;

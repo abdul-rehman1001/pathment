@@ -44,6 +44,12 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: []
     },
+    // Countries this clan serves (regional grouping). Empty = any country.
+    countries: {
+      type: DataTypes.ARRAY(DataTypes.STRING(80)),
+      allowNull: false,
+      defaultValue: []
+    },
     maxMentees: {
       type: DataTypes.INTEGER,
       defaultValue: 25,

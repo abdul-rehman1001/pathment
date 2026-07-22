@@ -31,6 +31,7 @@ function CreateClanDrawer({ programs, mentors, onClose, onCreated }: {
   const [leadMentorId, setLeadMentorId] = useState('');
   const [levelLabel, setLevelLabel] = useState('');
   const [levels, setLevels] = useState<string[]>([]);
+  const [countries, setCountries] = useState('');
   const [tags, setTags] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -43,6 +44,7 @@ function CreateClanDrawer({ programs, mentors, onClose, onCreated }: {
         leadMentorId: leadMentorId || undefined,
         levelLabel: levelLabel.trim() || undefined,
         levels,
+        countries: countries.split(',').map((c) => c.trim()).filter(Boolean),
         tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
       });
       toast.success('Clan created');
@@ -92,6 +94,10 @@ function CreateClanDrawer({ programs, mentors, onClose, onCreated }: {
             <ClanLevelsField programId={programId} value={levels} onChange={setLevels} />
           </div>
           <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Countries served <span className="text-slate-400 font-normal">(comma-separated, optional)</span></label>
+            <input value={countries} onChange={(e) => setCountries(e.target.value)} placeholder="e.g. Pakistan, India" className={field} />
+          </div>
+          <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Tags <span className="text-slate-400 font-normal">(comma-separated)</span></label>
             <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="e.g. frontend, react" className={field} />
           </div>
@@ -119,7 +125,7 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
   const [permMember, setPermMember] = useState<any | null>(null);
   const [levelsDraft, setLevelsDraft] = useState<string[]>([]);
   const [savingLevels, setSavingLevels] = useState(false);
-  const [details, setDetails] = useState({ name: '', description: '', leadMentorId: '', maxMentees: '25', status: 'active', tags: '' });
+  const [details, setDetails] = useState({ name: '', description: '', leadMentorId: '', maxMentees: '25', status: 'active', tags: '', countries: '' });
 
   // Searchable person picker (server-backed) so ANYONE is findable — not just the
   // first 20 of a base-role directory. This is how a removed/re-roled person
@@ -136,7 +142,8 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
       setLevelsDraft(Array.isArray(c?.levels) ? c.levels : []);
       setDetails({
         name: c?.name ?? '', description: c?.description ?? '', leadMentorId: c?.leadMentor?.id ?? '',
-        maxMentees: String(c?.maxMentees ?? 25), status: c?.status ?? 'active', tags: (c?.tags ?? []).join(', '),
+        maxMentees: String(c?.maxMentees ?? 25), status: c?.status ?? 'active',
+        tags: (c?.tags ?? []).join(', '), countries: (c?.countries ?? []).join(', '),
       });
     }
     finally { setLoading(false); }
@@ -150,6 +157,7 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
     details.maxMentees !== String(clan.maxMentees ?? 25) ||
     details.status !== (clan.status ?? 'active') ||
     details.tags !== (clan.tags ?? []).join(', ') ||
+    details.countries !== (clan.countries ?? []).join(', ') ||
     JSON.stringify(levelsDraft) !== JSON.stringify(clan.levels ?? [])
   );
   const saveDetails = async () => {
@@ -163,6 +171,7 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
         maxMentees: Math.max(1, parseInt(details.maxMentees, 10) || 25),
         status: details.status,
         tags: details.tags.split(',').map((t) => t.trim()).filter(Boolean),
+        countries: details.countries.split(',').map((c) => c.trim()).filter(Boolean),
         levels: levelsDraft,
       });
       toast.success('Clan updated');
@@ -276,6 +285,11 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
                   <label className="block text-xs font-medium text-slate-500 mb-1">Levels served <span className="text-slate-400 font-normal">(intake matching)</span></label>
                   <ClanLevelsField programId={clan?.programId} value={levelsDraft} onChange={setLevelsDraft} />
                   <p className="text-xs text-slate-400 mt-1">Candidates of these levels are matched here during assignment. None = any level.</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Countries served <span className="text-slate-400 font-normal">(comma-separated)</span></label>
+                  <input value={details.countries} onChange={(e) => setDetails((d) => ({ ...d, countries: e.target.value }))} placeholder="e.g. Pakistan, India" className={`w-full ${field}`} />
+                  <p className="text-xs text-slate-400 mt-1">Candidates from these countries are matched here. None = any country.</p>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1">Tags <span className="text-slate-400 font-normal">(comma-separated)</span></label>

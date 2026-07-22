@@ -211,6 +211,7 @@ class ClanService {
         leadMentorId: data.leadMentorId || null,
         tags: Array.isArray(data.tags) ? data.tags : [],
         levels: Array.isArray(data.levels) ? data.levels : [],
+        countries: Array.isArray(data.countries) ? data.countries : [],
         maxMentees: data.maxMentees || 25,
         status: data.status || 'active',
         createdBy
@@ -241,7 +242,7 @@ class ClanService {
       if (!clan) throw new NotFoundError('Clan not found');
 
       const prevLeadId = clan.leadMentorId;
-      const allowed = ['name', 'description', 'tags', 'levels', 'maxMentees', 'status', 'healthStatus'];
+      const allowed = ['name', 'description', 'tags', 'levels', 'countries', 'maxMentees', 'status', 'healthStatus'];
       allowed.forEach((key) => {
         if (updates[key] !== undefined) clan[key] = updates[key];
       });
