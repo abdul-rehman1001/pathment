@@ -28,27 +28,31 @@ const INDEX = 'registration_invites_active_email_role_uidx';
 async function up() {
   console.log('▶ Running migration 082: dedupe invites + active-unique index');
   await sequelize.transaction(async (transaction) => {
-    // 1. Find (email, role) groups with more than one live invite.
+    // 1. Find (email, role) groups with more than one OUTSTANDING invite. This
+    //    must match the index predicate EXACTLY — unused + unrevoked, expiry
+    //    aside — or an expired-but-unrevoked leftover slips through and breaks
+    //    the unique index.
     const [dups] = await sequelize.query(`
       SELECT lower(email) AS email, role, COUNT(*) AS n
       FROM registration_invites
-      WHERE used_at IS NULL AND revoked_at IS NULL AND expires_at > now()
+      WHERE used_at IS NULL AND revoked_at IS NULL
       GROUP BY lower(email), role
       HAVING COUNT(*) > 1
     `, { transaction });
 
     let revoked = 0;
     for (const g of dups) {
-      // Live invites in this group, ordered so the KEEPER is first: one an
-      // application references wins, then the newest.
+      // Outstanding invites in this group, KEEPER first: one an application
+      // references wins, then a still-valid (non-expired) one, then the newest.
       const [rows] = await sequelize.query(`
         SELECT ri.id,
                (EXISTS (SELECT 1 FROM applications a WHERE a.invite_id = ri.id)) AS linked,
+               (ri.expires_at > now()) AS valid,
                ri.created_at
         FROM registration_invites ri
         WHERE lower(ri.email) = :email AND ri.role = :role
-          AND ri.used_at IS NULL AND ri.revoked_at IS NULL AND ri.expires_at > now()
-        ORDER BY linked DESC, ri.created_at DESC
+          AND ri.used_at IS NULL AND ri.revoked_at IS NULL
+        ORDER BY linked DESC, valid DESC, ri.created_at DESC
       `, { replacements: { email: g.email, role: g.role }, transaction });
 
       const keeper = rows[0].id;

@@ -89,6 +89,14 @@ class AdminService {
       throw new ConflictError('An active invite already exists for this email and role');
     }
 
+    // An expired, unused, unrevoked invite is dead but still occupies the
+    // active-unique slot (the index predicate ignores expiry) — revoke it so a
+    // fresh invite can be issued after an old one lapses.
+    await models.RegistrationInvite.update(
+      { revokedAt: new Date() },
+      { where: { email: normalizedEmail, role, usedAt: null, revokedAt: null, expiresAt: { [Op.lte]: new Date() } } }
+    );
+
     const placement = await this._resolveInvitePlacement({
       role,
       program: inviteData.programId ?? inviteData.program,
