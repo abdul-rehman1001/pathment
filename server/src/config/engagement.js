@@ -11,6 +11,13 @@ module.exports = {
     reviewsBeforeFlag: 3,
     // Don't flag anyone who joined fewer than this many days ago (grace period).
     minDaysSinceJoin: 14,
+    // Task signal: a mentee counts as "inactive on tasks" only if they have open
+    // assigned work AND haven't started or submitted anything in this many days.
+    // The review miss is NOT enough on its own when they have tasks — someone
+    // actively doing assigned work is engaged even if they skip reviews, so we
+    // never flag them. When a clan records no reviews at all, this becomes the
+    // sole signal so task-driven clans aren't left un-monitored.
+    taskInactivityDays: 14,
   },
   // Win-back reminder cadence: days AFTER pause to send each re-engagement
   // touch. After the last one we stop (no endless pinging).

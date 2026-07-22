@@ -56,6 +56,21 @@ export function PausedMenteesPanel({ menteeBasePath = '/mentor/mentees' }: { men
     catch { toast.error('Could not pause'); }
     finally { setBusy(null); }
   };
+  const pauseAll = async () => {
+    const ok = await confirm({
+      title: `Pause all ${suggestions.length} inactive mentees?`,
+      description: `Everyone in the suggested list will be paused and emailed to ask their mentor to resume them. They stay in their clans and drop out of your reports until they re-engage. You can resume anyone with one click.`,
+      confirmLabel: `Pause ${suggestions.length}`,
+    });
+    if (!ok) return;
+    setBusy('*');
+    try {
+      const res = await mentorApi.runInactivityCheck({ autoPause: true }) as { data?: { pausedCount?: number } };
+      toast.success(`Paused ${res?.data?.pausedCount ?? 0} mentee(s)`);
+      await load();
+    } catch { toast.error('Could not run the check'); }
+    finally { setBusy(null); }
+  };
   const dismiss = async (s: Suggestion) => {
     setBusy(s.menteeId);
     try { await mentorApi.dismissPauseSuggestion(s.menteeId, s.clanId); toast.success('Kept active'); setSuggestions((prev) => prev.filter((x) => x.menteeId !== s.menteeId || x.clanId !== s.clanId)); }
@@ -81,6 +96,14 @@ export function PausedMenteesPanel({ menteeBasePath = '/mentor/mentees' }: { men
             <BellRing className="w-4 h-4 text-amber-600" />
             <h3 className="text-sm font-semibold text-amber-900">Suggested to pause ({suggestions.length})</h3>
             <span className="text-xs text-amber-700">These mentees look inactive. Pausing keeps your reports clean; they stay in the clan.</span>
+            <button
+              onClick={pauseAll}
+              disabled={busy === '*'}
+              className="ml-auto shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 inline-flex items-center gap-1 disabled:opacity-50"
+            >
+              {busy === '*' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PauseCircle className="w-3.5 h-3.5" />}
+              Pause all {suggestions.length}
+            </button>
           </div>
           <div className="space-y-2">
             {suggestions.map((s) => (

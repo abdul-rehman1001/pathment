@@ -29,6 +29,9 @@ router.post('/cohort/report-summary', authenticate, authorize(['mentor', 'admin'
 // pause/resume/dismiss. Paused mentees stay in the clan but drop out of reports.
 router.get('/paused', mentorOnly, mentorshipPauseController.listPaused);
 router.get('/pause-suggestions', mentorOnly, mentorshipPauseController.listSuggestions);
+// Run an inactivity check now (preview, or autoPause=true to pause the flagged).
+// Admin can scope to one clanId or sweep every clan they oversee.
+router.post('/inactivity-check', mentorOnly, mentorshipPauseController.runInactivityCheck);
 router.post('/pause-suggestions/:menteeId/dismiss', mentorOnly, mentorshipPauseController.dismissSuggestion);
 router.get('/mentees/:menteeId/pause-state', mentorOnly, mentorshipPauseController.menteeState);
 router.post('/mentees/:menteeId/pause', mentorOnly, mentorshipPauseController.pause);

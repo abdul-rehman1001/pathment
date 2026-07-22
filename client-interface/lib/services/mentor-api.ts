@@ -85,7 +85,12 @@ export const mentorApi = {
   // reports and receive re-engagement reminders.
   listPausedMentees: () => apiClient.get('/mentor/paused'),
   getMenteePauseState: (menteeId: string) => apiClient.get(`/mentor/mentees/${menteeId}/pause-state`),
-  listPauseSuggestions: () => apiClient.get('/mentor/pause-suggestions'),
+  listPauseSuggestions: (clanId?: string) =>
+    apiClient.get(`/mentor/pause-suggestions${clanId ? `?clanId=${clanId}` : ''}`),
+  // Run an inactivity check now. autoPause=false previews the flagged list;
+  // autoPause=true pauses them (and emails them). clanId scopes to one clan.
+  runInactivityCheck: (opts?: { clanId?: string; autoPause?: boolean }) =>
+    apiClient.post('/mentor/inactivity-check', { clanId: opts?.clanId, autoPause: !!opts?.autoPause }),
   pauseMentee: (menteeId: string, reason?: string, clanId?: string) =>
     apiClient.post(`/mentor/mentees/${menteeId}/pause`, { reason, clanId }),
   resumeMentee: (menteeId: string, clanId?: string) =>
