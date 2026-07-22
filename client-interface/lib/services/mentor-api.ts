@@ -59,6 +59,18 @@ export const mentorApi = {
   finishReviewSession: (id: string) => apiClient.post(`/mentor/review/sessions/${id}/finish`, {}),
   reopenReviewSession: (id: string) => apiClient.post(`/mentor/review/sessions/${id}/reopen`, {}),
   deleteReviewSession: (id: string) => apiClient.delete(`/mentor/review/sessions/${id}`),
+  // Live-video (Jitsi) host controls for a review session.
+  startReviewMeeting: (id: string, externalUrl?: string) =>
+    apiClient.post(`/mentor/review/sessions/${id}/meeting/start`, { externalUrl }),
+  endReviewMeeting: (id: string) => apiClient.post(`/mentor/review/sessions/${id}/meeting/end`, {}),
+  getReviewMeeting: (id: string) => apiClient.get(`/mentor/review/sessions/${id}/meeting`),
+  markReviewPresent: (id: string, menteeId: string, present: boolean) =>
+    apiClient.put(`/mentor/review/sessions/${id}/meeting/present/${menteeId}`, { present }),
+  recordReviewTalkTime: (id: string, items: { menteeId: string; seconds: number }[]) =>
+    apiClient.post(`/mentor/review/sessions/${id}/meeting/talk-time`, { items }),
+  proposeReviewContribution: (id: string) => apiClient.get(`/mentor/review/sessions/${id}/meeting/contribution`),
+  finalizeReviewContribution: (id: string, menteeIds: string[]) =>
+    apiClient.post(`/mentor/review/sessions/${id}/meeting/contribution`, { menteeIds }),
 
   // Approvals queue (pending reviews across the cohort) + bulk approve.
   getApprovals: () => apiClient.get('/mentor/approvals'),

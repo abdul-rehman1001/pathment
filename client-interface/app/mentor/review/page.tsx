@@ -30,6 +30,7 @@ import { Drawer } from '@/components/shared/Drawer';
 import { Avatar } from '@/components/shared/Avatar';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 import { AttendanceSection } from '@/components/mentor/attendance/AttendanceSection';
+import { ReviewMeetingPanel } from '@/components/mentor/ReviewMeetingPanel';
 
 type Attendance = 'present' | 'absent' | 'excused';
 type EntryStatus = 'pending' | 'reviewed' | 'deferred';
@@ -775,6 +776,11 @@ export default function CohortReview() {
           </div>
         )}
       </div>
+
+      {/* Live video (Jitsi): start the room, auto-attendance, contribution points. */}
+      {session && (session.id || isDraft) && (
+        <ReviewMeetingPanel sessionId={session.id} isDraft={isDraft} />
+      )}
 
       {/* Attendance Strip */}
       <AttendanceSection

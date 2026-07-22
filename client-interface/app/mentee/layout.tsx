@@ -6,6 +6,7 @@ import { TimezoneSync } from '@/components/shared/TimezoneSync';
 import { WalkthroughMount } from '@/components/onboarding/WalkthroughMount';
 import { ChangelogMount } from '@/components/shared/ChangelogMount';
 import { InterviewResumeBar } from '@/components/mentee/InterviewResumeBar';
+import { ReviewJoinBar } from '@/components/mentee/ReviewJoinBar';
 import { PausedGate } from '@/components/mentee/PausedGate';
 
 export default function MenteeLayout({ children }: { children: React.ReactNode }) {
@@ -23,7 +24,10 @@ export default function MenteeLayout({ children }: { children: React.ReactNode }
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
               {/* Paused mentees see the "ask a mentor to resume you" gate here
                   instead of their dashboard. Only the mentee side is gated. */}
-              <PausedGate>{children}</PausedGate>
+              <PausedGate>
+                <ReviewJoinBar />
+                {children}
+              </PausedGate>
             </div>
           </main>
         </div>

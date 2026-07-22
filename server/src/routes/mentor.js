@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const cohortController = require('../controllers/cohortController');
 const cohortReviewController = require('../controllers/cohortReviewController');
+const reviewMeetingController = require('../controllers/reviewMeetingController');
 const reviewLockController = require('../controllers/reviewLockController');
 const linearRoadmapController = require('../controllers/linearRoadmapController');
 const promotionController = require('../controllers/promotionController');
@@ -59,6 +60,14 @@ router.put('/review/sessions/:id/entries/:menteeId', mentorOnly, cohortReviewCon
 router.post('/review/sessions/:id/finish', mentorOnly, cohortReviewController.finish);
 router.post('/review/sessions/:id/reopen', mentorOnly, cohortReviewController.reopen);
 router.delete('/review/sessions/:id', mentorOnly, cohortReviewController.remove);
+// Live video (Jitsi) for a review — host controls (mentor is the source of truth).
+router.post('/review/sessions/:id/meeting/start', mentorOnly, reviewMeetingController.start);
+router.post('/review/sessions/:id/meeting/end', mentorOnly, reviewMeetingController.end);
+router.get('/review/sessions/:id/meeting', mentorOnly, reviewMeetingController.hostView);
+router.put('/review/sessions/:id/meeting/present/:menteeId', mentorOnly, reviewMeetingController.markPresent);
+router.post('/review/sessions/:id/meeting/talk-time', mentorOnly, reviewMeetingController.recordTalk);
+router.get('/review/sessions/:id/meeting/contribution', mentorOnly, reviewMeetingController.proposeContribution);
+router.post('/review/sessions/:id/meeting/contribution', mentorOnly, reviewMeetingController.finalizeContribution);
 // Cohort-review deletion lock (mentor-side): see the org lock state + ask an
 // admin for temporary delete access.
 router.get('/review/lock-state', mentorOnly, reviewLockController.lockState);
