@@ -297,22 +297,20 @@ class MentorshipPauseService {
         const t = taskSignals.get(m.userId) || { hasOpenTasks: false, taskInactive: false };
         const missedEnough = !!a && a.totalSinceJoin >= INACTIVITY.reviewsBeforeFlag && a.missed >= INACTIVITY.reviewsBeforeFlag;
 
-        let hit = false;
-        let reason = '';
-        // Any recent task activity means engaged — never flag, whatever the
-        // reviews say. This spares the mentee who submits work but skips reviews.
+        // Missed reviews is the REQUIRED signal — never flag on tasks alone.
+        // If a clan records no reviews (or the attendance data isn't there),
+        // nobody is flagged here rather than the whole clan: tasks only ever
+        // reduce flags, they never create them.
+        if (!clanHasReviews || !missedEnough) continue;
+        // Any recent task activity means engaged — spare them whatever the
+        // reviews say (the mentee who submits work but skips reviews).
         if (t.recentActivity) continue;
-        if (clanHasReviews && missedEnough) {
-          hit = true;
-          reason = t.hasOpenTasks
-            ? `Missed the last ${a.missed} reviews and no task activity in ${INACTIVITY.taskInactivityDays} days`
-            : (a.lastPresentDate ? `No attendance in the last ${a.missed} reviews` : `Never attended (${a.missed} reviews held since joining)`);
-        } else if (!clanHasReviews && t.taskInactive) {
-          // No reviews recorded → task inactivity alone.
-          hit = true;
-          reason = `No task activity in ${INACTIVITY.taskInactivityDays} days (no reviews recorded for this clan)`;
-        }
-        if (!hit) continue;
+        // If they have open tasks, require those to be idle too; with no open
+        // tasks, the review miss stands on its own.
+        if (t.hasOpenTasks && !t.taskInactive) continue;
+        const reason = t.hasOpenTasks
+          ? `Missed the last ${a.missed} reviews and no task activity in ${INACTIVITY.taskInactivityDays} days`
+          : (a.lastPresentDate ? `No attendance in the last ${a.missed} reviews` : `Never attended (${a.missed} reviews held since joining)`);
         flagged.push({ ...m, attendance: a, task: t, reason });
       }
       if (!flagged.length) continue;

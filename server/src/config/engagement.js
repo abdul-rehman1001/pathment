@@ -13,10 +13,10 @@ module.exports = {
     minDaysSinceJoin: 14,
     // Task signal: a mentee counts as "inactive on tasks" only if they have open
     // assigned work AND haven't started or submitted anything in this many days.
-    // The review miss is NOT enough on its own when they have tasks — someone
-    // actively doing assigned work is engaged even if they skip reviews, so we
-    // never flag them. When a clan records no reviews at all, this becomes the
-    // sole signal so task-driven clans aren't left un-monitored.
+    // This only ever REDUCES flags — someone actively doing assigned work is
+    // engaged even if they skip reviews, so we never flag them. It is NOT a
+    // standalone trigger: a mentee is only ever flagged off missed reviews, so a
+    // clan that records no reviews flags nobody (rather than its whole roster).
     taskInactivityDays: 14,
   },
   // Win-back reminder cadence: days AFTER pause to send each re-engagement
