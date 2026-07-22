@@ -40,6 +40,7 @@ export function AssignToClansDrawer({
   const [summary, setSummary] = useState<{ assigned: number; unassigned: number; alreadyAccepted: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [committing, setCommitting] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [mode, setMode] = useState<Mode>('candidates');
 
   const preview = useCallback(async () => {
@@ -75,19 +76,31 @@ export function AssignToClansDrawer({
     const ready = rows.filter((r) => r.status === 'assigned' && r.clanId);
     if (!ready.length) { toast.error('Nobody is assigned to a clan yet'); return; }
     setCommitting(true);
+    // Batch so a big run can't die on one long request / a mid-flight token
+    // expiry. Each batch is idempotent server-side, so a retry never duplicates.
+    const CHUNK = 25;
+    let done = 0;
     try {
       if (mode === 'unplaced') {
-        const placements = ready.filter((r) => r.userId).map((r) => ({ userId: r.userId as string, clanId: r.clanId }));
-        const res = await applicationApi.commitUnassignedAssignment(cohortId, placements) as { data?: { placed: number } };
-        toast.success(`Placed ${res?.data?.placed ?? 0} mentee(s) into clans`);
+        const items = ready.filter((r) => r.userId).map((r) => ({ userId: r.userId as string, clanId: r.clanId }));
+        for (let i = 0; i < items.length; i += CHUNK) {
+          const res = await applicationApi.commitUnassignedAssignment(cohortId, items.slice(i, i + CHUNK)) as { data?: { placed: number } };
+          done += res?.data?.placed ?? 0;
+          setProgress({ done: Math.min(i + CHUNK, items.length), total: items.length });
+        }
+        toast.success(`Placed ${done} mentee(s) into clans`);
       } else {
-        const assignments = ready.map((r) => ({ applicationId: r.applicationId, clanId: r.clanId }));
-        const res = await applicationApi.commitClanAssignment(cohortId, assignments) as { data?: { accepted: number } };
-        toast.success(`Assigned ${res?.data?.accepted ?? 0} candidate(s) to clans — invites sent`);
+        const items = ready.map((r) => ({ applicationId: r.applicationId, clanId: r.clanId }));
+        for (let i = 0; i < items.length; i += CHUNK) {
+          const res = await applicationApi.commitClanAssignment(cohortId, items.slice(i, i + CHUNK)) as { data?: { accepted: number } };
+          done += res?.data?.accepted ?? 0;
+          setProgress({ done: Math.min(i + CHUNK, items.length), total: items.length });
+        }
+        toast.success(`Assigned ${done} candidate(s) to clans — invites sent`);
       }
       onDone();
-    } catch { toast.error('Could not complete the assignment'); }
-    finally { setCommitting(false); }
+    } catch { toast.error(`Assigned ${done} before the request failed — reopen to finish the rest (nothing is duplicated).`); }
+    finally { setCommitting(false); setProgress(null); }
   };
 
   const inp = 'px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500';
@@ -225,7 +238,8 @@ export function AssignToClansDrawer({
             <button onClick={onClose} disabled={committing} className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-700">Cancel</button>
             <button onClick={commit} disabled={committing || loading || !(summary?.assigned)} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 disabled:opacity-50">
               {committing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-              {mode === 'unplaced' ? `Place ${summary?.assigned ?? 0} into clans` : `Assign ${summary?.assigned ?? 0} & send invites`}
+              {progress ? `Working ${progress.done}/${progress.total}…`
+                : mode === 'unplaced' ? `Place ${summary?.assigned ?? 0} into clans` : `Assign ${summary?.assigned ?? 0} & send invites`}
             </button>
           </div>
         </div>

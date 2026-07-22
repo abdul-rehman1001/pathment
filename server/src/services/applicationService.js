@@ -1,3 +1,4 @@
+const { Op } = require('sequelize');
 const { models } = require('../db');
 const { NotFoundError, ValidationError, ConflictError } = require('../utils/errors/errorTypes');
 const { createAuditLog } = require('../utils/auditContext');
@@ -226,29 +227,84 @@ class ApplicationService {
    * program (and an optional clan). The invite carries the cohort so the
    * eventual enrollment is traceable back to this intake.
    */
+  /**
+   * Accept an application → issue (or reuse) a mentee invite carrying the clan.
+   *
+   * Idempotent and duplicate-safe, because it runs at intake scale where a
+   * batch can be retried, double-submitted, or resumed after a token expiry:
+   *   - already accepted with a live invite → return it (retarget its clan if a
+   *     clan is now given), never a throw;
+   *   - an active invite already exists for this email → REUSE it and point it
+   *     at this clan/cohort, rather than minting a second (the orphaned-duplicate
+   *     bug);
+   *   - otherwise issue a fresh invite.
+   * Net: re-running an assignment is a clean no-op, and "invited without a clan,
+   * then assigned" now actually lands the clan on the existing invite.
+   */
   async acceptApplication(applicationId, { clanId } = {}, acceptedBy) {
     const app = await models.Application.findByPk(applicationId, {
       include: [{ model: models.Cohort, as: 'cohort' }]
     });
     if (!app) throw new NotFoundError('Application not found');
-    if (app.status === 'accepted') throw new ConflictError('Application is already accepted');
 
     const cohort = app.cohort;
     if (!cohort) throw new ValidationError('Application is not attached to a cohort');
+    const normalizedEmail = (app.email || '').trim().toLowerCase();
 
-    const invite = await adminService.createRegistrationInvite({
-      email: app.email,
-      role: 'mentee',
-      programId: cohort.programId,
-      clanId: clanId || undefined,
-      cohortId: cohort.id
-    }, acceptedBy);
+    const isLive = (inv) => inv && !inv.usedAt && !inv.revokedAt && new Date(inv.expiresAt) > new Date();
+
+    // 1. Already accepted with a live invite — idempotent. Retarget the clan if
+    //    one is supplied and differs (lets you re-assign before they register).
+    if (app.status === 'accepted' && app.inviteId) {
+      const existing = await models.RegistrationInvite.findByPk(app.inviteId);
+      if (isLive(existing)) {
+        if (clanId && existing.clanId !== clanId) await existing.update({ clanId });
+        return { application: app, invite: existing, reused: true };
+      }
+    }
+
+    // 2. Reuse any active invite already issued for this email (a prior send, or
+    //    a concurrent accept that won the race) — retarget it to this placement.
+    const existingActive = await models.RegistrationInvite.findOne({
+      where: { email: normalizedEmail, role: 'mentee', usedAt: null, revokedAt: null, expiresAt: { [Op.gt]: new Date() } },
+      order: [['createdAt', 'DESC']],
+    });
+    let invite;
+    if (existingActive) {
+      await existingActive.update({
+        clanId: clanId || existingActive.clanId,
+        programId: cohort.programId,
+        cohortId: cohort.id,
+      });
+      invite = existingActive;
+    } else {
+      // 3. Fresh invite. If a concurrent accept created one between our check and
+      //    here, createRegistrationInvite throws ConflictError — fall back to the
+      //    now-existing active invite instead of surfacing a duplicate error.
+      try {
+        invite = await adminService.createRegistrationInvite({
+          email: app.email, role: 'mentee', programId: cohort.programId,
+          clanId: clanId || undefined, cohortId: cohort.id,
+        }, acceptedBy);
+      } catch (e) {
+        if (e instanceof ConflictError) {
+          const raced = await models.RegistrationInvite.findOne({
+            where: { email: normalizedEmail, role: 'mentee', usedAt: null, revokedAt: null, expiresAt: { [Op.gt]: new Date() } },
+            order: [['createdAt', 'DESC']],
+          });
+          if (isLive(raced)) {
+            if (clanId && raced.clanId !== clanId) await raced.update({ clanId });
+            invite = raced;
+          } else { throw e; }
+        } else { throw e; }
+      }
+    }
 
     await app.update({
       status: 'accepted',
       decidedAt: new Date(),
       reviewedBy: acceptedBy,
-      inviteId: invite.id
+      inviteId: invite.id,
     });
 
     return { application: app, invite };
