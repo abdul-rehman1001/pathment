@@ -7,12 +7,14 @@ import { applicationApi, type ClanAssignSettings } from '@/lib/services/intake-a
 
 interface Row {
   applicationId: string;
+  userId: string | null;
   name: string; email: string;
   level: string | null; levelLabel: string | null; gender: string;
   clanId: string | null; clanName: string | null;
-  status: 'assigned' | 'unassigned' | 'already_accepted';
+  status: 'assigned' | 'unassigned' | 'already_placed';
   reason: string;
 }
+type Mode = 'candidates' | 'unplaced';
 interface ClanInfo { id: string; name: string; levels: string[]; leadGender: string; cap: number; projectedFill: number }
 
 /**
@@ -38,19 +40,21 @@ export function AssignToClansDrawer({
   const [summary, setSummary] = useState<{ assigned: number; unassigned: number; alreadyAccepted: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [committing, setCommitting] = useState(false);
+  const [mode, setMode] = useState<Mode>('candidates');
 
   const preview = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await applicationApi.previewClanAssignment(cohortId, applicationIds, settings) as {
-        data?: { rows: Row[]; clans: ClanInfo[]; summary: { assigned: number; unassigned: number; alreadyAccepted: number } };
-      };
+      const call = mode === 'unplaced'
+        ? applicationApi.previewUnassignedAssignment(cohortId, settings)
+        : applicationApi.previewClanAssignment(cohortId, applicationIds, settings);
+      const res = await call as { data?: { rows: Row[]; clans: ClanInfo[]; summary: { assigned: number; unassigned: number; alreadyAccepted: number } } };
       setRows(res?.data?.rows ?? []);
       setClans(res?.data?.clans ?? []);
       setSummary(res?.data?.summary ?? null);
     } catch { toast.error('Could not build the assignment preview'); }
     finally { setLoading(false); }
-  }, [cohortId, applicationIds, settings]);
+  }, [cohortId, applicationIds, settings, mode]);
 
   // Re-preview whenever the run settings change.
   useEffect(() => { preview(); }, [preview]);
@@ -68,14 +72,21 @@ export function AssignToClansDrawer({
   });
 
   const commit = async () => {
-    const assignments = rows.filter((r) => r.status === 'assigned' && r.clanId).map((r) => ({ applicationId: r.applicationId, clanId: r.clanId }));
-    if (!assignments.length) { toast.error('No candidates are assigned to a clan yet'); return; }
+    const ready = rows.filter((r) => r.status === 'assigned' && r.clanId);
+    if (!ready.length) { toast.error('Nobody is assigned to a clan yet'); return; }
     setCommitting(true);
     try {
-      const res = await applicationApi.commitClanAssignment(cohortId, assignments) as { data?: { accepted: number; skipped: { reason: string }[] } };
-      toast.success(`Assigned ${res?.data?.accepted ?? 0} candidate(s) to clans — invites sent`);
+      if (mode === 'unplaced') {
+        const placements = ready.filter((r) => r.userId).map((r) => ({ userId: r.userId as string, clanId: r.clanId }));
+        const res = await applicationApi.commitUnassignedAssignment(cohortId, placements) as { data?: { placed: number } };
+        toast.success(`Placed ${res?.data?.placed ?? 0} mentee(s) into clans`);
+      } else {
+        const assignments = ready.map((r) => ({ applicationId: r.applicationId, clanId: r.clanId }));
+        const res = await applicationApi.commitClanAssignment(cohortId, assignments) as { data?: { accepted: number } };
+        toast.success(`Assigned ${res?.data?.accepted ?? 0} candidate(s) to clans — invites sent`);
+      }
       onDone();
-    } catch { toast.error('Could not assign the candidates'); }
+    } catch { toast.error('Could not complete the assignment'); }
     finally { setCommitting(false); }
   };
 
@@ -84,12 +95,24 @@ export function AssignToClansDrawer({
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={() => !committing && onClose()}>
       <div className="w-full max-w-3xl h-full overflow-hidden bg-card shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
-          <div className="flex items-center gap-2">
-            <Users2 className="w-5 h-5 text-brand-600" />
-            <h3 className="font-semibold text-slate-900">Assign {applicationIds.length} to clans</h3>
+        <div className="px-5 py-4 border-b border-slate-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Users2 className="w-5 h-5 text-brand-600" />
+              <h3 className="font-semibold text-slate-900">Assign to clans</h3>
+            </div>
+            <button onClick={onClose} disabled={committing} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X className="w-5 h-5" /></button>
           </div>
-          <button onClick={onClose} disabled={committing} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X className="w-5 h-5" /></button>
+          {/* Mode: place the selected candidates (accept + invite), or place
+              already-accepted mentees who registered without a clan. */}
+          <div className="mt-3 inline-flex rounded-lg border border-slate-200 p-0.5 text-sm">
+            <button onClick={() => setMode('candidates')} className={`px-3 py-1.5 rounded-md ${mode === 'candidates' ? 'bg-brand-600 text-white' : 'text-slate-600'}`}>
+              Selected candidates ({applicationIds.length})
+            </button>
+            <button onClick={() => setMode('unplaced')} className={`px-3 py-1.5 rounded-md ${mode === 'unplaced' ? 'bg-brand-600 text-white' : 'text-slate-600'}`}>
+              Unplaced accepted mentees
+            </button>
+          </div>
         </div>
 
         {/* Run settings */}
@@ -147,6 +170,12 @@ export function AssignToClansDrawer({
         <div className="flex-1 overflow-y-auto">
           {loading ? (
             <div className="py-16 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-brand-600" /></div>
+          ) : rows.length === 0 ? (
+            <div className="py-16 px-6 text-center text-sm text-slate-500">
+              {mode === 'unplaced'
+                ? 'No accepted mentees are waiting for a clan — everyone who registered has been placed.'
+                : 'No candidates in this selection.'}
+            </div>
           ) : (
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-slate-500 sticky top-0">
@@ -166,8 +195,8 @@ export function AssignToClansDrawer({
                     </td>
                     <td className="px-4 py-2 text-slate-600">{r.levelLabel || '—'}</td>
                     <td className="px-4 py-2">
-                      {r.status === 'already_accepted' ? (
-                        <span className="text-xs text-slate-400">already accepted</span>
+                      {r.status === 'already_placed' ? (
+                        <span className="text-xs text-slate-400">{r.reason}</span>
                       ) : (
                         <select value={r.clanId ?? ''} onChange={(e) => setClan(r.applicationId, e.target.value)} className={`${inp} ${!r.clanId ? 'border-amber-300' : ''}`}>
                           <option value="">— pick a clan —</option>
@@ -185,12 +214,17 @@ export function AssignToClansDrawer({
 
         {/* Footer */}
         <div className="px-5 py-4 border-t border-slate-200 flex items-center justify-between gap-2">
-          <p className="text-[11px] text-slate-400 inline-flex items-center gap-1"><Wand2 className="w-3.5 h-3.5" /> Committing accepts each candidate and emails a clan-stamped invite.</p>
+          <p className="text-[11px] text-slate-400 inline-flex items-center gap-1">
+            <Wand2 className="w-3.5 h-3.5" />
+            {mode === 'unplaced'
+              ? 'Places each registered mentee straight into their clan (no invite).'
+              : 'Accepts each candidate and emails a clan-stamped invite.'}
+          </p>
           <div className="flex gap-2 shrink-0">
             <button onClick={onClose} disabled={committing} className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-700">Cancel</button>
             <button onClick={commit} disabled={committing || loading || !(summary?.assigned)} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 disabled:opacity-50">
               {committing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-              Assign {summary?.assigned ?? 0} &amp; send invites
+              {mode === 'unplaced' ? `Place ${summary?.assigned ?? 0} into clans` : `Assign ${summary?.assigned ?? 0} & send invites`}
             </button>
           </div>
         </div>

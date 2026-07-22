@@ -38,6 +38,9 @@ router.post('/applications/:id/accept', ...adminOnly, intakeController.acceptApp
 // Assign accepted candidates to clans: preview the plan (no writes), then commit.
 router.post('/cohorts/:id/assign/preview', ...adminOnly, intakeController.previewClanAssignment);
 router.post('/cohorts/:id/assign/commit', ...adminOnly, intakeController.commitClanAssignment);
+// Place already-accepted mentees who registered without a clan (pending_match).
+router.post('/cohorts/:id/assign/unassigned/preview', ...adminOnly, intakeController.previewUnassignedAssignment);
+router.post('/cohorts/:id/assign/unassigned/commit', ...adminOnly, intakeController.commitUnassignedAssignment);
 router.post('/applications/:id/reject', ...adminOnly, intakeController.rejectApplication);
 router.post('/assessment-submissions/:submissionId/grade', ...adminOnly, intakeController.gradeAssessmentSubmission);
 router.post('/assessment-submissions/:submissionId/ai-grade', ...adminOnly, intakeController.aiGradeSubmission);

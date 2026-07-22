@@ -272,6 +272,18 @@ const commitClanAssignment = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Candidates assigned to clans', result));
 });
 
+/** POST /cohorts/:id/assign/unassigned/preview  { settings } — propose clans for unplaced mentees. */
+const previewUnassignedAssignment = catchAsync(async (req, res) => {
+  const result = await clanAssignmentService.previewUnassigned(req.params.id, req.body?.settings || {});
+  res.status(200).json(successResponse('Unplaced-mentee assignment preview', result));
+});
+
+/** POST /cohorts/:id/assign/unassigned/commit  { placements:[{userId, clanId}] } — place into clans. */
+const commitUnassignedAssignment = catchAsync(async (req, res) => {
+  const result = await clanAssignmentService.commitPlacement(req.params.id, req.body?.placements);
+  res.status(200).json(successResponse('Mentees placed into clans', result));
+});
+
 module.exports = {
   listCohorts,
   getCohort,
@@ -294,6 +306,8 @@ module.exports = {
   rejectApplication,
   previewClanAssignment,
   commitClanAssignment,
+  previewUnassignedAssignment,
+  commitUnassignedAssignment,
   aiGradeApplications,
   getScoringPlan,
   getLevelRules,

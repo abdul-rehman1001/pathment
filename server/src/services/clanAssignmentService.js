@@ -165,9 +165,44 @@ class ClanAssignmentService {
   }
 
   /**
-   * Propose a clan for each selected candidate. Pure — writes nothing. The order
-   * is stable (level, then name, then id) so re-running gives the same plan.
+   * Shared planner. Takes normalized candidates ({ applicationId, userId,
+   * firstName, lastName, email, level, responses, alreadyPlaced }) and proposes
+   * a clan for each against the pool. Pure — writes nothing. Stable order so a
+   * re-run gives the same plan.
    */
+  async _plan(cohort, candidates, s) {
+    const levelLabel = new Map((Array.isArray(cohort.levels) ? cohort.levels : []).map((l) => [l.key, l.label]));
+    const pool = await this._clanPool(cohort.programId, s.capacity);
+    candidates.sort((a, b) => (a.level || '').localeCompare(b.level || '')
+      || `${a.firstName}${a.lastName}`.localeCompare(`${b.firstName}${b.lastName}`)
+      || String(a.applicationId).localeCompare(String(b.applicationId)));
+
+    const rows = [];
+    for (const c of candidates) {
+      const name = `${c.firstName || ''} ${c.lastName || ''}`.trim() || c.email;
+      const base = { applicationId: c.applicationId, userId: c.userId || null, name, email: c.email,
+        level: c.level, levelLabel: levelLabel.get(c.level) || c.level, gender: this._candidateGender(c) };
+      if (c.alreadyPlaced) {
+        rows.push({ ...base, clanId: null, clanName: null, status: 'already_placed', reason: c.placedReason || 'Already placed' });
+        continue;
+      }
+      const { clan, reason } = this._resolve(pool, c, s);
+      if (clan) clan.fill += 1; // reserve the seat for the rest of this run
+      rows.push({ ...base, clanId: clan ? clan.id : null, clanName: clan ? clan.name : null,
+        status: clan ? 'assigned' : 'unassigned', reason });
+    }
+
+    const clansOut = [...pool.values()].map((c) => ({ id: c.id, name: c.name, levels: c.levels, leadGender: c.leadGender, cap: c.cap, projectedFill: c.fill }));
+    const summary = {
+      total: rows.length,
+      assigned: rows.filter((r) => r.status === 'assigned').length,
+      unassigned: rows.filter((r) => r.status === 'unassigned').length,
+      alreadyAccepted: rows.filter((r) => r.status === 'already_placed').length,
+    };
+    return { rows, clans: clansOut, summary, settings: s };
+  }
+
+  /** Propose a clan for each SELECTED candidate (assign-at-accept flow). */
   async previewAssignment(cohortId, applicationIds, rawSettings = {}) {
     const cohort = await models.Cohort.findByPk(cohortId, { attributes: ['id', 'programId', 'levels'] });
     if (!cohort) throw new NotFoundError('Cohort not found');
@@ -178,42 +213,47 @@ class ClanAssignmentService {
       where: { id: { [Op.in]: applicationIds }, cohortId },
       attributes: ['id', 'firstName', 'lastName', 'email', 'level', 'status', 'responses'],
     });
-    const levelLabel = new Map((Array.isArray(cohort.levels) ? cohort.levels : []).map((l) => [l.key, l.label]));
-
-    const pool = await this._clanPool(cohort.programId, s.capacity);
-    // Deterministic order so the plan is reproducible.
-    apps.sort((a, b) => (a.level || '').localeCompare(b.level || '') || `${a.firstName}${a.lastName}`.localeCompare(`${b.firstName}${b.lastName}`) || a.id.localeCompare(b.id));
-
-    const rows = [];
-    for (const app of apps) {
-      const name = `${app.firstName || ''} ${app.lastName || ''}`.trim() || app.email;
-      if (app.status === 'accepted') {
-        rows.push({ applicationId: app.id, name, email: app.email, level: app.level, levelLabel: levelLabel.get(app.level) || app.level,
-          gender: this._candidateGender(app), clanId: null, clanName: null, status: 'already_accepted', reason: 'Already accepted' });
-        continue;
-      }
-      const { clan, reason } = this._resolve(pool, app, s);
-      if (clan) clan.fill += 1; // reserve the seat for the rest of this run
-      rows.push({
-        applicationId: app.id, name, email: app.email,
-        level: app.level, levelLabel: levelLabel.get(app.level) || app.level, gender: this._candidateGender(app),
-        clanId: clan ? clan.id : null, clanName: clan ? clan.name : null,
-        status: clan ? 'assigned' : 'unassigned', reason,
-      });
-    }
-
-    const clansOut = [...pool.values()].map((c) => ({ id: c.id, name: c.name, levels: c.levels, leadGender: c.leadGender, cap: c.cap, projectedFill: c.fill }));
-    const summary = {
-      total: rows.length,
-      assigned: rows.filter((r) => r.status === 'assigned').length,
-      unassigned: rows.filter((r) => r.status === 'unassigned').length,
-      alreadyAccepted: rows.filter((r) => r.status === 'already_accepted').length,
-    };
-    return { rows, clans: clansOut, summary, settings: s };
+    const candidates = apps.map((a) => ({
+      applicationId: a.id, userId: null, firstName: a.firstName, lastName: a.lastName, email: a.email,
+      level: a.level, responses: a.responses,
+      alreadyPlaced: a.status === 'accepted', placedReason: 'Already accepted',
+    }));
+    return this._plan(cohort, candidates, s);
   }
 
   /**
-   * Commit an edited plan: accept each candidate with their chosen clan. Reuses
+   * Accepted candidates who have REGISTERED but never landed in a clan (accepted
+   * with no clan → registered as pending_match). Returns their applications.
+   */
+  async _unassignedApplications(cohortId) {
+    const apps = await models.Application.findAll({
+      where: { cohortId, status: 'accepted', userId: { [Op.ne]: null } },
+      attributes: ['id', 'userId', 'firstName', 'lastName', 'email', 'level', 'responses'],
+    });
+    if (!apps.length) return [];
+    const placed = await models.ClanMembership.findAll({
+      where: { userId: { [Op.in]: apps.map((a) => a.userId) }, role: 'mentee', status: { [Op.in]: ['active', 'paused'] } },
+      attributes: ['userId'], raw: true,
+    });
+    const placedSet = new Set(placed.map((p) => p.userId));
+    return apps.filter((a) => !placedSet.has(a.userId));
+  }
+
+  /** Propose a clan for each already-accepted-but-unplaced mentee. */
+  async previewUnassigned(cohortId, rawSettings = {}) {
+    const cohort = await models.Cohort.findByPk(cohortId, { attributes: ['id', 'programId', 'levels'] });
+    if (!cohort) throw new NotFoundError('Cohort not found');
+    const s = this._defaults(rawSettings);
+    const apps = await this._unassignedApplications(cohortId);
+    const candidates = apps.map((a) => ({
+      applicationId: a.id, userId: a.userId, firstName: a.firstName, lastName: a.lastName, email: a.email,
+      level: a.level, responses: a.responses, alreadyPlaced: false,
+    }));
+    return this._plan(cohort, candidates, s);
+  }
+
+  /**
+   * Commit the SELECTED-candidate plan: accept each with their clan. Reuses
    * acceptApplication (invite + email + clan-stamp). Resilient per row.
    */
   async commitAssignment(cohortId, assignments, acceptedBy) {
@@ -227,6 +267,30 @@ class ClanAssignmentService {
         results.accepted += 1;
       } catch (e) {
         results.skipped.push({ applicationId: a.applicationId, reason: e.message });
+      }
+    }
+    return results;
+  }
+
+  /**
+   * Commit the UNPLACED-mentee plan: place each registered mentee straight into
+   * their clan via clanService.addMember (creates the membership + enrollment).
+   * No invite — they already have an account. Resilient per row.
+   */
+  async commitPlacement(cohortId, placements) {
+    if (!Array.isArray(placements) || !placements.length) throw new ValidationError('Nothing to place');
+    const clanService = require('./clanService');
+    const results = { placed: 0, skipped: [] };
+    for (const p of placements) {
+      const clanId = p.clanId || null;
+      const userId = p.userId || null;
+      if (!clanId || !userId) { results.skipped.push({ userId, reason: 'missing clan or user' }); continue; }
+      try {
+        // actor omitted: the route already enforces INTAKE_MANAGE.
+        await clanService.addMember(clanId, { userId, role: 'mentee' });
+        results.placed += 1;
+      } catch (e) {
+        results.skipped.push({ userId, reason: e.message });
       }
     }
     return results;
