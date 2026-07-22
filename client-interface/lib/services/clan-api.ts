@@ -22,6 +22,7 @@ export const clanApi = {
     leadMentorId?: string;
     levelLabel?: string;
     tags?: string[];
+    levels?: string[];
     maxMentees?: number;
   }) => apiClient.post('/clans', data),
   update: (id: string, data: Record<string, unknown>) => apiClient.patch(`/clans/${id}`, data),

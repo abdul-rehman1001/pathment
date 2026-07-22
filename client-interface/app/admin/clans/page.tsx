@@ -9,6 +9,7 @@ import { TablePagination } from '@/components/shared/TablePagination';
 import { Avatar } from '@/components/shared/Avatar';
 import { CoMentorPermissionsDrawer } from '@/components/shared/CoMentorPermissionsDrawer';
 import { ReassignClanModal } from '@/components/admin/ReassignClanModal';
+import { ClanLevelsField } from '@/components/admin/ClanLevelsField';
 import { useAdminClans, type Clan, type ClanMembershipRow } from '@/lib/hooks/admin';
 import { clanApi } from '@/lib/services/clan-api';
 import { programsApi } from '@/lib/services/program-api';
@@ -29,6 +30,7 @@ function CreateClanDrawer({ programs, mentors, onClose, onCreated }: {
   const [programId, setProgramId] = useState('');
   const [leadMentorId, setLeadMentorId] = useState('');
   const [levelLabel, setLevelLabel] = useState('');
+  const [levels, setLevels] = useState<string[]>([]);
   const [tags, setTags] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -40,6 +42,7 @@ function CreateClanDrawer({ programs, mentors, onClose, onCreated }: {
         name: name.trim(), programId,
         leadMentorId: leadMentorId || undefined,
         levelLabel: levelLabel.trim() || undefined,
+        levels,
         tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
       });
       toast.success('Clan created');
@@ -85,6 +88,10 @@ function CreateClanDrawer({ programs, mentors, onClose, onCreated }: {
             <input value={levelLabel} onChange={(e) => setLevelLabel(e.target.value)} placeholder="e.g. Intermediate" className={field} />
           </div>
           <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Levels served <span className="text-slate-400 font-normal">(for intake assignment)</span></label>
+            <ClanLevelsField programId={programId} value={levels} onChange={setLevels} />
+          </div>
+          <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Tags <span className="text-slate-400 font-normal">(comma-separated)</span></label>
             <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="e.g. frontend, react" className={field} />
           </div>
@@ -110,6 +117,8 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
   const [busy, setBusy] = useState(false);
   const [moving, setMoving] = useState<{ userId: string; name: string } | null>(null);
   const [permMember, setPermMember] = useState<any | null>(null);
+  const [levelsDraft, setLevelsDraft] = useState<string[]>([]);
+  const [savingLevels, setSavingLevels] = useState(false);
 
   // Searchable person picker (server-backed) so ANYONE is findable — not just the
   // first 20 of a base-role directory. This is how a removed/re-roled person
@@ -121,7 +130,7 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
 
   const load = async () => {
     setLoading(true);
-    try { const res = await clanApi.get(clanId); setClan(res?.data?.clan ?? null); }
+    try { const res = await clanApi.get(clanId); const c = res?.data?.clan ?? null; setClan(c); setLevelsDraft(Array.isArray(c?.levels) ? c.levels : []); }
     finally { setLoading(false); }
   };
   useEffect(() => { load(); }, [clanId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -187,6 +196,27 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
             <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-brand-600" /></div>
           ) : (
             <>
+              {/* Levels served — used to match intake candidates by level. */}
+              <div className="rounded-xl border border-slate-200 p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-medium text-slate-700 flex items-center gap-1.5"><GraduationCap className="w-4 h-4 text-brand-500" />Levels served</h3>
+                  <button
+                    onClick={async () => {
+                      setSavingLevels(true);
+                      try { await clanApi.update(clanId, { levels: levelsDraft }); toast.success('Levels saved'); onChanged(); }
+                      catch { toast.error('Could not save levels'); }
+                      finally { setSavingLevels(false); }
+                    }}
+                    disabled={savingLevels || JSON.stringify(levelsDraft) === JSON.stringify(clan?.levels ?? [])}
+                    className="text-xs font-medium text-brand-700 hover:text-brand-800 disabled:opacity-40 inline-flex items-center gap-1"
+                  >
+                    {savingLevels ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}Save
+                  </button>
+                </div>
+                <ClanLevelsField programId={clan?.programId} value={levelsDraft} onChange={setLevelsDraft} />
+                <p className="text-xs text-slate-400 mt-2">Candidates of these levels are matched here during intake assignment. None = takes any level.</p>
+              </div>
+
               {/* Add member */}
               <div className="rounded-xl border border-slate-200 p-4">
                 <h3 className="text-sm font-medium text-slate-700 mb-3 flex items-center gap-1.5"><UserPlus className="w-4 h-4 text-brand-500" />Add member</h3>

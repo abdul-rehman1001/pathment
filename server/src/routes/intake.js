@@ -35,6 +35,9 @@ router.post('/cohorts/:id/applications/import', ...adminOnly, intakeController.i
 router.get('/applications/:id', ...adminOnly, intakeController.getApplication);
 router.patch('/applications/:id', ...adminOnly, intakeController.updateApplication);
 router.post('/applications/:id/accept', ...adminOnly, intakeController.acceptApplication);
+// Assign accepted candidates to clans: preview the plan (no writes), then commit.
+router.post('/cohorts/:id/assign/preview', ...adminOnly, intakeController.previewClanAssignment);
+router.post('/cohorts/:id/assign/commit', ...adminOnly, intakeController.commitClanAssignment);
 router.post('/applications/:id/reject', ...adminOnly, intakeController.rejectApplication);
 router.post('/assessment-submissions/:submissionId/grade', ...adminOnly, intakeController.gradeAssessmentSubmission);
 router.post('/assessment-submissions/:submissionId/ai-grade', ...adminOnly, intakeController.aiGradeSubmission);

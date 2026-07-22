@@ -1,9 +1,10 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { Download, Upload, Sparkles, Loader2, X, AlertTriangle, Check, Send, MailCheck, Layers } from 'lucide-react';
+import { Download, Upload, Sparkles, Loader2, X, AlertTriangle, Check, Send, MailCheck, Layers, Users2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { applicationApi } from '@/lib/services/intake-api';
+import { AssignToClansDrawer } from '@/components/admin/AssignToClansDrawer';
 import { AiScoringPreflight } from '@/components/admin/AiScoringPreflight';
 
 interface InviteResult { invited: { id: string; email?: string }[]; skipped: { id: string; email?: string; reason: string }[]; }
@@ -48,6 +49,7 @@ export function IntakeScoreToolbar({
   const [inviteResult, setInviteResult] = useState<InviteResult | null>(null);
   // AI scoring always goes through a pre-flight so it's never a black box.
   const [preflight, setPreflight] = useState(false);
+  const [assignOpen, setAssignOpen] = useState(false);
   const [levelProgress, setLevelProgress] = useState<{ done: number; total: number } | null>(null);
 
   // Recommend levels for the selection — batched, resilient, same shape as AI scoring.
@@ -193,6 +195,14 @@ export function IntakeScoreToolbar({
         <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); if (fileRef.current) fileRef.current.value = ''; }} />
         {selectedIds.length > 0 && (
           <button
+            onClick={() => setAssignOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700"
+          >
+            <Users2 className="w-4 h-4" /> Assign to clans ({selectedIds.length})
+          </button>
+        )}
+        {selectedIds.length > 0 && (
+          <button
             onClick={() => setConfirmInvite(true)}
             disabled={!!inviteProgress}
             className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
@@ -202,6 +212,15 @@ export function IntakeScoreToolbar({
           </button>
         )}
       </div>
+
+      {assignOpen && (
+        <AssignToClansDrawer
+          cohortId={cohortId}
+          applicationIds={selectedIds}
+          onClose={() => setAssignOpen(false)}
+          onDone={() => { setAssignOpen(false); onDone(); }}
+        />
+      )}
 
       {preflight && (
         <AiScoringPreflight

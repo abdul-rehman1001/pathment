@@ -5,6 +5,7 @@ const applicationService = require('../services/applicationService');
 const assessmentService = require('../services/assessmentService');
 const intakeExportService = require('../services/intakeExportService');
 const levelRecommendationService = require('../services/levelRecommendationService');
+const clanAssignmentService = require('../services/clanAssignmentService');
 const { parseCsv } = require('../utils/csv');
 
 // The score-import body may arrive as { csv: "<raw text>" } (preferred — server
@@ -258,6 +259,19 @@ const rejectApplication = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Application rejected', { application }));
 });
 
+/** POST /cohorts/:id/assign/preview  { applicationIds, settings } — propose clans, no writes. */
+const previewClanAssignment = catchAsync(async (req, res) => {
+  const { applicationIds, settings } = req.body || {};
+  const result = await clanAssignmentService.previewAssignment(req.params.id, applicationIds, settings || {});
+  res.status(200).json(successResponse('Assignment preview', result));
+});
+
+/** POST /cohorts/:id/assign/commit  { assignments:[{applicationId, clanId}] } — accept + place. */
+const commitClanAssignment = catchAsync(async (req, res) => {
+  const result = await clanAssignmentService.commitAssignment(req.params.id, req.body?.assignments, req.user.id);
+  res.status(200).json(successResponse('Candidates assigned to clans', result));
+});
+
 module.exports = {
   listCohorts,
   getCohort,
@@ -278,6 +292,8 @@ module.exports = {
   acceptApplication,
   bulkAcceptApplications,
   rejectApplication,
+  previewClanAssignment,
+  commitClanAssignment,
   aiGradeApplications,
   getScoringPlan,
   getLevelRules,

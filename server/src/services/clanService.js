@@ -210,6 +210,7 @@ class ClanService {
         description: data.description || null,
         leadMentorId: data.leadMentorId || null,
         tags: Array.isArray(data.tags) ? data.tags : [],
+        levels: Array.isArray(data.levels) ? data.levels : [],
         maxMentees: data.maxMentees || 25,
         status: data.status || 'active',
         createdBy
@@ -237,7 +238,7 @@ class ClanService {
     const clan = await models.Clan.findByPk(clanId);
     if (!clan) throw new NotFoundError('Clan not found');
 
-    const allowed = ['name', 'description', 'leadMentorId', 'tags', 'maxMentees', 'status', 'healthStatus'];
+    const allowed = ['name', 'description', 'leadMentorId', 'tags', 'levels', 'maxMentees', 'status', 'healthStatus'];
     allowed.forEach((key) => {
       if (updates[key] !== undefined) clan[key] = updates[key];
     });

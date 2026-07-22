@@ -119,4 +119,20 @@ export const applicationApi = {
   /** Apply the edited sheet (writes the changed scores/status/notes). */
   applyScoreImport: (cohortId: string, csv: string) =>
     apiClient.post(`/intake/cohorts/${cohortId}/scores/import/apply`, { csv }),
+
+  /** Propose a clan for each selected candidate (no writes). */
+  previewClanAssignment: (cohortId: string, applicationIds: string[], settings: ClanAssignSettings) =>
+    apiClient.post(`/intake/cohorts/${cohortId}/assign/preview`, { applicationIds, settings }),
+  /** Accept + place the edited plan (issues clan-stamped invites). */
+  commitClanAssignment: (cohortId: string, assignments: { applicationId: string; clanId: string | null }[]) =>
+    apiClient.post(`/intake/cohorts/${cohortId}/assign/commit`, { assignments }),
 };
+
+export interface ClanAssignSettings {
+  capacity?: number | null;
+  matchLevel?: boolean;
+  matchGender?: boolean;
+  excludeClanIds?: string[];
+  balanceMode?: 'even' | 'fill';
+  allowLevelOverflow?: boolean;
+}

@@ -37,6 +37,13 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: []
     },
+    // Cohort level keys this clan serves (a clan may serve several). Empty means
+    // no level constraint — the clan takes candidates of any level.
+    levels: {
+      type: DataTypes.ARRAY(DataTypes.STRING(40)),
+      allowNull: false,
+      defaultValue: []
+    },
     maxMentees: {
       type: DataTypes.INTEGER,
       defaultValue: 25,
