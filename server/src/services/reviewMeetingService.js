@@ -20,7 +20,7 @@ const cfg = require('../config/reviewMeeting');
 class ReviewMeetingService {
   _fullName(u) { return u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Guest' : 'Guest'; }
 
-  _joinConfig(session, displayName) {
+  _joinConfig(session, displayName, avatarUrl) {
     return {
       sessionId: session.id,
       provider: session.meetingProvider || cfg.provider,
@@ -29,6 +29,9 @@ class ReviewMeetingService {
       url: session.meetingUrl,
       externalUrl: session.externalMeetingUrl || null,
       displayName: displayName || null,
+      // The person's Pathment profile picture, so the call shows the same faces
+      // people already know from the platform (Jitsi otherwise shows initials).
+      avatarUrl: avatarUrl || null,
       startedAt: session.meetingStartedAt,
       endedAt: session.meetingEndedAt,
     };
@@ -71,8 +74,8 @@ class ReviewMeetingService {
     if (externalUrl !== undefined) patch.externalMeetingUrl = externalUrl || null;
     if (Object.keys(patch).length) await session.update(patch);
 
-    const host = await models.User.findByPk(mentorId, { attributes: ['id', 'firstName', 'lastName'] });
-    return this._joinConfig(session, this._fullName(host));
+    const host = await models.User.findByPk(mentorId, { attributes: ['id', 'firstName', 'lastName', 'profilePictureUrl'] });
+    return this._joinConfig(session, this._fullName(host), host && host.profilePictureUrl);
   }
 
   /** Close the room (stops new auto-attendance; contribution is finalized separately). */
@@ -89,7 +92,7 @@ class ReviewMeetingService {
     // already self-reported — otherwise the mentor can't mark a direct joiner
     // present, or even see who hasn't shown up.
     try { await require('./cohortReviewService')._reconcileEntries(session); } catch { /* roster falls back to existing entries */ }
-    const host = await models.User.findByPk(mentorId, { attributes: ['id', 'firstName', 'lastName'] });
+    const host = await models.User.findByPk(mentorId, { attributes: ['id', 'firstName', 'lastName', 'profilePictureUrl'] });
     const entries = await models.CohortReviewEntry.findAll({
       where: { sessionId },
       include: [{ model: models.User, as: 'mentee', attributes: ['id', 'firstName', 'lastName'] }],
@@ -104,7 +107,7 @@ class ReviewMeetingService {
       talkSeconds: e.talkSeconds,
       contributionPoints: e.contributionPoints,
     }));
-    return { meeting: this._joinConfig(session, this._fullName(host)), roster, live: !!session.meetingStartedAt && !session.meetingEndedAt };
+    return { meeting: this._joinConfig(session, this._fullName(host), host && host.profilePictureUrl), roster, live: !!session.meetingStartedAt && !session.meetingEndedAt };
   }
 
   // ── mentee: discover + join + leave ──────────────────────────────────────
@@ -126,9 +129,9 @@ class ReviewMeetingService {
       order: [['meeting_started_at', 'DESC']],
     });
     if (!session) return null;
-    const user = await models.User.findByPk(userId, { attributes: ['id', 'firstName', 'lastName'] });
+    const user = await models.User.findByPk(userId, { attributes: ['id', 'firstName', 'lastName', 'profilePictureUrl'] });
     const clan = await models.Clan.findByPk(session.clanId, { attributes: ['name'] });
-    return { ...this._joinConfig(session, this._fullName(user)), clanName: clan?.name || 'your clan' };
+    return { ...this._joinConfig(session, this._fullName(user), user && user.profilePictureUrl), clanName: clan?.name || 'your clan' };
   }
 
   /** Mark the AUTHENTICATED mentee present (self-report). Only marks themselves. */

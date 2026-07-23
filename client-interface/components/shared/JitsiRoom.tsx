@@ -33,11 +33,13 @@ export interface JitsiParticipant { id: string; displayName?: string }
  * the contribution signal). All wiring is disposed on unmount.
  */
 export function JitsiRoom({
-  domain, room, displayName, onJoined, onLeft, onParticipantJoined, onParticipantLeft, onDominantSpeaker, onError,
+  domain, room, displayName, avatarUrl, onJoined, onLeft, onParticipantJoined, onParticipantLeft, onDominantSpeaker, onError,
 }: {
   domain: string;
   room: string;
   displayName?: string | null;
+  /** Pathment profile picture, so people show their real face in the call. */
+  avatarUrl?: string | null;
   onJoined?: () => void;
   onLeft?: () => void;
   /** Fires for everyone already in the room when we join, AND for later joiners. */
@@ -58,8 +60,25 @@ export function JitsiRoom({
           roomName: room,
           parentNode: containerRef.current,
           userInfo: displayName ? { displayName } : undefined,
-          configOverwrite: { prejoinPageEnabled: false, disableDeepLinking: true, startWithAudioMuted: false },
-          interfaceConfigOverwrite: { MOBILE_APP_PROMO: false, SHOW_JITSI_WATERMARK: false },
+          configOverwrite: {
+            prejoinPageEnabled: false,
+            disableDeepLinking: true,
+            startWithAudioMuted: false,
+            // Cut the provider's promos/analytics as far as it allows.
+            disableThirdPartyRequests: true,
+            enableWelcomePage: false,
+            enableClosePage: false,
+          },
+          interfaceConfigOverwrite: {
+            MOBILE_APP_PROMO: false,
+            SHOW_JITSI_WATERMARK: false,
+            SHOW_WATERMARK_FOR_GUESTS: false,
+            SHOW_BRAND_WATERMARK: false,
+            SHOW_PROMOTIONAL_CLOSE_PAGE: false,
+            HIDE_DEEP_LINKING_LOGO: true,
+            DISPLAY_WELCOME_PAGE_CONTENT: false,
+            DISPLAY_WELCOME_FOOTER: false,
+          },
         });
         apiRef.current = api;
         // Seed the roster with whoever is ALREADY in the room — `participantJoined`
@@ -73,6 +92,8 @@ export function JitsiRoom({
               if (p?.participantId) onParticipantJoined?.({ id: p.participantId, displayName: p.displayName || p.formattedDisplayName });
             }
           } catch { /* roster seeding is best-effort */ }
+          // Show the Pathment profile picture instead of Jitsi's initials.
+          if (avatarUrl) { try { api.executeCommand('avatarUrl', avatarUrl); } catch { /* optional */ } }
           onJoined?.();
         });
         if (onLeft) api.addListener('videoConferenceLeft', () => onLeft());
