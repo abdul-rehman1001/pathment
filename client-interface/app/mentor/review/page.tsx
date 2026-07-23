@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import {
   ChevronLeft, ChevronRight, SkipForward, Check, Loader2,
   TrendingUp, TrendingDown, Minus, Flag, Clock, ClipboardCheck, Keyboard, CheckCircle2, ArrowUpRight, Send, Plus, ListTodo, CalendarClock,
-  Trash2, X, History, RotateCcw, CalendarDays, AlertTriangle, StickyNote, Search, Lock, Unlock, PauseCircle,
+  Trash2, X, History, RotateCcw, CalendarDays, AlertTriangle, StickyNote, Search, Lock, Unlock, PauseCircle, Sparkles,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useMentorCohort, useMentorApprovals, type CohortMentee, type CohortMomentum, type CohortRisk, type ApprovalItem } from '@/lib/hooks/mentor';
@@ -836,6 +836,14 @@ export default function CohortReview() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <h2 className="font-semibold text-slate-900 truncate">{mentee!.name}</h2>
+                  {mentee!.isNew && (
+                    <span
+                      title={mentee!.daysSinceJoined != null ? `Joined ${mentee!.daysSinceJoined === 0 ? 'today' : `${mentee!.daysSinceJoined} day${mentee!.daysSinceJoined === 1 ? '' : 's'} ago`}` : 'New to the platform'}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"
+                    >
+                      <Sparkles className="w-3 h-3" /> New mentee
+                    </span>
+                  )}
                   <MomentumIcon m={mentee!.momentum} />
                   <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-xs font-medium ${risk.cls}`}><span className={`w-1.5 h-1.5 rounded-full ${risk.dot}`} />{risk.label}</span>
                 </div>

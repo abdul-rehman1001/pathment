@@ -130,6 +130,15 @@ class SubmissionService {
     // Re-engagement: a paused mentee who submits work has come back → resume.
     require('./mentorshipPauseService').autoResumeIfPaused(task.menteeId, 'submitted work').catch(() => { });
 
+    // Assign the next roadmap step NOW (at submission), not at approval — so the
+    // mentee has work to do while the mentor reviews. Within-roadmap only;
+    // roadmap completion + chaining to a linked next roadmap still happen on
+    // approval. Non-fatal; never block the submission on it.
+    if (task.roadmapTaskId) {
+      require('./linearRoadmapService').advanceOnSubmission(task.menteeId, task.roadmapTaskId)
+        .catch((err) => console.error('Roadmap advance-on-submission failed (non-fatal):', err.message));
+    }
+
     // Return complete submission with files
     const fullSubmission = await this.getSubmissionById(submission.id);
 
@@ -426,10 +435,12 @@ class SubmissionService {
 
     await task.update(updateData);
 
-    // Auto-advance a roadmap chain FIRST (assign the next step) so the stats
-    // recompute below counts it - otherwise approving the last-assigned step
-    // would momentarily read 100% and flag the enrollment ready-to-complete
-    // before the next step appears.
+    // The NEXT within-roadmap step was already assigned at submission time (so
+    // the mentee wasn't idle). advanceOnApproval still runs here to (a) safety-
+    // net that assignment (idempotent — no double-assign), and (b) finalize the
+    // roadmap on the LAST step: mark it complete and chain to a linked next
+    // roadmap. Runs before the stats recompute so a completed last step doesn't
+    // momentarily read 100% and flag ready-to-complete before the chain fires.
     if (isApproved) {
       try {
         const linearRoadmapService = require('./linearRoadmapService');
