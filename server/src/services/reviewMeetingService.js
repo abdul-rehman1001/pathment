@@ -85,6 +85,10 @@ class ReviewMeetingService {
   /** Host's embed config + live roster (attendance/talk state per mentee). */
   async hostView(mentorId, sessionId) {
     const session = await this._hostSession(mentorId, sessionId);
+    // Reconcile first so the roster covers EVERY clan mentee, not just those who
+    // already self-reported — otherwise the mentor can't mark a direct joiner
+    // present, or even see who hasn't shown up.
+    try { await require('./cohortReviewService')._reconcileEntries(session); } catch { /* roster falls back to existing entries */ }
     const host = await models.User.findByPk(mentorId, { attributes: ['id', 'firstName', 'lastName'] });
     const entries = await models.CohortReviewEntry.findAll({
       where: { sessionId },
@@ -175,12 +179,23 @@ class ReviewMeetingService {
     return { ok: true };
   }
 
-  /** The mentor's proposed contribution list (talk ≥ threshold), editable client-side. */
+  /**
+   * Scoring list for the mentor: the WHOLE roster, with `proposed` pre-set for
+   * anyone who spoke past the threshold. Returning everyone (not just speakers)
+   * lets the mentor also credit someone who contributed in chat or by helping —
+   * talk time is a proxy, not the definition of contributing.
+   */
   async proposeContribution(mentorId, sessionId) {
     const view = await this.hostView(mentorId, sessionId);
     return view.roster
-      .filter((r) => r.talkSeconds >= cfg.contributionThresholdSeconds)
-      .map((r) => ({ menteeId: r.menteeId, name: r.name, talkSeconds: r.talkSeconds }));
+      .filter((r) => r.attendance === 'present' || r.talkSeconds > 0)
+      .map((r) => ({
+        menteeId: r.menteeId,
+        name: r.name,
+        talkSeconds: r.talkSeconds,
+        alreadyAwarded: r.contributionPoints > 0,
+        proposed: r.talkSeconds >= cfg.contributionThresholdSeconds,
+      }));
   }
 
   /**

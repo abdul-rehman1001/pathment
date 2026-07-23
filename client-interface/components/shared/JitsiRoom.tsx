@@ -40,6 +40,7 @@ export function JitsiRoom({
   displayName?: string | null;
   onJoined?: () => void;
   onLeft?: () => void;
+  /** Fires for everyone already in the room when we join, AND for later joiners. */
   onParticipantJoined?: (p: JitsiParticipant) => void;
   onParticipantLeft?: (p: JitsiParticipant) => void;
   onDominantSpeaker?: (participantId: string) => void;
@@ -61,7 +62,19 @@ export function JitsiRoom({
           interfaceConfigOverwrite: { MOBILE_APP_PROMO: false, SHOW_JITSI_WATERMARK: false },
         });
         apiRef.current = api;
-        if (onJoined) api.addListener('videoConferenceJoined', () => onJoined());
+        // Seed the roster with whoever is ALREADY in the room — `participantJoined`
+        // only fires for people who arrive after us, so without this a mentee who
+        // joined before the host opened the panel would never be identifiable
+        // (and so could never be credited for speaking).
+        api.addListener('videoConferenceJoined', () => {
+          try {
+            const existing = api.getParticipantsInfo?.() || [];
+            for (const p of existing) {
+              if (p?.participantId) onParticipantJoined?.({ id: p.participantId, displayName: p.displayName || p.formattedDisplayName });
+            }
+          } catch { /* roster seeding is best-effort */ }
+          onJoined?.();
+        });
         if (onLeft) api.addListener('videoConferenceLeft', () => onLeft());
         if (onParticipantJoined) api.addListener('participantJoined', (p: JitsiParticipant) => onParticipantJoined(p));
         if (onParticipantLeft) api.addListener('participantLeft', (p: JitsiParticipant) => onParticipantLeft(p));

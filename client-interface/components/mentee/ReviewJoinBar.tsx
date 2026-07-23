@@ -22,6 +22,7 @@ export function ReviewJoinBar() {
   const [open, setOpen] = useState(false);
   const [dismissed, setDismissed] = useState<string | null>(null);
   const joinedAtRef = useRef<number | null>(null);
+  const leavingRef = useRef(false);
 
   const poll = useCallback(async () => {
     try {
@@ -39,14 +40,18 @@ export function ReviewJoinBar() {
   const onJoined = async () => {
     if (!active) return;
     joinedAtRef.current = Date.now();
+    leavingRef.current = false;
     try { await menteeApi.joinReview(active.sessionId); } catch { /* best-effort */ }
   };
+  // Leaving can be triggered twice (closing the panel AND Jitsi's own
+  // videoConferenceLeft) — report it once so presence isn't double-counted.
   const onLeft = async () => {
-    if (!active) return;
+    if (!active || leavingRef.current) { setOpen(false); return; }
+    leavingRef.current = true;
     const secs = joinedAtRef.current ? Math.round((Date.now() - joinedAtRef.current) / 1000) : 0;
     joinedAtRef.current = null;
-    try { await menteeApi.leaveReview(active.sessionId, secs); } catch { /* best-effort */ }
     setOpen(false);
+    try { await menteeApi.leaveReview(active.sessionId, secs); } catch { /* best-effort */ }
   };
 
   if (!active) return null;

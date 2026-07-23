@@ -7,6 +7,7 @@ import { mentorApi } from '@/lib/services/mentor-api';
 import { JitsiRoom, type JitsiParticipant } from '@/components/shared/JitsiRoom';
 
 interface RosterRow { menteeId: string; name: string; attendance: string | null; autoPresent: boolean; talkSeconds: number; contributionPoints: number }
+interface ScoreRow { menteeId: string; name: string; talkSeconds: number; proposed: boolean; alreadyAwarded: boolean }
 interface Meeting { sessionId: string; domain: string; room: string; url: string; displayName: string | null; externalUrl: string | null; startedAt: string | null; endedAt: string | null }
 
 /**
@@ -21,7 +22,7 @@ export function ReviewMeetingPanel({ sessionId, isDraft }: { sessionId: string; 
   const [live, setLive] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [scoring, setScoring] = useState<{ menteeId: string; name: string; talkSeconds: number }[] | null>(null);
+  const [scoring, setScoring] = useState<ScoreRow[] | null>(null);
 
   // Talk-time tracking (host-observed). id → seconds, id → displayName.
   const talkById = useRef<Map<string, number>>(new Map());
@@ -88,7 +89,7 @@ export function ReviewMeetingPanel({ sessionId, isDraft }: { sessionId: string; 
     try {
       await flushTalk();
       await mentorApi.endReviewMeeting(sessionId);
-      const res = await mentorApi.proposeReviewContribution(sessionId) as { data?: { proposed: { menteeId: string; name: string; talkSeconds: number }[] } };
+      const res = await mentorApi.proposeReviewContribution(sessionId) as { data?: { proposed: ScoreRow[] } };
       setLive(false);
       setScoring(res?.data?.proposed ?? []);
       await refresh();
@@ -172,10 +173,11 @@ export function ReviewMeetingPanel({ sessionId, isDraft }: { sessionId: string; 
 
 // ── contribution scoring modal ───────────────────────────────────────────────
 function ContributionModal({ proposed, sessionId, onClose, onDone }: {
-  proposed: { menteeId: string; name: string; talkSeconds: number }[];
+  proposed: ScoreRow[];
   sessionId: string; onClose: () => void; onDone: () => void;
 }) {
-  const [picked, setPicked] = useState<Set<string>>(new Set(proposed.map((p) => p.menteeId)));
+  // Pre-check the speakers; the mentor can add anyone else who contributed.
+  const [picked, setPicked] = useState<Set<string>>(new Set(proposed.filter((p) => p.proposed && !p.alreadyAwarded).map((p) => p.menteeId)));
   const [busy, setBusy] = useState(false);
 
   const award = async () => {
@@ -192,14 +194,21 @@ function ContributionModal({ proposed, sessionId, onClose, onDone }: {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !busy && onClose()}>
       <div className="w-full max-w-md rounded-2xl bg-card p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <h3 className="font-semibold text-slate-900 flex items-center gap-1.5"><Trophy className="w-5 h-5 text-amber-500" /> Contribution points</h3>
-        <p className="mt-1 text-sm text-slate-500">Award a point to whoever contributed. We pre-checked those who spoke — adjust as you like.</p>
+        <p className="mt-1 text-sm text-slate-500">Award a point to whoever contributed. Speakers are pre-checked — tick anyone who helped in chat too.</p>
         <div className="mt-3 space-y-1 max-h-64 overflow-y-auto">
-          {proposed.length === 0 && <p className="text-sm text-slate-400">No one crossed the speaking threshold. You can still award manually next time.</p>}
+          {proposed.length === 0 && <p className="text-sm text-slate-400">Nobody attended this session.</p>}
           {proposed.map((p) => (
-            <label key={p.menteeId} className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-slate-50 cursor-pointer">
-              <input type="checkbox" checked={picked.has(p.menteeId)} onChange={(e) => setPicked((s) => { const n = new Set(s); e.target.checked ? n.add(p.menteeId) : n.delete(p.menteeId); return n; })} />
+            <label key={p.menteeId} className={`flex items-center gap-2 rounded-lg px-2 py-1.5 ${p.alreadyAwarded ? 'opacity-50' : 'hover:bg-slate-50 cursor-pointer'}`}>
+              <input
+                type="checkbox"
+                disabled={p.alreadyAwarded}
+                checked={p.alreadyAwarded || picked.has(p.menteeId)}
+                onChange={(e) => setPicked((s) => { const n = new Set(s); e.target.checked ? n.add(p.menteeId) : n.delete(p.menteeId); return n; })}
+              />
               <span className="text-sm text-slate-700 flex-1">{p.name}</span>
-              <span className="text-[11px] text-slate-400 tabular-nums">spoke {Math.round(p.talkSeconds / 60) || 1}m</span>
+              <span className="text-[11px] text-slate-400 tabular-nums">
+                {p.alreadyAwarded ? 'already awarded' : p.talkSeconds > 0 ? `spoke ${Math.round(p.talkSeconds / 60) || 1}m` : 'no speaking time'}
+              </span>
             </label>
           ))}
         </div>
