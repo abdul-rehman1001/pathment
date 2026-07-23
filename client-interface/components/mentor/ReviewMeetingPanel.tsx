@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Video, VideoOff, Loader2, Check, Circle, Trophy } from 'lucide-react';
+import { Video, VideoOff, Loader2, Check, Circle, Trophy, RotateCw } from 'lucide-react';
 import { mentorApi } from '@/lib/services/mentor-api';
 import { JitsiRoom, type JitsiParticipant } from '@/components/shared/JitsiRoom';
 
@@ -33,6 +33,9 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
   const [scoring, setScoring] = useState<ScoreRow[] | null>(null);
   // Once scored, the session is done — don't invite the mentor to reopen it.
   const [scored, setScored] = useState(false);
+  // Bumping this remounts the Jitsi iframe — a clean way to clear meet.jit.si's
+  // promo overlay without reloading the whole review page.
+  const [videoKey, setVideoKey] = useState(0);
 
   // Talk-time tracking (host-observed). id → seconds, id → displayName.
   const talkById = useRef<Map<string, number>>(new Map());
@@ -158,9 +161,14 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
             </button>
           )
         ) : (
-          <button onClick={endAndScore} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50">
-            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <VideoOff className="w-3.5 h-3.5" />} End &amp; score
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setVideoKey((k) => k + 1)} title="Reload the call (clears the meet.jit.si promo)" className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:border-brand-300 hover:text-brand-700">
+              <RotateCw className="w-3.5 h-3.5" /> Reload video
+            </button>
+            <button onClick={endAndScore} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50">
+              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <VideoOff className="w-3.5 h-3.5" />} End &amp; score
+            </button>
+          </div>
         )}
       </div>
 
@@ -168,6 +176,7 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
         <div className="grid gap-3 lg:grid-cols-[1fr_240px]">
           <div className="h-[440px]">
             <JitsiRoom
+              key={videoKey}
               domain={meeting.domain} room={meeting.room} displayName={meeting.displayName} avatarUrl={meeting.avatarUrl}
               onParticipantJoined={onParticipant} onDominantSpeaker={onDominant}
               onError={(m) => toast.error(m)}
