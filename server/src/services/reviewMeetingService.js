@@ -60,6 +60,7 @@ class ReviewMeetingService {
   // ── host: open / close the room ──────────────────────────────────────────
   /** Start (or return) the live room for a session. Idempotent. */
   async startMeeting(mentorId, sessionId, { externalUrl } = {}) {
+    if (!cfg.enabled) throw new ForbiddenError('Live review video is not enabled');
     const session = await this._hostSession(mentorId, sessionId);
     const patch = {};
     if (!session.meetingRoom) {
@@ -87,6 +88,7 @@ class ReviewMeetingService {
 
   /** Host's embed config + live roster (attendance/talk state per mentee). */
   async hostView(mentorId, sessionId) {
+    if (!cfg.enabled) return { enabled: false };
     const session = await this._hostSession(mentorId, sessionId);
     // Reconcile first so the roster covers EVERY clan mentee, not just those who
     // already self-reported — otherwise the mentor can't mark a direct joiner
@@ -107,12 +109,13 @@ class ReviewMeetingService {
       talkSeconds: e.talkSeconds,
       contributionPoints: e.contributionPoints,
     }));
-    return { meeting: this._joinConfig(session, this._fullName(host), host && host.profilePictureUrl), roster, live: !!session.meetingStartedAt && !session.meetingEndedAt };
+    return { enabled: true, meeting: this._joinConfig(session, this._fullName(host), host && host.profilePictureUrl), roster, live: !!session.meetingStartedAt && !session.meetingEndedAt };
   }
 
   // ── mentee: discover + join + leave ──────────────────────────────────────
   /** The live review the signed-in mentee can join right now (or null). */
   async activeForMentee(userId) {
+    if (!cfg.enabled) return null;
     const clanIds = (await models.ClanMembership.findAll({
       where: { userId, role: 'mentee', status: { [Op.in]: ['active', 'paused'] } },
       attributes: ['clanId'], raw: true,

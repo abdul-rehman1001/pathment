@@ -29,6 +29,9 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
   const [roster, setRoster] = useState<RosterRow[]>([]);
   const [live, setLive] = useState(false);
   const [loading, setLoading] = useState(true);
+  // The whole live-video feature is behind a server flag (self-hosted Jitsi not
+  // wired in prod yet). When the server reports it off, render nothing.
+  const [disabled, setDisabled] = useState(false);
   const [busy, setBusy] = useState(false);
   const [scoring, setScoring] = useState<ScoreRow[] | null>(null);
   // Once scored, the session is done — don't invite the mentor to reopen it.
@@ -45,7 +48,8 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
 
   const refresh = useCallback(async () => {
     try {
-      const res = await mentorApi.getReviewMeeting(liveSessionId) as { data?: { meeting: Meeting; roster: RosterRow[]; live: boolean } };
+      const res = await mentorApi.getReviewMeeting(liveSessionId) as { data?: { enabled?: boolean; meeting: Meeting; roster: RosterRow[]; live: boolean } };
+      if (res?.data?.enabled === false) { setDisabled(true); return; }
       setMeeting(res?.data?.meeting ?? null);
       setRoster(res?.data?.roster ?? []);
       setLive(!!res?.data?.live);
@@ -140,6 +144,8 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
     try { await mentorApi.markReviewPresent(liveSessionId, r.menteeId, present); } catch { toast.error('Could not update attendance'); refresh(); }
   };
 
+  // Feature flag off → the panel doesn't exist for the mentor at all.
+  if (disabled) return null;
   if (loading) return <div className="py-4 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-brand-600" /></div>;
 
   const presentCount = roster.filter((r) => r.attendance === 'present').length;

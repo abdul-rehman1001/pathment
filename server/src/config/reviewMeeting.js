@@ -4,6 +4,11 @@
  * Jitsi or JaaS later without touching the code.
  */
 module.exports = {
+  // Master switch for the whole live-video feature. OFF by default so it can
+  // ship to production dormant and only light up where explicitly enabled
+  // (e.g. staging, or production once a self-hosted Jitsi is ready). Set
+  // REVIEW_MEETING_ENABLED=true to turn it on.
+  enabled: process.env.REVIEW_MEETING_ENABLED === 'true',
   // 'jitsi' today; the room URL is built from the domain below.
   provider: process.env.REVIEW_MEETING_PROVIDER || 'jitsi',
   // The public free service by default; override to self-host / JaaS.
