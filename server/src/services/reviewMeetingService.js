@@ -88,7 +88,7 @@ class ReviewMeetingService {
 
   /** Host's embed config + live roster (attendance/talk state per mentee). */
   async hostView(mentorId, sessionId) {
-    if (!cfg.enabled) return { enabled: false };
+    if (!cfg.enabled) return { enabled: false, comingSoon: cfg.comingSoon };
     const session = await this._hostSession(mentorId, sessionId);
     // Reconcile first so the roster covers EVERY clan mentee, not just those who
     // already self-reported — otherwise the mentor can't mark a direct joiner

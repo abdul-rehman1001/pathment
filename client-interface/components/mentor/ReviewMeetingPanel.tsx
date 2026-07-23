@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Video, VideoOff, Loader2, Check, Circle, Trophy, RotateCw } from 'lucide-react';
+import { Video, VideoOff, Loader2, Check, Circle, Trophy, RotateCw, Sparkles, Users, Radio } from 'lucide-react';
 import { mentorApi } from '@/lib/services/mentor-api';
 import { JitsiRoom, type JitsiParticipant } from '@/components/shared/JitsiRoom';
 
@@ -30,8 +30,10 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
   const [live, setLive] = useState(false);
   const [loading, setLoading] = useState(true);
   // The whole live-video feature is behind a server flag (self-hosted Jitsi not
-  // wired in prod yet). When the server reports it off, render nothing.
+  // wired in prod yet). When the server reports it off, render nothing — unless
+  // it also reports `comingSoon`, in which case we show an inviting teaser.
   const [disabled, setDisabled] = useState(false);
+  const [comingSoon, setComingSoon] = useState(false);
   const [busy, setBusy] = useState(false);
   const [scoring, setScoring] = useState<ScoreRow[] | null>(null);
   // Once scored, the session is done — don't invite the mentor to reopen it.
@@ -48,8 +50,8 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
 
   const refresh = useCallback(async () => {
     try {
-      const res = await mentorApi.getReviewMeeting(liveSessionId) as { data?: { enabled?: boolean; meeting: Meeting; roster: RosterRow[]; live: boolean } };
-      if (res?.data?.enabled === false) { setDisabled(true); return; }
+      const res = await mentorApi.getReviewMeeting(liveSessionId) as { data?: { enabled?: boolean; comingSoon?: boolean; meeting: Meeting; roster: RosterRow[]; live: boolean } };
+      if (res?.data?.enabled === false) { setDisabled(true); setComingSoon(!!res?.data?.comingSoon); return; }
       setMeeting(res?.data?.meeting ?? null);
       setRoster(res?.data?.roster ?? []);
       setLive(!!res?.data?.live);
@@ -144,8 +146,9 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
     try { await mentorApi.markReviewPresent(liveSessionId, r.menteeId, present); } catch { toast.error('Could not update attendance'); refresh(); }
   };
 
-  // Feature flag off → the panel doesn't exist for the mentor at all.
-  if (disabled) return null;
+  // Feature flag off. In production we tease it ("Coming soon"); everywhere else
+  // the panel simply doesn't exist for the mentor.
+  if (disabled) return comingSoon ? <ComingSoonTeaser /> : null;
   if (loading) return <div className="py-4 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-brand-600" /></div>;
 
   const presentCount = roster.filter((r) => r.attendance === 'present').length;
@@ -218,6 +221,48 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
       )}
 
       {scoring && <ContributionModal proposed={scoring} sessionId={liveSessionId} onClose={() => { setScoring(null); setScored(true); }} onDone={() => { setScoring(null); setScored(true); refresh(); }} />}
+    </div>
+  );
+}
+
+// ── "coming soon" teaser (shown in production while the feature is disabled) ──
+function ComingSoonTeaser() {
+  return (
+    <div className="relative overflow-hidden rounded-xl border border-brand-200 bg-gradient-to-br from-brand-50 via-card to-card p-5">
+      <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-brand-600 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm">
+        <Sparkles className="h-3 w-3" /> Coming soon
+      </span>
+      <div className="flex items-start gap-3">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-100">
+          <Video className="h-5 w-5 text-brand-600" />
+        </div>
+        <div className="min-w-0 pr-20">
+          <h3 className="text-sm font-semibold text-slate-900">Live review calls</h3>
+          <p className="mt-1 text-xs leading-relaxed text-slate-500">
+            Run your cohort review over live video — right inside Pathment. No links to juggle, and
+            everyone joins as themselves.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <span className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-600">
+              <Radio className="h-3 w-3 text-brand-500" /> One-click start
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-600">
+              <Users className="h-3 w-3 text-brand-500" /> Auto attendance
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-600">
+              <Trophy className="h-3 w-3 text-amber-500" /> Contribution points
+            </span>
+          </div>
+        </div>
+      </div>
+      <button
+        type="button"
+        disabled
+        title="This feature is launching soon"
+        className="mt-4 inline-flex w-full cursor-not-allowed items-center justify-center gap-1.5 rounded-lg bg-brand-600/60 px-3 py-2 text-xs font-semibold text-white"
+      >
+        <Video className="h-3.5 w-3.5" /> Start meeting
+      </button>
     </div>
   );
 }

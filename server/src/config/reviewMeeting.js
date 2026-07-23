@@ -9,6 +9,11 @@ module.exports = {
   // (e.g. staging, or production once a self-hosted Jitsi is ready). Set
   // REVIEW_MEETING_ENABLED=true to turn it on.
   enabled: process.env.REVIEW_MEETING_ENABLED === 'true',
+  // When the feature is OFF, show an inviting "Coming soon" teaser instead of
+  // hiding the panel entirely — a marketing tease so mentors know it's on the
+  // way. Set REVIEW_MEETING_COMING_SOON=true in production (where enabled=false)
+  // and leave it unset in staging (where enabled=true and it actually works).
+  comingSoon: process.env.REVIEW_MEETING_COMING_SOON === 'true',
   // 'jitsi' today; the room URL is built from the domain below.
   provider: process.env.REVIEW_MEETING_PROVIDER || 'jitsi',
   // The public free service by default; override to self-host / JaaS.
