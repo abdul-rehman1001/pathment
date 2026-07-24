@@ -60,7 +60,28 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
     finally { setLoading(false); }
   }, [liveSessionId]);
 
-  useEffect(() => { if (liveSessionId) refresh(); else setLoading(false); }, [refresh, liveSessionId]);
+  // Check feature availability FIRST, independent of any session. Today's review
+  // is a draft (empty sessionId) until the mentor acts, so gating only inside
+  // refresh() (which needs a session) let the panel slip through and show the
+  // live UI even when the feature is off — this is what leaked it into prod.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await mentorApi.getReviewMeetingConfig() as { data?: { enabled?: boolean; comingSoon?: boolean } };
+        if (cancelled) return;
+        if (res?.data?.enabled === false) {
+          setDisabled(true);
+          setComingSoon(!!res?.data?.comingSoon);
+          setLoading(false);
+          return;
+        }
+      } catch { /* fall through to the session-based path */ }
+      if (cancelled) return;
+      if (liveSessionId) refresh(); else setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [refresh, liveSessionId]);
   // While live, refresh the roster so self-reported joins appear.
   useEffect(() => {
     if (!live) return;

@@ -63,6 +63,9 @@ export const mentorApi = {
   startReviewMeeting: (id: string, externalUrl?: string) =>
     apiClient.post(`/mentor/review/sessions/${id}/meeting/start`, { externalUrl }),
   endReviewMeeting: (id: string) => apiClient.post(`/mentor/review/sessions/${id}/meeting/end`, {}),
+  // Feature availability, independent of any session — lets the panel decide to
+  // show / hide / "coming soon" before a review session exists (draft state).
+  getReviewMeetingConfig: () => apiClient.get(`/mentor/review/meeting-config`),
   getReviewMeeting: (id: string) => apiClient.get(`/mentor/review/sessions/${id}/meeting`),
   markReviewPresent: (id: string, menteeId: string, present: boolean) =>
     apiClient.put(`/mentor/review/sessions/${id}/meeting/present/${menteeId}`, { present }),

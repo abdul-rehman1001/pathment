@@ -1,6 +1,14 @@
 const { catchAsync } = require('../middlewares/errorHandler');
 const { successResponse } = require('../utils/responses');
 const svc = require('../services/reviewMeetingService');
+const cfg = require('../config/reviewMeeting');
+
+// Feature availability, independent of any session — the mentor panel needs to
+// know whether to render (or show "coming soon") BEFORE a session exists, i.e.
+// while today's review is still a draft. Cheap, no DB.
+const config = catchAsync(async (req, res) => {
+  res.status(200).json(successResponse('Review meeting config', { enabled: cfg.enabled, comingSoon: cfg.comingSoon }));
+});
 
 // ── Host (mentor) ──────────────────────────────────────────────────────────
 const start = catchAsync(async (req, res) => {
@@ -49,4 +57,4 @@ const leave = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Left', result));
 });
 
-module.exports = { start, end, hostView, markPresent, recordTalk, proposeContribution, finalizeContribution, active, join, leave };
+module.exports = { config, start, end, hostView, markPresent, recordTalk, proposeContribution, finalizeContribution, active, join, leave };
