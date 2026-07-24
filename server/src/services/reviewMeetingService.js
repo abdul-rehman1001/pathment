@@ -5,6 +5,10 @@ const { NotFoundError, ForbiddenError, ValidationError } = require('../utils/err
 const authzService = require('./authzService');
 const cfg = require('../config/reviewMeeting');
 
+// A live meeting older than this with no explicit end is treated as abandoned —
+// stops a never-ended meeting from showing the mentee "Join" banner forever.
+const MEETING_STALE_HOURS = 3;
+
 /**
  * reviewMeetingService — live video (Jitsi) for a cohort review.
  *
@@ -122,11 +126,16 @@ class ReviewMeetingService {
     })).map((m) => m.clanId).filter(Boolean);
     if (!clanIds.length) return null;
 
+    // Staleness guard: a meeting the mentor never cleanly ended (closed the tab
+    // / hung up in Jitsi instead of "End & score") would otherwise leave
+    // meetingEndedAt null forever and show the "Join review" banner to mentees
+    // indefinitely. Only treat a meeting as live if it started recently.
+    const freshCutoff = new Date(Date.now() - MEETING_STALE_HOURS * 60 * 60 * 1000);
     const session = await models.CohortReviewSession.findOne({
       where: {
         clanId: { [Op.in]: clanIds },
         status: 'in_progress',
-        meetingStartedAt: { [Op.ne]: null },
+        meetingStartedAt: { [Op.gt]: freshCutoff },
         meetingEndedAt: null,
       },
       order: [['meeting_started_at', 'DESC']],
