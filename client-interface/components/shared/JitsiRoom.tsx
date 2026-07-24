@@ -61,7 +61,11 @@ export function JitsiRoom({
           parentNode: containerRef.current,
           userInfo: displayName ? { displayName } : undefined,
           configOverwrite: {
+            // Both keys: `prejoinPageEnabled` is the legacy flag, `prejoinConfig`
+            // is what current Jitsi (2.0.10000+) reads — set both so the host and
+            // mentees drop straight into the room, no "Join meeting" gate.
             prejoinPageEnabled: false,
+            prejoinConfig: { enabled: false },
             disableDeepLinking: true,
             startWithAudioMuted: false,
             // Cut the provider's promos/analytics as far as it allows.
