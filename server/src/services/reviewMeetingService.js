@@ -74,7 +74,11 @@ class ReviewMeetingService {
       patch.meetingRoom = `pathment-review-${session.id.slice(0, 8)}-${crypto.randomBytes(6).toString('hex')}`;
       patch.meetingUrl = `https://${cfg.jitsiDomain}/${patch.meetingRoom}`;
     }
-    if (!session.meetingStartedAt) patch.meetingStartedAt = new Date();
+    // Always (re)stamp the start — opening or RESUMING the room means it's live
+    // "now". Without this a resumed meeting keeps its original (old) start time,
+    // and the mentee-facing staleness check (activeForMentee, 3h window) would
+    // treat a genuinely live call as stale and hide the Join banner.
+    patch.meetingStartedAt = new Date();
     patch.meetingEndedAt = null; // reopening clears a prior end
     if (externalUrl !== undefined) patch.externalMeetingUrl = externalUrl || null;
     if (Object.keys(patch).length) await session.update(patch);
