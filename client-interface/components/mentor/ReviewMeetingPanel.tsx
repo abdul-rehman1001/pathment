@@ -11,6 +11,9 @@ interface RosterRow { menteeId: string; name: string; attendance: string | null;
 interface ScoreRow { menteeId: string; name: string; talkSeconds: number; proposed: boolean; alreadyAwarded: boolean }
 interface Meeting { sessionId: string; domain: string; room: string; url: string; displayName: string | null; avatarUrl: string | null; externalUrl: string | null; startedAt: string | null; endedAt: string | null }
 
+// Talk time: seconds under a minute (the contribution bar is 20s), minutes above.
+const fmtTalk = (s: number) => (s < 60 ? `${s}s` : `${Math.round(s / 60)}m`);
+
 /**
  * Host (mentor) side of the live cohort review. Starts the Jitsi room, embeds
  * it, shows a live roster, tracks dominant-speaker time as a contribution
@@ -262,7 +265,7 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
                     ? <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                     : <Circle className="w-3.5 h-3.5 text-slate-300 shrink-0" />}
                   <span className="text-sm text-slate-700 truncate flex-1">{r.name}</span>
-                  {r.talkSeconds > 0 && <span className="text-[11px] text-slate-400 tabular-nums">{Math.round(r.talkSeconds / 60) || 1}m</span>}
+                  {r.talkSeconds > 0 && <span className="text-[11px] text-slate-400 tabular-nums">{fmtTalk(r.talkSeconds)}</span>}
                 </button>
               ))}
             </div>
@@ -327,7 +330,7 @@ function ContributionModal({ proposed, sessionId, onClose, onDone }: {
               />
               <span className="text-sm text-slate-700 flex-1">{p.name}</span>
               <span className="text-[11px] text-slate-400 tabular-nums">
-                {p.alreadyAwarded ? 'already awarded' : p.talkSeconds > 0 ? `spoke ${Math.round(p.talkSeconds / 60) || 1}m` : 'no speaking time'}
+                {p.alreadyAwarded ? 'already awarded' : p.talkSeconds > 0 ? `spoke ${fmtTalk(p.talkSeconds)}` : 'no speaking time'}
               </span>
             </label>
           ))}

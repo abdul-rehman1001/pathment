@@ -20,7 +20,7 @@ module.exports = {
   jitsiDomain: process.env.JITSI_DOMAIN || 'meet.jit.si',
   // A mentee who was the dominant speaker for at least this long earns the
   // (single) contribution point — a proxy the mentor can override.
-  contributionThresholdSeconds: Number(process.env.REVIEW_CONTRIBUTION_SECONDS) || 60,
+  contributionThresholdSeconds: Number(process.env.REVIEW_CONTRIBUTION_SECONDS) || 20,
   // Points granted for contributing in a review.
   contributionPoints: Number(process.env.REVIEW_CONTRIBUTION_POINTS) || 1,
 };
