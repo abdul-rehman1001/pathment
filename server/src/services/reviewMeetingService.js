@@ -142,7 +142,18 @@ class ReviewMeetingService {
   async setAttendanceTracking(mentorId, sessionId, enabled) {
     const session = await this._hostSession(mentorId, sessionId);
     await session.update({ attendanceTracking: !!enabled });
-    return { attendanceTracking: !!enabled };
+    let marked = 0;
+    if (enabled) {
+      // Turning tracking ON mid-call must credit whoever is ALREADY in the room
+      // (they joined before the toggle, so selfPresent never marked them). Mark
+      // present anyone with a recorded join, except an explicit 'excused'.
+      const [count] = await models.CohortReviewEntry.update(
+        { attendance: 'present', autoPresent: true },
+        { where: { sessionId, joinedAt: { [Op.ne]: null }, attendance: { [Op.ne]: 'excused' } } }
+      );
+      marked = count || 0;
+    }
+    return { attendanceTracking: !!enabled, marked };
   }
 
   // ── mentee: discover + join + leave ──────────────────────────────────────
