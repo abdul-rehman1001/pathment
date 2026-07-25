@@ -73,6 +73,10 @@ export function JitsiRoom({
             // mentees drop straight into the room, no "Join meeting" gate.
             prejoinPageEnabled: false,
             prejoinConfig: { enabled: false },
+            // Force calls through the bridge (no P2P). Dominant-speaker detection —
+            // which drives review talk-time/contribution — is a bridge feature and
+            // is silent in a 2-person P2P call.
+            p2p: { enabled: false },
             disableDeepLinking: true,
             startWithAudioMuted: false,
             // Cut the provider's promos/analytics as far as it allows.
