@@ -24,6 +24,15 @@ export function ReviewJoinBar() {
   const [dismissed, setDismissed] = useState<string | null>(null);
   const joinedAtRef = useRef<number | null>(null);
   const leavingRef = useRef(false);
+  // Own dominant-speaker time: talkRef = accumulated seconds, speakingSince =
+  // when the current speaking span started (null when not speaking).
+  const talkRef = useRef(0);
+  const speakingSinceRef = useRef<number | null>(null);
+  const currentTalk = () => Math.round(talkRef.current + (speakingSinceRef.current ? (Date.now() - speakingSinceRef.current) / 1000 : 0));
+  const onSelfDominant = (speaking: boolean) => {
+    if (speaking) { if (!speakingSinceRef.current) speakingSinceRef.current = Date.now(); }
+    else if (speakingSinceRef.current) { talkRef.current += (Date.now() - speakingSinceRef.current) / 1000; speakingSinceRef.current = null; }
+  };
 
   const poll = useCallback(async () => {
     try {
@@ -48,6 +57,7 @@ export function ReviewJoinBar() {
     if (!active) return;
     joinedAtRef.current = Date.now();
     leavingRef.current = false;
+    talkRef.current = 0; speakingSinceRef.current = null;
     try { await menteeApi.joinReview(active.sessionId); } catch { /* best-effort */ }
   };
 
@@ -58,7 +68,7 @@ export function ReviewJoinBar() {
   // re-fires "joined"). Also re-marks present if tracking is flipped on mid-call.
   useEffect(() => {
     if (!open || !active) return;
-    const hb = setInterval(() => { menteeApi.joinReview(active.sessionId).catch(() => {}); }, 15_000);
+    const hb = setInterval(() => { menteeApi.joinReview(active.sessionId, currentTalk()).catch(() => {}); }, 15_000);
     return () => clearInterval(hb);
   }, [open, active]);
   // Leaving can be triggered twice (closing the panel AND Jitsi's own
@@ -69,6 +79,9 @@ export function ReviewJoinBar() {
     const secs = joinedAtRef.current ? Math.round((Date.now() - joinedAtRef.current) / 1000) : 0;
     joinedAtRef.current = null;
     setOpen(false);
+    // Flush the final talk time before leaving, then record leave/presence.
+    try { await menteeApi.joinReview(active.sessionId, currentTalk()); } catch { /* best-effort */ }
+    speakingSinceRef.current = null;
     try { await menteeApi.leaveReview(active.sessionId, secs); } catch { /* best-effort */ }
   };
 
@@ -115,6 +128,7 @@ export function ReviewJoinBar() {
                 displayName={active.displayName}
                 onJoined={onJoined}
                 onLeft={onLeft}
+                onSelfDominantChange={onSelfDominant}
               />
             </div>
           </div>

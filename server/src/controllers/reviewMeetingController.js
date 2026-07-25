@@ -53,7 +53,7 @@ const active = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Active review', { meeting }));
 });
 const join = catchAsync(async (req, res) => {
-  const result = await svc.selfPresent(req.user.id, req.params.id);
+  const result = await svc.selfPresent(req.user.id, req.params.id, { talkSeconds: req.body?.talkSeconds });
   res.status(200).json(successResponse('Joined', result));
 });
 const leave = catchAsync(async (req, res) => {

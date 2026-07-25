@@ -202,7 +202,7 @@ class ReviewMeetingService {
   }
 
   /** Mark the AUTHENTICATED mentee present (self-report). Only marks themselves. */
-  async selfPresent(userId, sessionId) {
+  async selfPresent(userId, sessionId, { talkSeconds } = {}) {
     const session = await models.CohortReviewSession.findByPk(sessionId);
     if (!session) throw new NotFoundError('Review session not found');
     if (!(await this._menteeInClan(userId, session))) throw new ForbiddenError('You are not a mentee of this clan');
@@ -212,6 +212,10 @@ class ReviewMeetingService {
       defaults: { sessionId, menteeId: userId, status: 'pending' },
     });
     const patch = {};
+    // Mentee self-reports their own dominant-speaker time (heartbeat). Monotonic —
+    // never lower it; the mentor's name-based tracking also feeds the same field.
+    const ts = Math.max(0, Math.min(24 * 3600, parseInt(talkSeconds, 10) || 0));
+    if (ts > (entry.talkSeconds || 0)) patch.talkSeconds = ts;
     // Attendance is only touched when the mentor turned tracking ON for this call
     // (a review, not a general meeting). When on, JOINING is live proof of
     // presence, so mark present even over a prior 'absent' — but respect an

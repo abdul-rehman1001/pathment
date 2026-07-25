@@ -33,7 +33,7 @@ export interface JitsiParticipant { id: string; displayName?: string }
  * the contribution signal). All wiring is disposed on unmount.
  */
 export function JitsiRoom({
-  domain, room, displayName, avatarUrl, onJoined, onLeft, onReadyToClose, onParticipantJoined, onParticipantLeft, onDominantSpeaker, onError,
+  domain, room, displayName, avatarUrl, onJoined, onLeft, onReadyToClose, onParticipantJoined, onParticipantLeft, onDominantSpeaker, onSelfDominantChange, onError,
 }: {
   domain: string;
   room: string;
@@ -49,10 +49,14 @@ export function JitsiRoom({
   onParticipantJoined?: (p: JitsiParticipant) => void;
   onParticipantLeft?: (p: JitsiParticipant) => void;
   onDominantSpeaker?: (participantId: string) => void;
+  /** Fires true when the LOCAL user becomes the dominant speaker, false when not.
+   *  Lets a mentee self-report their own talk time without name matching. */
+  onSelfDominantChange?: (speaking: boolean) => void;
   onError?: (message: string) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const apiRef = useRef<any>(null);
+  const localIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     let disposed = false;
@@ -92,7 +96,8 @@ export function JitsiRoom({
         // only fires for people who arrive after us, so without this a mentee who
         // joined before the host opened the panel would never be identifiable
         // (and so could never be credited for speaking).
-        api.addListener('videoConferenceJoined', () => {
+        api.addListener('videoConferenceJoined', (e: { id?: string }) => {
+          if (e?.id) localIdRef.current = e.id; // our own participant id (for self-dominant)
           try {
             const existing = api.getParticipantsInfo?.() || [];
             for (const p of existing) {
@@ -115,7 +120,10 @@ export function JitsiRoom({
           const name = e.displayName || e.displayname;
           if (e.id && name) onParticipantJoined?.({ id: e.id, displayName: name });
         });
-        if (onDominantSpeaker) api.addListener('dominantSpeakerChanged', (e: { id: string }) => {
+        if (onDominantSpeaker || onSelfDominantChange) api.addListener('dominantSpeakerChanged', (e: { id: string }) => {
+          // Self-report path (robust, no name matching): tell the local user when
+          // THEY are / aren't the dominant speaker.
+          onSelfDominantChange?.(e.id === localIdRef.current);
           // Resolve the speaker's CURRENT name right now (participantJoined may have
           // fired before the name was set) so their talk time can be attributed.
           try {
@@ -124,7 +132,7 @@ export function JitsiRoom({
             const resolved = name?.displayName || name?.formattedDisplayName;
             if (resolved) onParticipantJoined?.({ id: e.id, displayName: resolved });
           } catch { /* best-effort */ }
-          onDominantSpeaker(e.id);
+          onDominantSpeaker?.(e.id);
         });
       })
       .catch((e) => onError?.(e?.message || 'Could not start the video'));
