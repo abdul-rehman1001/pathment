@@ -50,6 +50,17 @@ export function ReviewJoinBar() {
     leavingRef.current = false;
     try { await menteeApi.joinReview(active.sessionId); } catch { /* best-effort */ }
   };
+
+  // Presence heartbeat: while in the call, keep re-reporting so the server always
+  // has a fresh "in this call" signal. This is what makes the mentor's "Track
+  // attendance" toggle reliably mark whoever is CURRENTLY in the room — even a
+  // mentee who stayed connected across a mentor restart (whose Jitsi client never
+  // re-fires "joined"). Also re-marks present if tracking is flipped on mid-call.
+  useEffect(() => {
+    if (!open || !active) return;
+    const hb = setInterval(() => { menteeApi.joinReview(active.sessionId).catch(() => {}); }, 15_000);
+    return () => clearInterval(hb);
+  }, [open, active]);
   // Leaving can be triggered twice (closing the panel AND Jitsi's own
   // videoConferenceLeft) — report it once so presence isn't double-counted.
   const onLeft = async () => {
