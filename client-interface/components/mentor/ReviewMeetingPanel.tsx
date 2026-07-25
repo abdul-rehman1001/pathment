@@ -14,6 +14,11 @@ interface Meeting { sessionId: string; domain: string; room: string; url: string
 // Talk time: seconds under a minute (the contribution bar is 20s), minutes above.
 const fmtTalk = (s: number) => (s < 60 ? `${s}s` : `${Math.round(s / 60)}m`);
 
+// Max seconds credited per continuous "dominant speaker" span. Jitsi keeps the
+// last speaker "dominant" through silence, so an uncapped span counts that
+// silence — cap it so a brief utterance can't read as minutes.
+const SPEAK_SPAN_CAP = 15;
+
 /**
  * Host (mentor) side of the live cohort review. Starts the Jitsi room, embeds
  * it, shows a live roster, tracks dominant-speaker time as a contribution
@@ -104,16 +109,16 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
   }, [roster]);
 
   const flushTalk = useCallback(async () => {
-    // Close the current speaking span.
-    if (speakingId.current) {
-      const add = Math.round((Date.now() - speakingSince.current) / 1000);
-      talkById.current.set(speakingId.current, (talkById.current.get(speakingId.current) || 0) + Math.max(0, add));
-      speakingSince.current = Date.now();
-    }
+    // Report closed spans + the OPEN span (capped) without closing it, so the
+    // per-span cap isn't defeated by the periodic flush re-opening the span.
     const items: { menteeId: string; seconds: number }[] = [];
     for (const [id, secs] of talkById.current.entries()) {
+      let total = secs;
+      if (speakingId.current === id && speakingSince.current) {
+        total += Math.min(SPEAK_SPAN_CAP, (Date.now() - speakingSince.current) / 1000);
+      }
       const menteeId = menteeIdForName(nameById.current.get(id));
-      if (menteeId) items.push({ menteeId, seconds: secs });
+      if (menteeId) items.push({ menteeId, seconds: Math.round(total) });
     }
     if (items.length) { try { await mentorApi.recordReviewTalkTime(liveSessionId, items); } catch { /* retry next flush */ } }
   }, [liveSessionId, menteeIdForName]);
@@ -166,10 +171,12 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
   }, [flushTalk, liveSessionId, refresh]);
 
   const onDominant = (id: string) => {
-    if (speakingId.current && speakingId.current !== id) {
-      const add = Math.round((Date.now() - speakingSince.current) / 1000);
+    // Close the previous span (capped) and open the new one.
+    if (speakingId.current && speakingId.current !== id && speakingSince.current) {
+      const add = Math.min(SPEAK_SPAN_CAP, (Date.now() - speakingSince.current) / 1000);
       talkById.current.set(speakingId.current, (talkById.current.get(speakingId.current) || 0) + Math.max(0, add));
     }
+    if (!talkById.current.has(id)) talkById.current.set(id, 0);
     speakingId.current = id;
     speakingSince.current = Date.now();
   };

@@ -18,6 +18,10 @@ interface ActiveReview {
  * (identity pre-set) and self-reports presence — the mentee's own client tells
  * the server "I'm here," so attendance is trustworthy without name-matching.
  */
+// Max seconds credited for one continuous "dominant speaker" span — bounds the
+// silence tail Jitsi keeps attributing to the last speaker.
+const SPEAK_SPAN_CAP = 15;
+
 export function ReviewJoinBar() {
   const [active, setActive] = useState<ActiveReview | null>(null);
   const [open, setOpen] = useState(false);
@@ -28,10 +32,14 @@ export function ReviewJoinBar() {
   // when the current speaking span started (null when not speaking).
   const talkRef = useRef(0);
   const speakingSinceRef = useRef<number | null>(null);
-  const currentTalk = () => Math.round(talkRef.current + (speakingSinceRef.current ? (Date.now() - speakingSinceRef.current) / 1000 : 0));
+  // Jitsi only tells us "you're the dominant speaker" — which stays true through
+  // silence until someone else speaks. So cap each continuous span: a real
+  // utterance is bounded, and this stops trailing silence inflating the number.
+  const spanSecs = () => (speakingSinceRef.current ? Math.min(SPEAK_SPAN_CAP, (Date.now() - speakingSinceRef.current) / 1000) : 0);
+  const currentTalk = () => Math.round(talkRef.current + spanSecs());
   const onSelfDominant = (speaking: boolean) => {
     if (speaking) { if (!speakingSinceRef.current) speakingSinceRef.current = Date.now(); }
-    else if (speakingSinceRef.current) { talkRef.current += (Date.now() - speakingSinceRef.current) / 1000; speakingSinceRef.current = null; }
+    else if (speakingSinceRef.current) { talkRef.current += spanSecs(); speakingSinceRef.current = null; }
   };
 
   const poll = useCallback(async () => {
