@@ -67,6 +67,7 @@ export const mentorApi = {
   // show / hide / "coming soon" before a review session exists (draft state).
   getReviewMeetingConfig: () => apiClient.get(`/mentor/review/meeting-config`),
   getReviewMeeting: (id: string) => apiClient.get(`/mentor/review/sessions/${id}/meeting`),
+  setReviewAttendanceTracking: (id: string, enabled: boolean) => apiClient.put(`/mentor/review/sessions/${id}/meeting/attendance-tracking`, { enabled }),
   markReviewPresent: (id: string, menteeId: string, present: boolean) =>
     apiClient.put(`/mentor/review/sessions/${id}/meeting/present/${menteeId}`, { present }),
   recordReviewTalkTime: (id: string, items: { menteeId: string; seconds: number }[]) =>

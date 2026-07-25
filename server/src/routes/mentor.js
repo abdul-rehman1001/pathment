@@ -65,6 +65,7 @@ router.get('/review/meeting-config', mentorOnly, reviewMeetingController.config)
 router.post('/review/sessions/:id/meeting/start', mentorOnly, reviewMeetingController.start);
 router.post('/review/sessions/:id/meeting/end', mentorOnly, reviewMeetingController.end);
 router.get('/review/sessions/:id/meeting', mentorOnly, reviewMeetingController.hostView);
+router.put('/review/sessions/:id/meeting/attendance-tracking', mentorOnly, reviewMeetingController.setAttendanceTracking);
 router.put('/review/sessions/:id/meeting/present/:menteeId', mentorOnly, reviewMeetingController.markPresent);
 router.post('/review/sessions/:id/meeting/talk-time', mentorOnly, reviewMeetingController.recordTalk);
 router.get('/review/sessions/:id/meeting/contribution', mentorOnly, reviewMeetingController.proposeContribution);

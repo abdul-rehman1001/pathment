@@ -135,7 +135,14 @@ class ReviewMeetingService {
       talkSeconds: e.talkSeconds,
       contributionPoints: e.contributionPoints,
     }));
-    return { enabled: true, meeting: this._joinConfig(session, this._fullName(host), host && host.profilePictureUrl), roster, live: !!session.meetingStartedAt && !session.meetingEndedAt };
+    return { enabled: true, meeting: this._joinConfig(session, this._fullName(host), host && host.profilePictureUrl), roster, live: !!session.meetingStartedAt && !session.meetingEndedAt, attendanceTracking: !!session.attendanceTracking };
+  }
+
+  /** Mentor toggles whether joining this review auto-marks mentees present. */
+  async setAttendanceTracking(mentorId, sessionId, enabled) {
+    const session = await this._hostSession(mentorId, sessionId);
+    await session.update({ attendanceTracking: !!enabled });
+    return { attendanceTracking: !!enabled };
   }
 
   // ── mentee: discover + join + leave ──────────────────────────────────────
@@ -179,14 +186,20 @@ class ReviewMeetingService {
       defaults: { sessionId, menteeId: userId, status: 'pending' },
     });
     const patch = {};
-    // Never override a mentor's manual absent/excused; only auto-fill an unset one.
-    if (!entry.attendance || (entry.attendance === 'present')) { patch.attendance = 'present'; patch.autoPresent = true; }
+    // Attendance is only touched when the mentor turned tracking ON for this call
+    // (a review, not a general meeting). When on, JOINING is live proof of
+    // presence, so mark present even over a prior 'absent' — but respect an
+    // explicit 'excused'. When off, we just record the join (no attendance).
+    if (session.attendanceTracking && entry.attendance !== 'excused') {
+      patch.attendance = 'present';
+      patch.autoPresent = true;
+    }
     if (!entry.joinedAt) patch.joinedAt = new Date();
     if (Object.keys(patch).length) await entry.update(patch);
 
     // Re-engage a paused mentee who shows up — reuse the existing behaviour.
     require('./mentorshipPauseService').autoResumeIfPaused(userId, 'joined a review').catch(() => {});
-    return { present: entry.attendance === 'present' };
+    return { present: (patch.attendance || entry.attendance) === 'present' };
   }
 
   /** Stamp the mentee's leave + accumulate presence seconds. */

@@ -30,6 +30,8 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
   const [roster, setRoster] = useState<RosterRow[]>([]);
   const [live, setLive] = useState(false);
   const [loading, setLoading] = useState(true);
+  // Off = a general call (no attendance). On = joining auto-marks mentees present.
+  const [attendanceTracking, setAttendanceTracking] = useState(false);
   // The whole live-video feature is behind a server flag (self-hosted Jitsi not
   // wired in prod yet). When the server reports it off, render nothing — unless
   // it also reports `comingSoon`, in which case we show an inviting teaser.
@@ -51,11 +53,12 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
 
   const refresh = useCallback(async () => {
     try {
-      const res = await mentorApi.getReviewMeeting(liveSessionId) as { data?: { enabled?: boolean; comingSoon?: boolean; meeting: Meeting; roster: RosterRow[]; live: boolean } };
+      const res = await mentorApi.getReviewMeeting(liveSessionId) as { data?: { enabled?: boolean; comingSoon?: boolean; meeting: Meeting; roster: RosterRow[]; live: boolean; attendanceTracking?: boolean } };
       if (res?.data?.enabled === false) { setDisabled(true); setComingSoon(!!res?.data?.comingSoon); return; }
       setMeeting(res?.data?.meeting ?? null);
       setRoster(res?.data?.roster ?? []);
       setLive(!!res?.data?.live);
+      setAttendanceTracking(!!res?.data?.attendanceTracking);
     } catch { /* keep last */ }
     finally { setLoading(false); }
   }, [liveSessionId]);
@@ -169,6 +172,12 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
   };
   const onParticipant = (p: JitsiParticipant) => { if (p.displayName) nameById.current.set(p.id, p.displayName); };
 
+  const toggleAttendance = async () => {
+    const next = !attendanceTracking;
+    setAttendanceTracking(next); // optimistic
+    try { await mentorApi.setReviewAttendanceTracking(liveSessionId, next); } catch { setAttendanceTracking(!next); toast.error('Could not update attendance tracking'); }
+  };
+
   const togglePresent = async (r: RosterRow) => {
     const present = r.attendance !== 'present';
     setRoster((prev) => prev.map((x) => (x.menteeId === r.menteeId ? { ...x, attendance: present ? 'present' : 'absent' } : x)));
@@ -201,9 +210,11 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
       <div className="flex items-center justify-between gap-2 mb-3">
         <h3 className="text-sm font-medium text-slate-900 flex items-center gap-1.5"><Video className="w-4 h-4 text-brand-600" /> Live review</h3>
         {!live ? (
-          scored ? (
-            // Scored = this review is done. Offer a quiet restart, not a primary
-            // "Resume" that implies unfinished business.
+          // A meeting that was scored OR ended (endedAt set, e.g. after a refresh)
+          // is done — offer a quiet "Start a new call", not a primary "Resume"
+          // that implies unfinished business. Only a never-started session shows
+          // the primary "Start meeting".
+          (scored || !!meeting?.endedAt) ? (
             <button onClick={start} disabled={busy} className="text-xs font-medium text-slate-500 hover:text-brand-700 disabled:opacity-50">
               {busy ? 'Starting…' : 'Start a new call'}
             </button>
@@ -236,6 +247,13 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
             />
           </div>
           <div className="min-w-0">
+            <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5">
+              <span className="text-xs font-medium text-slate-700" title="When on, mentees who join are marked present. Off = a general call.">Track attendance</span>
+              <button type="button" role="switch" aria-checked={attendanceTracking} onClick={toggleAttendance}
+                className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${attendanceTracking ? 'bg-brand-600' : 'bg-slate-300'}`}>
+                <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${attendanceTracking ? 'translate-x-4' : 'translate-x-0.5'}`} />
+              </button>
+            </div>
             <p className="text-xs text-slate-500 mb-2">{presentCount}/{roster.length} present</p>
             <div className="space-y-1 max-h-[420px] overflow-y-auto">
               {roster.map((r) => (
@@ -248,7 +266,11 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
                 </button>
               ))}
             </div>
-            <p className="mt-2 text-[11px] text-slate-400">Auto-marks anyone who joins from Pathment. Click a name to mark a direct joiner present.</p>
+            <p className="mt-2 text-[11px] text-slate-400">
+              {attendanceTracking
+                ? 'Anyone who joins from Pathment is marked present. Click a name to override.'
+                : 'Attendance isn’t tracked for this call. Turn on “Track attendance”, or click a name to mark manually.'}
+            </p>
           </div>
         </div>
       )}
@@ -257,11 +279,11 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
         <p className="text-xs text-slate-500">
           {scored
             ? `Review complete · ${presentCount}/${roster.length} attended · points awarded.`
-            : `Meeting ended · ${presentCount}/${roster.length} attended. Reopen with “Resume” if needed.`}
+            : `Meeting ended${attendanceTracking ? ` · ${presentCount}/${roster.length} attended` : ''}. Start a new call anytime.`}
         </p>
       )}
       {!live && !meeting?.startedAt && (
-        <p className="text-xs text-slate-500">Start the call and your mentees get a “Join review” banner — anyone who joins is marked present automatically.</p>
+        <p className="text-xs text-slate-500">Start the call and your mentees get a “Join review” banner. Flip on “Track attendance” once you’re live to auto-mark joiners present.</p>
       )}
 
       {scoring && <ContributionModal proposed={scoring} sessionId={liveSessionId} onClose={() => { setScoring(null); setScored(true); }} onDone={() => { setScoring(null); setScored(true); refresh(); }} />}

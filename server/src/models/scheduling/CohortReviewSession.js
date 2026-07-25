@@ -29,6 +29,9 @@ module.exports = (sequelize, DataTypes) => {
     externalMeetingUrl: { type: DataTypes.STRING(500), allowNull: true, field: 'external_meeting_url' },
     meetingStartedAt: { type: DataTypes.DATE, allowNull: true, field: 'meeting_started_at' },
     meetingEndedAt: { type: DataTypes.DATE, allowNull: true, field: 'meeting_ended_at' },
+    // OFF by default: a live call is just a call. When the mentor flips this on,
+    // mentees who join are auto-marked present (a review, not a general meeting).
+    attendanceTracking: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: 'attendance_tracking' },
   }, {
     tableName: 'cohort_review_sessions',
     underscored: true,

@@ -74,7 +74,7 @@ export function ReviewJoinBar() {
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-slate-900">Live review in {active.clanName}</p>
-            <p className="text-xs text-slate-500">Your mentor started the cohort review — join to be marked present.</p>
+            <p className="text-xs text-slate-500">Your mentor started the cohort review — hop in.</p>
           </div>
           <button onClick={() => setOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-brand-700">
             <Video className="h-4 w-4" /> Join review
