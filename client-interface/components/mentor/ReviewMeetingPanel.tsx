@@ -82,10 +82,11 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
     })();
     return () => { cancelled = true; };
   }, [refresh, liveSessionId]);
-  // While live, refresh the roster so self-reported joins appear.
+  // While live, refresh the roster often so a mentee who joins is auto-marked
+  // present within a few seconds (their client self-reports on join).
   useEffect(() => {
     if (!live) return;
-    const t = setInterval(refresh, 15_000);
+    const t = setInterval(refresh, 8_000);
     return () => clearInterval(t);
   }, [live, refresh]);
 
@@ -133,13 +134,19 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
       if (!id) throw new Error('no session');
       await mentorApi.startReviewMeeting(id);
       setScored(false);
+      endingRef.current = false; // fresh call — allow it to be ended/scored again
       await refresh();
       toast.success('Meeting started — mentees can join now');
     } catch { toast.error('Could not start the meeting'); }
     finally { setBusy(false); }
   };
 
-  const endAndScore = async () => {
+  // Guard so ending is idempotent — the Jitsi hangup ("end for all") and the
+  // panel's own "End & score" button can both fire; only the first should run.
+  const endingRef = useRef(false);
+  const endAndScore = useCallback(async () => {
+    if (endingRef.current) return;
+    endingRef.current = true;
     setBusy(true);
     try {
       await flushTalk();
@@ -148,9 +155,9 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
       setLive(false);
       setScoring(res?.data?.proposed ?? []);
       await refresh();
-    } catch { toast.error('Could not end the meeting'); }
+    } catch { toast.error('Could not end the meeting'); endingRef.current = false; }
     finally { setBusy(false); }
-  };
+  }, [flushTalk, liveSessionId, refresh]);
 
   const onDominant = (id: string) => {
     if (speakingId.current && speakingId.current !== id) {
@@ -224,6 +231,7 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
               key={videoKey}
               domain={meeting.domain} room={meeting.room} displayName={meeting.displayName} avatarUrl={meeting.avatarUrl}
               onParticipantJoined={onParticipant} onDominantSpeaker={onDominant}
+              onReadyToClose={endAndScore}
               onError={(m) => toast.error(m)}
             />
           </div>

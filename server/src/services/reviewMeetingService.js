@@ -80,7 +80,25 @@ class ReviewMeetingService {
     if (Object.keys(patch).length) await session.update(patch);
 
     const host = await models.User.findByPk(mentorId, { attributes: ['id', 'firstName', 'lastName', 'profilePictureUrl'] });
+
+    // Push a real-time "review started" to the clan's mentees so their Join
+    // banner appears instantly instead of waiting for the next poll. Best-effort.
+    if (session.clanId) {
+      this._notifyMenteesStarted(session).catch((err) => console.error('review start notify failed (non-fatal):', err.message));
+    }
     return this._joinConfig(session, this._fullName(host), host && host.profilePictureUrl);
+  }
+
+  /** Emit `review:started` to every mentee in the session's clan (real-time banner). */
+  async _notifyMenteesStarted(session) {
+    const { emitToUser } = require('../socket');
+    const cohortService = require('./cohortService');
+    const [menteeIds, clan] = await Promise.all([
+      cohortService.resolveMenteeIdsForClan(session.clanId),
+      models.Clan.findByPk(session.clanId, { attributes: ['name'] }),
+    ]);
+    const payload = { sessionId: session.id, clanName: clan?.name || 'your clan' };
+    for (const uid of menteeIds) emitToUser(uid, 'review:started', payload);
   }
 
   /** Close the room (stops new auto-attendance; contribution is finalized separately). */

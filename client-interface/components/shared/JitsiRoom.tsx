@@ -33,7 +33,7 @@ export interface JitsiParticipant { id: string; displayName?: string }
  * the contribution signal). All wiring is disposed on unmount.
  */
 export function JitsiRoom({
-  domain, room, displayName, avatarUrl, onJoined, onLeft, onParticipantJoined, onParticipantLeft, onDominantSpeaker, onError,
+  domain, room, displayName, avatarUrl, onJoined, onLeft, onReadyToClose, onParticipantJoined, onParticipantLeft, onDominantSpeaker, onError,
 }: {
   domain: string;
   room: string;
@@ -42,6 +42,9 @@ export function JitsiRoom({
   avatarUrl?: string | null;
   onJoined?: () => void;
   onLeft?: () => void;
+  /** Fires when the user hangs up in the Jitsi toolbar (red button, "end for me"
+   *  or "end for all") — use it to run the same teardown as an explicit end. */
+  onReadyToClose?: () => void;
   /** Fires for everyone already in the room when we join, AND for later joiners. */
   onParticipantJoined?: (p: JitsiParticipant) => void;
   onParticipantLeft?: (p: JitsiParticipant) => void;
@@ -101,6 +104,9 @@ export function JitsiRoom({
           onJoined?.();
         });
         if (onLeft) api.addListener('videoConferenceLeft', () => onLeft());
+        // `readyToClose` = the user hung up (red button / "end for all"). Wire it
+        // so hanging up runs the same flow as the panel's own End button.
+        if (onReadyToClose) api.addListener('readyToClose', () => onReadyToClose());
         if (onParticipantJoined) api.addListener('participantJoined', (p: JitsiParticipant) => onParticipantJoined(p));
         if (onParticipantLeft) api.addListener('participantLeft', (p: JitsiParticipant) => onParticipantLeft(p));
         if (onDominantSpeaker) api.addListener('dominantSpeakerChanged', (e: { id: string }) => onDominantSpeaker(e.id));

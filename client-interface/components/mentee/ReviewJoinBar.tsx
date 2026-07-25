@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Video, X, ExternalLink } from 'lucide-react';
 import { menteeApi } from '@/lib/services/mentee-api';
 import { JitsiRoom } from '@/components/shared/JitsiRoom';
+import { getSocket } from '@/lib/services/socket-client';
 
 interface ActiveReview {
   sessionId: string;
@@ -33,8 +34,14 @@ export function ReviewJoinBar() {
 
   useEffect(() => {
     poll();
-    const t = setInterval(poll, 30_000);
-    return () => clearInterval(t);
+    const t = setInterval(poll, 12_000);
+    // Real-time: the server emits `review:started` to the clan's mentees the
+    // moment the mentor opens the room — re-poll immediately so the banner shows
+    // without waiting for the interval. The interval stays as a fallback.
+    const socket = getSocket();
+    const onStarted = () => { setDismissed(null); poll(); };
+    socket?.on('review:started', onStarted);
+    return () => { clearInterval(t); socket?.off('review:started', onStarted); };
   }, [poll]);
 
   const onJoined = async () => {
