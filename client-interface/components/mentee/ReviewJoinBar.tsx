@@ -9,7 +9,7 @@ import { getSocket } from '@/lib/services/socket-client';
 interface ActiveReview {
   sessionId: string;
   domain: string; room: string; url: string;
-  displayName: string | null; clanName: string; externalUrl: string | null;
+  displayName: string | null; clanName: string; externalUrl: string | null; avatarUrl: string | null;
 }
 
 /**
@@ -126,6 +126,7 @@ export function ReviewJoinBar() {
                 domain={active.domain}
                 room={active.room}
                 displayName={active.displayName}
+                avatarUrl={active.avatarUrl}
                 onJoined={onJoined}
                 onLeft={onLeft}
                 onSelfDominantChange={onSelfDominant}

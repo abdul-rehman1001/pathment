@@ -79,8 +79,9 @@ export function JitsiRoom({
             p2p: { enabled: false },
             disableDeepLinking: true,
             startWithAudioMuted: false,
-            // Cut the provider's promos/analytics as far as it allows.
-            disableThirdPartyRequests: true,
+            // NOTE: do NOT set disableThirdPartyRequests — it also blocks loading
+            // external avatar images (our Cloudinary profile photos), leaving only
+            // initials. Promos are already suppressed via interfaceConfig below.
             enableWelcomePage: false,
             enableClosePage: false,
           },
