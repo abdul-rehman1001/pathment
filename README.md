@@ -227,7 +227,7 @@ GROQ_API_KEY=your-groq-api-key
 OPENAI_API_KEY=your-openai-api-key
 
 # Frontend URL (for CORS)
-FRONTEND_URL=http://localhost:3000
+CLIENT_URL=http://localhost:3000
 ```
 
 #### 2.5 Initialize Database
@@ -245,7 +245,7 @@ node scripts/seedAdmin.js
 
 **Default Admin Credentials:**
 - Email: `admin@pathment.com`
-- Password: `Admin123!`
+- Password: `Admin@123!ChangeMeNow`
 
 #### 2.6 Start Backend Server
 
