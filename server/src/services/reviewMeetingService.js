@@ -66,6 +66,21 @@ class ReviewMeetingService {
   async startMeeting(mentorId, sessionId, { externalUrl } = {}) {
     if (!cfg.enabled) throw new ForbiddenError('Live review video is not enabled');
     const session = await this._hostSession(mentorId, sessionId);
+    // Re-opening after a prior call = a fresh call. Wipe the per-call attendance
+    // signals so a new meeting doesn't inherit who attended the LAST one (joined,
+    // seconds, talk time, and any AUTO 'present'). A mentor's MANUAL marks
+    // (auto_present = false) are kept.
+    const isRestart = !!session.meetingStartedAt;
+    if (isRestart) {
+      await models.CohortReviewEntry.update(
+        { attendance: null },
+        { where: { sessionId, autoPresent: true } }
+      );
+      await models.CohortReviewEntry.update(
+        { autoPresent: false, joinedAt: null, leftAt: null, secondsPresent: 0, talkSeconds: 0 },
+        { where: { sessionId } }
+      );
+    }
     const patch = {};
     if (!session.meetingRoom) {
       // Non-guessable slug — the natural way in is Pathment's Join button, not
