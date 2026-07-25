@@ -109,7 +109,23 @@ export function JitsiRoom({
         if (onReadyToClose) api.addListener('readyToClose', () => onReadyToClose());
         if (onParticipantJoined) api.addListener('participantJoined', (p: JitsiParticipant) => onParticipantJoined(p));
         if (onParticipantLeft) api.addListener('participantLeft', (p: JitsiParticipant) => onParticipantLeft(p));
-        if (onDominantSpeaker) api.addListener('dominantSpeakerChanged', (e: { id: string }) => onDominantSpeaker(e.id));
+        // Names often aren't on `participantJoined` (Jitsi sends them a beat later).
+        // Capture `displayNameChanged` too, so speaker→roster matching works.
+        api.addListener('displayNameChanged', (e: { id: string; displayname?: string; displayName?: string }) => {
+          const name = e.displayName || e.displayname;
+          if (e.id && name) onParticipantJoined?.({ id: e.id, displayName: name });
+        });
+        if (onDominantSpeaker) api.addListener('dominantSpeakerChanged', (e: { id: string }) => {
+          // Resolve the speaker's CURRENT name right now (participantJoined may have
+          // fired before the name was set) so their talk time can be attributed.
+          try {
+            const info = (api.getParticipantsInfo?.() || []).find((p: { participantId?: string }) => p.participantId === e.id);
+            const name = (info as { displayName?: string; formattedDisplayName?: string } | undefined);
+            const resolved = name?.displayName || name?.formattedDisplayName;
+            if (resolved) onParticipantJoined?.({ id: e.id, displayName: resolved });
+          } catch { /* best-effort */ }
+          onDominantSpeaker(e.id);
+        });
       })
       .catch((e) => onError?.(e?.message || 'Could not start the video'));
 
