@@ -76,6 +76,17 @@ export const mentorApi = {
   finalizeReviewContribution: (id: string, menteeIds: string[]) =>
     apiClient.post(`/mentor/review/sessions/${id}/meeting/contribution`, { menteeIds }),
 
+  // Recurring review schedules (weekly / biweekly). Each occurrence auto-creates
+  // a session, opens its room at the scheduled time, and emails timezone-correct
+  // invites + 24h/1h reminders with a calendar (.ics) attachment.
+  listReviewSchedules: () => apiClient.get('/mentor/review/schedules'),
+  createReviewSchedule: (data: {
+    clanId: string; title?: string; dayOfWeek: number; timeLocal: string;
+    timezone: string; intervalWeeks: 1 | 2; durationMinutes?: number;
+    startsOn: string; endsOn?: string | null;
+  }) => apiClient.post('/mentor/review/schedules', data),
+  cancelReviewSchedule: (id: string) => apiClient.delete(`/mentor/review/schedules/${id}`),
+
   // Approvals queue (pending reviews across the cohort) + bulk approve.
   getApprovals: () => apiClient.get('/mentor/approvals'),
   /** Just the review-queue size (+ per-clan breakdown) for the sidebar badge. */
