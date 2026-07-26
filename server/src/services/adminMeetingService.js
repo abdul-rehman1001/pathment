@@ -111,7 +111,12 @@ class AdminMeetingService {
     const m = await models.AdminMeeting.findByPk(id);
     if (!m) throw new NotFoundError('Meeting not found');
     if (m.status === 'ended' || m.status === 'cancelled') throw new ValidationError('This meeting is over');
-    if (m.status !== 'live') await m.update({ status: 'live', startedAt: m.startedAt || new Date() });
+    if (m.status !== 'live') {
+      await m.update({ status: 'live', startedAt: m.startedAt || new Date() });
+      // Tell the audience it's live now — the Join banner appears globally, and
+      // this bell reaches those who aren't on a page at the moment.
+      await this._notifyInApp(m, 'live').catch((e) => console.error('[adminMeeting] live notify failed:', e.message));
+    }
     return m;
   }
 
@@ -127,7 +132,24 @@ class AdminMeetingService {
     if (!m) throw new NotFoundError('Meeting not found');
     if (m.status === 'ended') throw new ValidationError('This meeting already ended');
     await m.update({ status: 'cancelled' });
+    await this._notifyInApp(m, 'cancelled').catch((e) => console.error('[adminMeeting] cancel notify failed:', e.message));
     return m;
+  }
+
+  /** In-app notification to the whole audience (start / cancel). */
+  async _notifyInApp(meeting, kind) {
+    const ids = await this.audienceUserIds(meeting);
+    if (!ids.length) return;
+    const copy = {
+      live: { title: 'Meeting is live', message: `"${meeting.title}" is live now — join.`, label: 'Join meeting' },
+      cancelled: { title: 'Meeting cancelled', message: `"${meeting.title}" has been cancelled.`, label: 'Open Pathment' },
+    }[kind];
+    await notificationOrchestrator.dispatch({
+      eventKey: kind === 'live' ? NOTIFICATION_EVENTS.ADMIN_MEETING_REMINDER : NOTIFICATION_EVENTS.ADMIN_MEETING_INVITE,
+      recipients: ids.map((id) => ({ userId: id })),
+      payload: { title: copy.title, message: copy.message, actionUrl: '/', actionLabel: copy.label, relatedEntityType: 'admin_meeting' },
+      channelOverrides: { inApp: true, email: false, chat: false },
+    });
   }
 
   // ── attendee side ─────────────────────────────────────────────────────────────

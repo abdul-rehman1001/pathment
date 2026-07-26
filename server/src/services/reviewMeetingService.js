@@ -136,6 +136,9 @@ class ReviewMeetingService {
     // live call (and attendance/talk tracking begin).
     if (session.scheduledAt && !session.meetingStartedAt && !session.meetingEndedAt && new Date(session.scheduledAt) <= new Date()) {
       await session.update({ meetingStartedAt: session.scheduledAt });
+      // The host just opened a scheduled review → light up mentees' Join banner
+      // in real time (same signal a manual start sends).
+      this._notifyMenteesStarted(session).catch((err) => console.error('scheduled review start notify failed (non-fatal):', err.message));
     }
     // Reconcile first so the roster covers EVERY clan mentee, not just those who
     // already self-reported — otherwise the mentor can't mark a direct joiner

@@ -96,6 +96,8 @@ class ReviewScheduleService {
       { status: 'finished', meetingEndedAt: new Date() },
       { where: { reviewScheduleId: schedule.id, scheduledAt: { [Op.gt]: new Date() }, meetingStartedAt: null } }
     );
+    // Tell the host + mentees it's off.
+    await this._notifyCancelled(schedule).catch((e) => console.error('[reviewSchedule] cancel notify failed:', e.message));
     return { ok: true };
   }
 
@@ -199,27 +201,60 @@ class ReviewScheduleService {
       '24h': `Reminder: "${title}" is in about 24 hours.`,
       '1h': `Heads up: "${title}" starts in about an hour.`,
     }[kind];
-    const base = {
+    await this._dispatchInApp(schedule, menteeIds, {
+      eventKey,
       title: kind === 'invite' ? 'Review scheduled' : 'Review reminder',
       message: msg,
-      actionLabel: 'Open review',
-      // NOTE: deliberately NO relatedEntityId — the orchestrator auto-dedupes on
-      // (type, relatedEntityType, relatedEntityId), which would drop a re-created
-      // schedule's invite and dedupe reminders against the invite. Per-kind send
-      // guards (invitesSentAt / reminded_*_at) already prevent real duplicates.
-      relatedEntityType: 'review_session',
-    };
+      mentorLabel: 'Open review', menteeLabel: 'Join review',
+    });
+  }
+
+  /**
+   * Fan an in-app notification to the host (→/mentor/review) and the clan's
+   * mentees (→/mentee/dashboard, where the Join banner appears). Role-scoped
+   * actionUrl so resolveAudience routes it to the right portal. In-app only —
+   * any email is handled on its own path. No relatedEntityId (avoids the
+   * orchestrator auto-dedupe dropping repeat/related notifications).
+   */
+  async _dispatchInApp(schedule, menteeIds, { eventKey, title, message, mentorLabel = 'Open review', menteeLabel = 'Join review' }) {
     const inAppOnly = { inApp: true, email: false, chat: false };
+    const base = { title, message, relatedEntityType: 'review_session' };
     await notificationOrchestrator.dispatch({
       eventKey, recipients: [{ userId: schedule.mentorId }],
-      payload: { ...base, actionUrl: '/mentor/review' }, channelOverrides: inAppOnly,
+      payload: { ...base, actionLabel: mentorLabel, actionUrl: '/mentor/review' }, channelOverrides: inAppOnly,
     });
-    if (menteeIds.length) {
+    if (menteeIds && menteeIds.length) {
       await notificationOrchestrator.dispatch({
         eventKey, recipients: menteeIds.map((id) => ({ userId: id })),
-        payload: { ...base, actionLabel: 'Join review', actionUrl: '/mentee/dashboard' }, channelOverrides: inAppOnly,
+        payload: { ...base, actionLabel: menteeLabel, actionUrl: '/mentee/dashboard' }, channelOverrides: inAppOnly,
       });
     }
+  }
+
+  /** "Your review is live — join now" (host + mentees), fired when it opens. */
+  async _notifyStartedInApp(session, schedule) {
+    const clan = await models.Clan.findByPk(schedule.clanId, { attributes: ['name'], raw: true });
+    const title = schedule.title || `${clan?.name || 'Clan'} cohort review`;
+    const menteeIds = await cohortService.resolveMenteeIdsForClan(schedule.clanId);
+    await this._dispatchInApp(schedule, menteeIds, {
+      eventKey: NOTIFICATION_EVENTS.REVIEW_REMINDER,
+      title: 'Review is live',
+      message: `"${title}" is starting now — join.`,
+      mentorLabel: 'Join review', menteeLabel: 'Join review',
+    });
+  }
+
+  /** "Recurring review cancelled" (host + mentees). */
+  async _notifyCancelled(schedule) {
+    const clan = await models.Clan.findByPk(schedule.clanId, { attributes: ['name'], raw: true });
+    const title = schedule.title || `${clan?.name || 'Clan'} cohort review`;
+    const menteeIds = await cohortService.resolveMenteeIdsForClan(schedule.clanId);
+    await this._dispatchInApp(schedule, menteeIds, {
+      eventKey: NOTIFICATION_EVENTS.REVIEW_REMINDER,
+      title: 'Review cancelled',
+      message: `The recurring review "${title}" was cancelled. Upcoming sessions have been removed.`,
+      mentorLabel: 'Open reviews', menteeLabel: 'Open dashboard',
+    });
   }
 
   // ── scheduler entry point (hourly) ─────────────────────────────────────────
@@ -234,6 +269,32 @@ class ReviewScheduleService {
     await this._remind(now, 'reminded24hAt', '24h', 23, 25);
     // 3) 1h reminders
     await this._remind(now, 'reminded1hAt', '1h', 0.5, 1.5);
+    // 4) "it's live — join now" once the scheduled time has arrived and nobody
+    //    has opened it yet (backstop; on-page users already get it in real time
+    //    from the mentee poll / the host opening the review page).
+    await this._notifyStarted(now);
+  }
+
+  async _notifyStarted(now) {
+    const grace = new Date(now.getTime() - 3 * 3600000); // catch up to 3h late
+    const due = await models.CohortReviewSession.findAll({
+      where: {
+        reviewScheduleId: { [Op.ne]: null },
+        scheduledAt: { [Op.lte]: now, [Op.gte]: grace },
+        meetingStartedAt: null,
+        meetingEndedAt: null,
+      },
+    });
+    for (const session of due) {
+      const schedule = await models.ReviewSchedule.findByPk(session.reviewScheduleId);
+      if (!schedule || !schedule.active) continue;
+      // Open the room (also the guard: a non-null meetingStartedAt stops re-fire).
+      await session.update({ meetingStartedAt: session.scheduledAt });
+      // Real-time banner for mentees who are on a page right now.
+      try { await require('./reviewMeetingService')._notifyMenteesStarted(session); } catch { /* non-fatal */ }
+      // Bell notification for everyone (host + mentees), incl. those off-page.
+      await this._notifyStartedInApp(session, schedule).catch((e) => console.error('[reviewSchedule] start notify failed:', e.message));
+    }
   }
 
   async _remind(now, flagField, kind, lowH, highH) {
