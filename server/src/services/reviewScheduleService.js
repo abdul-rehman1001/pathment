@@ -57,9 +57,23 @@ class ReviewScheduleService {
       clanId, mentorId, title: title || null, dayOfWeek: Number(dayOfWeek), timeLocal, timezone,
       intervalWeeks: Number(intervalWeeks), durationMinutes: Number(durationMinutes) || 60, startsOn, endsOn: endsOn || null, active: true,
     });
-    // Materialise + invite the near-horizon occurrences right away.
-    await this._materialize(schedule, true).catch((e) => console.error('[reviewSchedule] initial materialize failed:', e.message));
+    // Create the near-horizon sessions, then ALWAYS announce the next occurrence
+    // to the audience — a deliberate user action should notify even if a session
+    // for that date already existed (a prior schedule, or today's ad-hoc review),
+    // in which case the invitesSentAt guard would otherwise silently skip it.
+    await this._materialize(schedule, false).catch((e) => console.error('[reviewSchedule] initial materialize failed:', e.message));
+    await this._announceNext(schedule).catch((e) => console.error('[reviewSchedule] announce failed:', e.message));
     return schedule;
+  }
+
+  /** Send the invite (email + in-app) for the schedule's nearest occurrence, now,
+   *  unconditionally — used when a schedule is (re)created. */
+  async _announceNext(schedule) {
+    const occ = nextOccurrences(schedule, new Date(), 1);
+    if (!occ.length) return;
+    const session = await this._findOrCreateSession(schedule, occ[0]);
+    await this._email(session, schedule, 'invite');
+    if (!session.invitesSentAt) await session.update({ invitesSentAt: new Date() });
   }
 
   async listSchedules(mentorId) {
@@ -189,8 +203,11 @@ class ReviewScheduleService {
       title: kind === 'invite' ? 'Review scheduled' : 'Review reminder',
       message: msg,
       actionLabel: 'Open review',
+      // NOTE: deliberately NO relatedEntityId — the orchestrator auto-dedupes on
+      // (type, relatedEntityType, relatedEntityId), which would drop a re-created
+      // schedule's invite and dedupe reminders against the invite. Per-kind send
+      // guards (invitesSentAt / reminded_*_at) already prevent real duplicates.
       relatedEntityType: 'review_session',
-      relatedEntityId: session.id,
     };
     const inAppOnly = { inApp: true, email: false, chat: false };
     await notificationOrchestrator.dispatch({

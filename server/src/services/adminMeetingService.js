@@ -243,8 +243,9 @@ class AdminMeetingService {
         message: msg,
         actionUrl: '/',
         actionLabel: 'Open Pathment',
+        // No relatedEntityId — avoid the orchestrator auto-dedupe dropping a
+        // re-sent invite or deduping reminders against the invite.
         relatedEntityType: 'admin_meeting',
-        relatedEntityId: meeting.id,
       },
       channelOverrides: { inApp: true, email: false, chat: false },
     }).catch((e) => console.error('[adminMeeting] in-app notify failed:', e.message));
