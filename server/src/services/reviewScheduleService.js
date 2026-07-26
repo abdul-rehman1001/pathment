@@ -281,15 +281,18 @@ class ReviewScheduleService {
       where: {
         reviewScheduleId: { [Op.ne]: null },
         scheduledAt: { [Op.lte]: now, [Op.gte]: grace },
-        meetingStartedAt: null,
-        meetingEndedAt: null,
       },
     });
     for (const session of due) {
+      // Already opened THIS occurrence? (meeting_started_at stamped to scheduled_at).
+      // Guards re-fire AND respects a deliberate end of the scheduled call itself.
+      const openedForSchedule = session.meetingStartedAt && session.scheduledAt
+        && new Date(session.meetingStartedAt).getTime() === new Date(session.scheduledAt).getTime();
+      if (openedForSchedule) continue;
       const schedule = await models.ReviewSchedule.findByPk(session.reviewScheduleId);
       if (!schedule || !schedule.active) continue;
-      // Open the room (also the guard: a non-null meetingStartedAt stops re-fire).
-      await session.update({ meetingStartedAt: session.scheduledAt });
+      // (Re)open — clears any earlier ad-hoc call on the shared day's session.
+      await session.update({ meetingStartedAt: session.scheduledAt, meetingEndedAt: null, status: 'in_progress' });
       // Real-time banner for mentees who are on a page right now.
       try { await require('./reviewMeetingService')._notifyMenteesStarted(session); } catch { /* non-fatal */ }
       // Bell notification for everyone (host + mentees), incl. those off-page.

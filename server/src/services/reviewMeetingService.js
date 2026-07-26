@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { Op } = require('sequelize');
+const { Op, col } = require('sequelize');
 const { models } = require('../db');
 const { NotFoundError, ForbiddenError, ValidationError } = require('../utils/errors/errorTypes');
 const authzService = require('./authzService');
@@ -131,11 +131,17 @@ class ReviewMeetingService {
   async hostView(mentorId, sessionId) {
     if (!cfg.enabled) return { enabled: false, comingSoon: cfg.comingSoon };
     const session = await this._hostSession(mentorId, sessionId);
-    // A SCHEDULED review auto-opens at its time: once we've reached scheduledAt
-    // and nobody has started it, open it now so the host drops straight into the
-    // live call (and attendance/talk tracking begin).
-    if (session.scheduledAt && !session.meetingStartedAt && !session.meetingEndedAt && new Date(session.scheduledAt) <= new Date()) {
-      await session.update({ meetingStartedAt: session.scheduledAt });
+    // A SCHEDULED review auto-opens at its time. It (re)opens even if an EARLIER
+    // ad-hoc call happened on the same day's session (the day's session is shared)
+    // — otherwise a prior "Meeting ended" would leave the scheduled review dead on
+    // arrival. Guard: meeting_started_at stamped exactly to scheduled_at means we
+    // already opened THIS occurrence (so a deliberate end isn't undone).
+    const sched = session.scheduledAt ? new Date(session.scheduledAt) : null;
+    const freshCutoffOpen = new Date(Date.now() - MEETING_STALE_HOURS * 60 * 60 * 1000);
+    const alreadyOpenedForSchedule = sched && session.meetingStartedAt
+      && new Date(session.meetingStartedAt).getTime() === sched.getTime();
+    if (sched && sched <= new Date() && sched > freshCutoffOpen && !alreadyOpenedForSchedule) {
+      await session.update({ meetingStartedAt: session.scheduledAt, meetingEndedAt: null, status: 'in_progress' });
       // The host just opened a scheduled review → light up mentees' Join banner
       // in real time (same signal a manual start sends).
       this._notifyMenteesStarted(session).catch((err) => console.error('scheduled review start notify failed (non-fatal):', err.message));
@@ -200,12 +206,19 @@ class ReviewMeetingService {
       where: {
         clanId: { [Op.in]: clanIds },
         status: 'in_progress',
-        meetingEndedAt: null,
-        // Live if the mentor started it recently, OR it's a SCHEDULED review whose
-        // time has arrived (auto-open) — either way within the staleness window.
+        // Live if the mentor started it recently (and hasn't ended it), OR it's a
+        // SCHEDULED review whose time has arrived. For the scheduled case a prior
+        // *ad-hoc* end that day (meeting_ended_at BEFORE the scheduled time) must
+        // NOT suppress it — otherwise an earlier call kills the scheduled review.
         [Op.or]: [
-          { meetingStartedAt: { [Op.gt]: freshCutoff } },
-          { scheduledAt: { [Op.gt]: freshCutoff, [Op.lte]: now } },
+          { meetingStartedAt: { [Op.gt]: freshCutoff }, meetingEndedAt: null },
+          {
+            scheduledAt: { [Op.gt]: freshCutoff, [Op.lte]: now },
+            [Op.or]: [
+              { meetingEndedAt: null },
+              { meetingEndedAt: { [Op.lt]: col('scheduled_at') } },
+            ],
+          },
         ],
       },
       order: [['scheduled_at', 'DESC'], ['meeting_started_at', 'DESC']],
