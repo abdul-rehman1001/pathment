@@ -3,6 +3,7 @@ const router = express.Router();
 const cohortController = require('../controllers/cohortController');
 const cohortReviewController = require('../controllers/cohortReviewController');
 const reviewMeetingController = require('../controllers/reviewMeetingController');
+const reviewScheduleController = require('../controllers/reviewScheduleController');
 const reviewLockController = require('../controllers/reviewLockController');
 const linearRoadmapController = require('../controllers/linearRoadmapController');
 const promotionController = require('../controllers/promotionController');
@@ -61,6 +62,9 @@ router.post('/review/sessions/:id/finish', mentorOnly, cohortReviewController.fi
 router.post('/review/sessions/:id/reopen', mentorOnly, cohortReviewController.reopen);
 router.delete('/review/sessions/:id', mentorOnly, cohortReviewController.remove);
 // Live video (Jitsi) for a review — host controls (mentor is the source of truth).
+router.get('/review/schedules', mentorOnly, reviewScheduleController.list);
+router.post('/review/schedules', mentorOnly, reviewScheduleController.create);
+router.delete('/review/schedules/:id', mentorOnly, reviewScheduleController.remove);
 router.get('/review/meeting-config', mentorOnly, reviewMeetingController.config);
 router.post('/review/sessions/:id/meeting/start', mentorOnly, reviewMeetingController.start);
 router.post('/review/sessions/:id/meeting/end', mentorOnly, reviewMeetingController.end);

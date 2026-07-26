@@ -131,6 +131,12 @@ class ReviewMeetingService {
   async hostView(mentorId, sessionId) {
     if (!cfg.enabled) return { enabled: false, comingSoon: cfg.comingSoon };
     const session = await this._hostSession(mentorId, sessionId);
+    // A SCHEDULED review auto-opens at its time: once we've reached scheduledAt
+    // and nobody has started it, open it now so the host drops straight into the
+    // live call (and attendance/talk tracking begin).
+    if (session.scheduledAt && !session.meetingStartedAt && !session.meetingEndedAt && new Date(session.scheduledAt) <= new Date()) {
+      await session.update({ meetingStartedAt: session.scheduledAt });
+    }
     // Reconcile first so the roster covers EVERY clan mentee, not just those who
     // already self-reported — otherwise the mentor can't mark a direct joiner
     // present, or even see who hasn't shown up.
@@ -186,14 +192,20 @@ class ReviewMeetingService {
     // meetingEndedAt null forever and show the "Join review" banner to mentees
     // indefinitely. Only treat a meeting as live if it started recently.
     const freshCutoff = new Date(Date.now() - MEETING_STALE_HOURS * 60 * 60 * 1000);
+    const now = new Date();
     const session = await models.CohortReviewSession.findOne({
       where: {
         clanId: { [Op.in]: clanIds },
         status: 'in_progress',
-        meetingStartedAt: { [Op.gt]: freshCutoff },
         meetingEndedAt: null,
+        // Live if the mentor started it recently, OR it's a SCHEDULED review whose
+        // time has arrived (auto-open) — either way within the staleness window.
+        [Op.or]: [
+          { meetingStartedAt: { [Op.gt]: freshCutoff } },
+          { scheduledAt: { [Op.gt]: freshCutoff, [Op.lte]: now } },
+        ],
       },
-      order: [['meeting_started_at', 'DESC']],
+      order: [['scheduled_at', 'DESC'], ['meeting_started_at', 'DESC']],
     });
     if (!session) return null;
     const user = await models.User.findByPk(userId, { attributes: ['id', 'firstName', 'lastName', 'profilePictureUrl'] });

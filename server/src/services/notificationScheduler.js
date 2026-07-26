@@ -25,6 +25,16 @@ class NotificationScheduler {
     await this.sendWeeklyProgressReports();
     await this.postWeeklyStandups();
     await this.sendReengagementReminders();
+    await this.runReviewSchedules();
+  }
+
+  /** Recurring cohort reviews: materialise upcoming occurrences + send invites/reminders. */
+  async runReviewSchedules() {
+    try {
+      await require('./reviewScheduleService').tick();
+    } catch (error) {
+      console.error('[scheduler] review schedule tick failed:', error.message);
+    }
   }
 
   /** Win-back reminders to paused mentees, on the configured cadence. */
