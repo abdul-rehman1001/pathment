@@ -110,6 +110,7 @@ export const navigationConfig: Record<string, NavLink[]> = {
       path: 'group:analytics', icon: TrendingUp, label: 'Analytics',
       children: [
         { path: '/admin/insights', icon: TrendingUp, label: 'Insights', permission: 'analytics.view' },
+        { path: '/admin/review-records', icon: CalendarRange, label: 'Review Records', permission: 'analytics.view' },
         { path: '/admin/activity', icon: BarChart2, label: 'Activity', permission: 'analytics.view' },
         { path: '/admin/emails', icon: Mail, label: 'Email Queue', permission: 'system.settings' },
       ],

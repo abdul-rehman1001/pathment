@@ -49,4 +49,10 @@ export const adminApi = {
     promote: (id: string, clanId?: string) => apiClient.post(`/admin/promotions/${id}/promote`, { clanId }),
     decline: (id: string, decisionNote?: string) => apiClient.post(`/admin/promotions/${id}/decline`, { decisionNote }),
   },
+  /** Cohort-review records — read-only rollups, clan-wise / mentor-wise. */
+  reviewRecords: {
+    list: (params: { clanId?: string; mentorId?: string; from?: string; to?: string } = {}) =>
+      apiClient.get('/admin/review-records', { params }),
+    detail: (id: string) => apiClient.get(`/admin/review-records/${id}`),
+  },
 };
