@@ -55,4 +55,15 @@ export const adminApi = {
       apiClient.get('/admin/review-records', { params }),
     detail: (id: string) => apiClient.get(`/admin/review-records/${id}`),
   },
+  /** Admin-hosted live meetings — schedule + host org broadcasts. */
+  meetings: {
+    list: () => apiClient.get('/admin/meetings'),
+    create: (data: {
+      title: string; description?: string; scheduledAt: string; durationMinutes?: number;
+      audienceType: 'mentors' | 'clan' | 'both'; clanId?: string | null;
+    }) => apiClient.post('/admin/meetings', data),
+    start: (id: string) => apiClient.post(`/admin/meetings/${id}/start`, {}),
+    end: (id: string) => apiClient.post(`/admin/meetings/${id}/end`, {}),
+    cancel: (id: string) => apiClient.delete(`/admin/meetings/${id}`),
+  },
 };

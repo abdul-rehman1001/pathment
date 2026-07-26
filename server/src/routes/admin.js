@@ -4,6 +4,7 @@ const adminController = require('../controllers/adminController');
 const promotionController = require('../controllers/promotionController');
 const reviewLockController = require('../controllers/reviewLockController');
 const reviewRecordsController = require('../controllers/reviewRecordsController');
+const adminMeetingController = require('../controllers/adminMeetingController');
 const { validateBody, validateQuery } = require('../middlewares/validate');
 const { adminSchemas } = require('../validations/adminValidation');
 const { authenticate, authorize } = require('../middlewares/auth');
@@ -189,6 +190,40 @@ router.get(
   authenticate,
   requirePermissionMinScope(PERMISSIONS.ANALYTICS_VIEW),
   reviewRecordsController.detail
+);
+
+// ── Admin-hosted live meetings ───────────────────────────────────────────────
+// Schedule/host org broadcasts with audience control (mentors / clan / both).
+// Gated by analytics.view (same as review reporting).
+router.post(
+  '/meetings',
+  authenticate,
+  requirePermissionMinScope(PERMISSIONS.ANALYTICS_VIEW),
+  adminMeetingController.create
+);
+router.get(
+  '/meetings',
+  authenticate,
+  requirePermissionMinScope(PERMISSIONS.ANALYTICS_VIEW),
+  adminMeetingController.list
+);
+router.post(
+  '/meetings/:id/start',
+  authenticate,
+  requirePermissionMinScope(PERMISSIONS.ANALYTICS_VIEW),
+  adminMeetingController.start
+);
+router.post(
+  '/meetings/:id/end',
+  authenticate,
+  requirePermissionMinScope(PERMISSIONS.ANALYTICS_VIEW),
+  adminMeetingController.end
+);
+router.delete(
+  '/meetings/:id',
+  authenticate,
+  requirePermissionMinScope(PERMISSIONS.ANALYTICS_VIEW),
+  adminMeetingController.cancel
 );
 
 // ── Cohort-review deletion lock (admin) ──────────────────────────────────────

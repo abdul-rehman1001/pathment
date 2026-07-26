@@ -26,6 +26,7 @@ class NotificationScheduler {
     await this.postWeeklyStandups();
     await this.sendReengagementReminders();
     await this.runReviewSchedules();
+    await this.runAdminMeetings();
   }
 
   /** Recurring cohort reviews: materialise upcoming occurrences + send invites/reminders. */
@@ -34,6 +35,15 @@ class NotificationScheduler {
       await require('./reviewScheduleService').tick();
     } catch (error) {
       console.error('[scheduler] review schedule tick failed:', error.message);
+    }
+  }
+
+  /** Admin-hosted meetings: send 24h/1h reminders + auto-end stale meetings. */
+  async runAdminMeetings() {
+    try {
+      await require('./adminMeetingService').tick();
+    } catch (error) {
+      console.error('[scheduler] admin meeting tick failed:', error.message);
     }
   }
 

@@ -32,6 +32,7 @@ import {
   PackageOpen,
   Mic,
   ListChecks,
+  Video,
   type LucideIcon
 } from 'lucide-react';
 import { UserRole } from '@/lib/types';
@@ -100,6 +101,7 @@ export const navigationConfig: Record<string, NavLink[]> = {
       path: 'group:engagement', icon: Megaphone, label: 'Engagement',
       children: [
         { path: '/admin/announcements', icon: Megaphone, label: 'Announcements', permission: 'community.moderate' },
+        { path: '/admin/meetings', icon: Video, label: 'Live Meetings', permission: 'analytics.view' },
         { path: '/admin/changelog', icon: PackageOpen, label: "What's New", permission: 'system.settings' },
         { path: '/admin/rewards', icon: Gift, label: 'Rewards', permission: 'gamification.manage' },
         { path: '/admin/moderation', icon: ShieldAlert, label: 'Moderation', permission: 'community.moderate' },
