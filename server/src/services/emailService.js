@@ -123,6 +123,16 @@ class EmailService {
   async _deliverViaResend(row, toList) {
     const payload = { from: this.from, to: toList, subject: row.subject, text: row.bodyText, html: row.bodyHtml };
     if (this.replyTo) payload.replyTo = this.replyTo;
+    // One-click unsubscribe (RFC 8058). Gmail/Yahoo require this on bulk mail and
+    // reward it with inbox placement. Only set for non-transactional mail, which
+    // passes a `listUnsubscribe` URL in metadata.
+    const unsub = row.metadata && row.metadata.listUnsubscribe;
+    if (unsub) {
+      payload.headers = {
+        'List-Unsubscribe': `<${unsub}>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+      };
+    }
     // Resend honors an idempotency key at the provider too (belt + suspenders).
     const opts = row.idempotencyKey ? { idempotencyKey: String(row.idempotencyKey).slice(0, 256) } : undefined;
     return opts ? this.client.emails.send(payload, opts) : this.client.emails.send(payload);
