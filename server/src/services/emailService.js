@@ -133,6 +133,11 @@ class EmailService {
         'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
       };
     }
+    // Attachments (e.g. a calendar .ics) — stored base64 in metadata.
+    const attachments = row.metadata && row.metadata.attachments;
+    if (Array.isArray(attachments) && attachments.length) {
+      payload.attachments = attachments.map((a) => ({ filename: a.filename, content: a.content, ...(a.contentType ? { contentType: a.contentType } : {}) }));
+    }
     // Resend honors an idempotency key at the provider too (belt + suspenders).
     const opts = row.idempotencyKey ? { idempotencyKey: String(row.idempotencyKey).slice(0, 256) } : undefined;
     return opts ? this.client.emails.send(payload, opts) : this.client.emails.send(payload);
@@ -145,7 +150,7 @@ class EmailService {
    * auth mail) we attempt one immediate delivery; the worker owns retries either
    * way, so a failed inline attempt is never lost.
    */
-  async enqueue({ to, subject, text, html, emailType = 'system', recipientId = null, metadata = null, idempotencyKey = null, priority = 5, mustSendNow = false }) {
+  async enqueue({ to, subject, text, html, emailType = 'system', recipientId = null, metadata = null, idempotencyKey = null, priority = 5, mustSendNow = false, attachments = null }) {
     if (!to || !subject) return { queued: false, reason: 'invalid_payload' };
     const toList = (Array.isArray(to) ? to : [to]).map((x) => String(x).trim()).filter(Boolean);
     const primary = this.normalizeEmail(toList[0]);
@@ -168,7 +173,7 @@ class EmailService {
         status: 'pending', priority,
         attemptCount: 0, maxAttempts: this.parsePositiveInt(process.env.EMAIL_MAX_ATTEMPTS, 5),
         nextAttemptAt: new Date(), idempotencyKey: idempotencyKey || null,
-        metadata: { ...(metadata || {}), recipients: toList },
+        metadata: { ...(metadata || {}), recipients: toList, ...(attachments && attachments.length ? { attachments } : {}) },
       });
     } catch (e) {
       // Race on the unique idempotency key → someone else already enqueued it.
