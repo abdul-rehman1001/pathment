@@ -309,13 +309,13 @@ const NOTIFICATION_MATRIX = {
   // Recurring review scheduled / reminder — in-app only here; the calendar
   // invite email (+ .ics) is enqueued directly by reviewScheduleService.
   [NOTIFICATION_EVENTS.REVIEW_SCHEDULED]: {
-    type: 'meeting',
+    type: 'system',
     audience: 'any',
     preferenceKey: 'review_scheduled',
     channels: { inApp: true, email: false, chat: false }
   },
   [NOTIFICATION_EVENTS.REVIEW_REMINDER]: {
-    type: 'meeting',
+    type: 'system',
     audience: 'any',
     preferenceKey: 'review_reminder',
     channels: { inApp: true, email: false, chat: false }
@@ -323,13 +323,13 @@ const NOTIFICATION_MATRIX = {
   // Admin-hosted meeting invite / reminder — in-app only here; the calendar
   // invite email (+ .ics) is enqueued directly by adminMeetingService.
   [NOTIFICATION_EVENTS.ADMIN_MEETING_INVITE]: {
-    type: 'meeting',
+    type: 'system',
     audience: 'any',
     preferenceKey: 'admin_meeting_invite',
     channels: { inApp: true, email: false, chat: false }
   },
   [NOTIFICATION_EVENTS.ADMIN_MEETING_REMINDER]: {
-    type: 'meeting',
+    type: 'system',
     audience: 'any',
     preferenceKey: 'admin_meeting_reminder',
     channels: { inApp: true, email: false, chat: false }
