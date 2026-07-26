@@ -205,14 +205,17 @@ class ReviewMeetingService {
     const session = await models.CohortReviewSession.findOne({
       where: {
         clanId: { [Op.in]: clanIds },
-        status: 'in_progress',
-        // Live if the mentor started it recently (and hasn't ended it), OR it's a
-        // SCHEDULED review whose time has arrived. For the scheduled case a prior
-        // *ad-hoc* end that day (meeting_ended_at BEFORE the scheduled time) must
-        // NOT suppress it — otherwise an earlier call kills the scheduled review.
         [Op.or]: [
-          { meetingStartedAt: { [Op.gt]: freshCutoff }, meetingEndedAt: null },
+          // (a) Ad-hoc / manual: the mentor started it recently and hasn't ended
+          //     it. Requires an in-progress session (a finished one isn't live).
+          { status: 'in_progress', meetingStartedAt: { [Op.gt]: freshCutoff }, meetingEndedAt: null },
+          // (b) SCHEDULED review whose time has arrived. Deliberately does NOT
+          //     depend on `status` or on any earlier call that day: the day's
+          //     session is shared with ad-hoc reviews, so a prior finish/end must
+          //     never suppress the scheduled occurrence. It's live during its
+          //     window unless it was ended AFTER its own scheduled start.
           {
+            reviewScheduleId: { [Op.ne]: null },
             scheduledAt: { [Op.gt]: freshCutoff, [Op.lte]: now },
             [Op.or]: [
               { meetingEndedAt: null },
@@ -223,6 +226,20 @@ class ReviewMeetingService {
       },
       order: [['scheduled_at', 'DESC'], ['meeting_started_at', 'DESC']],
     });
+    // Opt-in diagnostics (set REVIEW_DEBUG=true): explains WHY a scheduled review
+    // is / isn't surfacing to a mentee, straight from the actual rows.
+    if (process.env.REVIEW_DEBUG === 'true') {
+      const recent = await models.CohortReviewSession.findAll({
+        where: { clanId: { [Op.in]: clanIds }, [Op.or]: [{ scheduledAt: { [Op.ne]: null } }, { meetingStartedAt: { [Op.ne]: null } }] },
+        order: [['createdAt', 'DESC']], limit: 5,
+        attributes: ['id', 'clanId', 'status', 'scheduledAt', 'meetingStartedAt', 'meetingEndedAt', 'reviewScheduleId'],
+      });
+      console.log('[REVIEW_DEBUG] activeForMentee', {
+        userId, clanIds, now: now.toISOString(), freshCutoff: freshCutoff.toISOString(),
+        matched: session ? session.id : null,
+        candidates: recent.map((r) => ({ id: r.id, status: r.status, scheduledAt: r.scheduledAt, startedAt: r.meetingStartedAt, endedAt: r.meetingEndedAt, sched: !!r.reviewScheduleId })),
+      });
+    }
     if (!session) return null;
     const user = await models.User.findByPk(userId, { attributes: ['id', 'firstName', 'lastName', 'profilePictureUrl'] });
     const clan = await models.Clan.findByPk(session.clanId, { attributes: ['name'] });
