@@ -274,7 +274,7 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
               <span className="text-xs font-medium text-slate-700" title="When on, mentees who join are marked present. Off = a general call.">Track attendance</span>
               <button type="button" role="switch" aria-checked={attendanceTracking} onClick={toggleAttendance}
                 className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${attendanceTracking ? 'bg-brand-600' : 'bg-slate-300'}`}>
-                <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${attendanceTracking ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                <span className={`absolute left-0 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${attendanceTracking ? 'translate-x-4' : 'translate-x-0.5'}`} />
               </button>
             </div>
             <p className="text-xs text-slate-500 mb-2">{presentCount}/{roster.length} present</p>
