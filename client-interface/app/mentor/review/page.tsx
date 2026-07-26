@@ -258,6 +258,30 @@ export default function CohortReview() {
       ? entries.map((e) => (e.menteeId === mId ? { ...e, ...patch } : e))
       : [...entries, { menteeId: mId, attendance: null, status: 'pending', ...patch } as ReviewEntry];
 
+  // Live auto-attendance sync: the meeting panel pushes the roster's attendance
+  // (server truth — includes mentees auto-marked present on joining the call) so
+  // the attendance strip and the present/absent/excused counts reflect it live,
+  // instead of the stale session loaded once on page open. Server already
+  // persisted these marks; we only mirror them into local state (no write). A
+  // change guard keeps the 8s roster poll from re-rendering when nothing moved.
+  const syncMeetingAttendance = useCallback((rows: { menteeId: string; attendance: string | null }[]) => {
+    setSession((s) => {
+      if (!s) return s;
+      let entries = s.entries;
+      let changed = false;
+      for (const row of rows) {
+        const att = row.attendance as Attendance | null;
+        if (!att) continue;
+        const cur = entries.find((e) => e.menteeId === row.menteeId);
+        if (!cur || cur.attendance !== att) {
+          entries = upsert(entries, row.menteeId, { attendance: att, status: 'reviewed' });
+          changed = true;
+        }
+      }
+      return changed ? { ...s, entries } : s;
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const patchEntry = useCallback(async (mId: string, patch: { attendance?: Attendance | null; status?: EntryStatus; note?: string }, commit = false) => {
     if (!session) return;
     setSession((s) => (s ? { ...s, entries: upsert(s.entries, mId, patch) } : s));
@@ -782,7 +806,7 @@ export default function CohortReview() {
 
       {/* Live video (Jitsi): start the room, auto-attendance, contribution points. */}
       {session && (session.id || isDraft) && (
-        <ReviewMeetingPanel sessionId={session.id} isDraft={isDraft} ensureSession={ensureSession} />
+        <ReviewMeetingPanel sessionId={session.id} isDraft={isDraft} ensureSession={ensureSession} onAttendanceSync={syncMeetingAttendance} />
       )}
 
       {/* Attendance Strip */}

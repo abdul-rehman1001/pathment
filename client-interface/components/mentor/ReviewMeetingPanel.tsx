@@ -25,11 +25,14 @@ const SPEAK_SPAN_CAP = 15;
  * signal, and on "End & score" awards the contribution point to the confirmed
  * speakers. The mentor's page is the source of truth for attendance + talk time.
  */
-export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
+export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttendanceSync }: {
   sessionId: string;
   isDraft?: boolean;
   /** Creates today's session on demand, so "Start meeting" works from a blank page. */
   ensureSession?: () => Promise<{ id: string } | null>;
+  /** Push live auto-attendance up to the review page so its attendance strip and
+   *  present/absent/excused counts reflect who joined the call (server truth). */
+  onAttendanceSync?: (rows: { menteeId: string; attendance: string | null }[]) => void;
 }) {
   // The session id can arrive late (created by Start), so track it locally.
   const [liveSessionId, setLiveSessionId] = useState(sessionId);
@@ -100,6 +103,15 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
     const t = setInterval(refresh, 8_000);
     return () => clearInterval(t);
   }, [live, refresh]);
+  // Mirror the roster's attendance (server truth, incl. live auto-present) up to
+  // the review page, so its strip + present/absent/excused counts stay in sync
+  // instead of showing the stale once-loaded session. Only rows with a mark set
+  // are pushed — an unmarked mentee shouldn't clobber a page-side pending state.
+  useEffect(() => {
+    if (!onAttendanceSync || !roster.length) return;
+    const marked = roster.filter((r) => r.attendance).map((r) => ({ menteeId: r.menteeId, attendance: r.attendance }));
+    if (marked.length) onAttendanceSync(marked);
+  }, [roster, onAttendanceSync]);
 
   // Map a Jitsi participant name → a roster menteeId (best-effort, by name).
   const menteeIdForName = useCallback((name?: string) => {
