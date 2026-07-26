@@ -41,8 +41,9 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
   const [roster, setRoster] = useState<RosterRow[]>([]);
   const [live, setLive] = useState(false);
   const [loading, setLoading] = useState(true);
-  // Off = a general call (no attendance). On = joining auto-marks mentees present.
-  const [attendanceTracking, setAttendanceTracking] = useState(false);
+  // On by default for reviews (joining auto-marks present); the server is the
+  // source of truth and overwrites this on the first refresh. Off = general call.
+  const [attendanceTracking, setAttendanceTracking] = useState(true);
   // The whole live-video feature is behind a server flag (self-hosted Jitsi not
   // wired in prod yet). When the server reports it off, render nothing — unless
   // it also reports `comingSoon`, in which case we show an inviting teaser.

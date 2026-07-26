@@ -79,6 +79,31 @@ export function JitsiRoom({
             p2p: { enabled: false },
             disableDeepLinking: true,
             startWithAudioMuted: false,
+            // ── Voice quality: stop the echo / noise the mentor reported. ──
+            // Keep the full audio-processing chain ON (these flags DISABLE when
+            // true, so false = enabled): acoustic echo cancellation, noise
+            // suppression, auto gain, high-pass filter. Without AEC a speaker
+            // (no headphones) feeds its own output back → the "reflected voice".
+            disableAP: false,
+            disableAEC: false,
+            disableNS: false,
+            disableAGC: false,
+            disableHPF: false,
+            // Extra background-noise removal (typing, fans). Users can still
+            // toggle it from the Jitsi mic menu.
+            enableNoisyMicDetection: true,
+            // Mono, voice-tuned bitrate — clearer speech, fewer artifacts than
+            // the music-grade stereo default.
+            audioQuality: { stereo: false, opusMaxAverageBitrate: 24000 },
+            // Belt-and-braces: also request EC/NS/AGC at the browser getUserMedia
+            // layer so Chrome applies them even if a device profile skipped them.
+            constraints: {
+              audio: {
+                echoCancellation: { ideal: true },
+                noiseSuppression: { ideal: true },
+                autoGainControl: { ideal: true },
+              },
+            },
             // NOTE: do NOT set disableThirdPartyRequests — it also blocks loading
             // external avatar images (our Cloudinary profile photos), leaving only
             // initials. Promos are already suppressed via interfaceConfig below.

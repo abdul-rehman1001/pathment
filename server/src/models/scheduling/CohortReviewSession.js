@@ -29,9 +29,10 @@ module.exports = (sequelize, DataTypes) => {
     externalMeetingUrl: { type: DataTypes.STRING(500), allowNull: true, field: 'external_meeting_url' },
     meetingStartedAt: { type: DataTypes.DATE, allowNull: true, field: 'meeting_started_at' },
     meetingEndedAt: { type: DataTypes.DATE, allowNull: true, field: 'meeting_ended_at' },
-    // OFF by default: a live call is just a call. When the mentor flips this on,
-    // mentees who join are auto-marked present (a review, not a general meeting).
-    attendanceTracking: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: 'attendance_tracking' },
+    // ON by default: these ARE cohort reviews, so a mentee who joins the call is
+    // auto-marked present. A mentor can still flip it off to run a general call
+    // (no attendance) for a given session.
+    attendanceTracking: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true, field: 'attendance_tracking' },
     // ── Scheduling (recurring reviews) ──
     scheduledAt: { type: DataTypes.DATE, allowNull: true, field: 'scheduled_at' },
     reviewScheduleId: { type: DataTypes.UUID, allowNull: true, field: 'review_schedule_id' },
