@@ -4,6 +4,8 @@ const { models } = require('../db');
 const { NotFoundError, ForbiddenError, ValidationError } = require('../utils/errors/errorTypes');
 const cohortService = require('./cohortService');
 const emailService = require('./emailService');
+const notificationOrchestrator = require('./notificationOrchestrator');
+const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
 const cfg = require('../config/reviewMeeting');
 const { buildEventIcs } = require('../utils/ics');
 const { renderEmail, plainText } = require('../utils/emailTemplate');
@@ -223,6 +225,29 @@ class AdminMeetingService {
         attachments: [{ filename: 'meeting.ics', content: Buffer.from(ics.content, 'utf8').toString('base64'), contentType: ics.contentType }],
       });
     }
+
+    // In-app notifications (bell + live socket). Audience spans roles, and the
+    // Join banner is global, so a root actionUrl + 'any' audience is right.
+    // Email handled above → dispatch in-app only.
+    const eventKey = kind === 'invite' ? NOTIFICATION_EVENTS.ADMIN_MEETING_INVITE : NOTIFICATION_EVENTS.ADMIN_MEETING_REMINDER;
+    const msg = {
+      invite: `You're invited to "${title}". You'll get a Join button when it goes live.`,
+      '24h': `Reminder: "${title}" is in about 24 hours.`,
+      '1h': `Heads up: "${title}" starts in about an hour.`,
+    }[kind];
+    await notificationOrchestrator.dispatch({
+      eventKey,
+      recipients: ids.map((id) => ({ userId: id })),
+      payload: {
+        title: kind === 'invite' ? 'Meeting scheduled' : 'Meeting reminder',
+        message: msg,
+        actionUrl: '/',
+        actionLabel: 'Open Pathment',
+        relatedEntityType: 'admin_meeting',
+        relatedEntityId: meeting.id,
+      },
+      channelOverrides: { inApp: true, email: false, chat: false },
+    }).catch((e) => console.error('[adminMeeting] in-app notify failed:', e.message));
   }
 
   // ── scheduler entry point (hourly) ─────────────────────────────────────────

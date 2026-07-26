@@ -5,6 +5,8 @@ const { NotFoundError, ForbiddenError, ValidationError } = require('../utils/err
 const authzService = require('./authzService');
 const cohortService = require('./cohortService');
 const emailService = require('./emailService');
+const notificationOrchestrator = require('./notificationOrchestrator');
+const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
 const cfg = require('../config/reviewMeeting');
 const { nextOccurrences } = require('../utils/reviewRecurrence');
 const { buildEventIcs } = require('../utils/ics');
@@ -165,6 +167,40 @@ class ReviewScheduleService {
         recipientId: u.id,
         idempotencyKey: `revsched:${kind}:${session.id}:${u.id}`,
         attachments: [{ filename: 'review.ics', content: Buffer.from(ics.content, 'utf8').toString('base64'), contentType: ics.contentType }],
+      });
+    }
+
+    // In-app notifications (the bell + live socket push). Role-scoped actionUrl so
+    // resolveAudience routes it to the right portal. Email is handled above, so
+    // dispatch is in-app only here (channelOverrides email:false).
+    await this._notifyInApp(session, schedule, kind, menteeIds).catch((e) => console.error('[reviewSchedule] in-app notify failed:', e.message));
+  }
+
+  async _notifyInApp(session, schedule, kind, menteeIds) {
+    const clan = await models.Clan.findByPk(schedule.clanId, { attributes: ['name'], raw: true });
+    const title = schedule.title || `${clan?.name || 'Clan'} cohort review`;
+    const eventKey = kind === 'invite' ? NOTIFICATION_EVENTS.REVIEW_SCHEDULED : NOTIFICATION_EVENTS.REVIEW_REMINDER;
+    const msg = {
+      invite: `"${title}" has been scheduled. You'll get a reminder before it starts.`,
+      '24h': `Reminder: "${title}" is in about 24 hours.`,
+      '1h': `Heads up: "${title}" starts in about an hour.`,
+    }[kind];
+    const base = {
+      title: kind === 'invite' ? 'Review scheduled' : 'Review reminder',
+      message: msg,
+      actionLabel: 'Open review',
+      relatedEntityType: 'review_session',
+      relatedEntityId: session.id,
+    };
+    const inAppOnly = { inApp: true, email: false, chat: false };
+    await notificationOrchestrator.dispatch({
+      eventKey, recipients: [{ userId: schedule.mentorId }],
+      payload: { ...base, actionUrl: '/mentor/review' }, channelOverrides: inAppOnly,
+    });
+    if (menteeIds.length) {
+      await notificationOrchestrator.dispatch({
+        eventKey, recipients: menteeIds.map((id) => ({ userId: id })),
+        payload: { ...base, actionLabel: 'Join review', actionUrl: '/mentee/dashboard' }, channelOverrides: inAppOnly,
       });
     }
   }
