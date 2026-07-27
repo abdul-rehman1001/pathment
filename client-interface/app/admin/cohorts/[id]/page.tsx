@@ -254,6 +254,8 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [otherCohorts, setOtherCohorts] = useState<{ id: string; name: string }[]>([]);
   const [required, setRequired] = useState<boolean>(Boolean(cohort?.assessmentRequired));
+  // Applicant-facing intro, shown at the top of the public apply form.
+  const [description, setDescription] = useState<string>(cohort?.description || '');
   const [seats, setSeats] = useState<string>(cohort?.capacity != null ? String(cohort.capacity) : '');
   const [maxApps, setMaxApps] = useState<string>(cohort?.maxApplications != null ? String(cohort.maxApplications) : '');
   const [opensDate, setOpensDate] = useState<string>(splitLocal(cohort?.applyOpensAt).date);
@@ -295,6 +297,7 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
   }, [cohortId]);
   useEffect(() => {
     setRequired(Boolean(cohort?.assessmentRequired));
+    setDescription(cohort?.description || '');
     setSeats(cohort?.capacity != null ? String(cohort.capacity) : '');
     setMaxApps(cohort?.maxApplications != null ? String(cohort.maxApplications) : '');
     setOpensDate(splitLocal(cohort?.applyOpensAt).date); setOpensTime(splitLocal(cohort?.applyOpensAt).time);
@@ -302,7 +305,7 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
     setAssessDeadlineDate(splitLocal(cohort?.assessmentDeadline).date); setAssessDeadlineTime(splitLocal(cohort?.assessmentDeadline).time);
     setLevelLabels((cohort?.levels || []).map((l: any) => l.label));
     setFormFields(cohort?.intakeFormSchema || []);
-  }, [cohort?.assessmentRequired, cohort?.capacity, cohort?.maxApplications, cohort?.applyOpensAt, cohort?.applyClosesAt, cohort?.assessmentDeadline, cohort?.levels, cohort?.intakeFormSchema]);
+  }, [cohort?.assessmentRequired, cohort?.description, cohort?.capacity, cohort?.maxApplications, cohort?.applyOpensAt, cohort?.applyClosesAt, cohort?.assessmentDeadline, cohort?.levels, cohort?.intakeFormSchema]);
 
   const enabled = Boolean(cohort?.publicEnabled && cohort?.publicSlug);
   const applyUrl = cohort?.publicSlug && typeof window !== 'undefined' ? `${window.location.origin}/apply/${cohort.publicSlug}` : '';
@@ -333,6 +336,7 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
     setBusy(true);
     try {
       await cohortApi.update(cohortId, {
+        description: description.trim() || null,
         capacity: seats === '' ? null : Number(seats),
         maxApplications: maxApps === '' ? null : Number(maxApps),
         timezone: tz,
@@ -398,6 +402,20 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
       <div className="flex items-center gap-2">
         <ClipboardCheck className="w-4 h-4 text-brand-600" />
         <h2 className="font-medium text-slate-900">Admissions settings</h2>
+      </div>
+
+      {/* Applicant-facing description — shown at the top of the public apply form */}
+      <div>
+        <label className="block text-xs font-medium text-slate-500 mb-1">
+          Description <span className="text-slate-400 font-normal">— shown to applicants on the apply form</span>
+        </label>
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          rows={3}
+          placeholder="What is this intake about? Who is it for, what will they get, and any expectations. Applicants see this at the top of the form."
+          className={`${field} resize-y`}
+        />
       </div>
 
       {/* Capacity (the application window itself is set below) */}

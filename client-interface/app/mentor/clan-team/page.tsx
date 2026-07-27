@@ -9,12 +9,13 @@ import { clanApi } from '@/lib/services/clan-api';
 import { clanRequestsApi } from '@/lib/services/clan-requests-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { Drawer } from '@/components/shared/Drawer';
+import { Avatar } from '@/components/shared/Avatar';
 import { CoMentorPermissionsDrawer } from '@/components/shared/CoMentorPermissionsDrawer';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 
 interface Member {
   role: 'lead_mentor' | 'co_mentor' | 'core_team' | 'mentee';
-  user: { id: string; firstName: string; lastName: string; email: string; role: string };
+  user: { id: string; firstName: string; lastName: string; email: string; role: string; profilePictureUrl?: string | null };
 }
 interface ClanDetail {
   id: string;
@@ -152,7 +153,7 @@ function ClanTeamCard({ clanId, myRole }: { clanId: string; myRole: string }) {
   const Person = ({ m, removable, managePerms }: { m: Member; removable: boolean; managePerms?: boolean }) => (
     <div className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2">
       <div className="flex items-center gap-3 min-w-0">
-        <span className="w-9 h-9 rounded-full bg-brand-100 text-brand-700 text-sm font-medium flex items-center justify-center shrink-0">{initials(m.user)}</span>
+        <Avatar name={name(m.user)} src={m.user.profilePictureUrl} initials={initials(m.user)} size="md" />
         <div className="min-w-0">
           <p className="text-sm font-medium text-slate-900 truncate">
             {name(m.user)}
