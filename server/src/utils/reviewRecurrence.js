@@ -49,4 +49,23 @@ function nextOccurrences(schedule, from = new Date(), count = 4) {
   return out;
 }
 
-module.exports = { nextOccurrences, anchorDate };
+/**
+ * The occurrence that is LIVE right now for a schedule, or null.
+ * "Live" = an occurrence has started (start <= now) and its window
+ * [start, start + duration + grace] still contains now. This is what makes a
+ * scheduled review joinable independently of any single stored `scheduledAt` —
+ * so a clan can have several reviews on the same day at different times.
+ * @returns {{ dateStr: string, start: Date, end: Date } | null}
+ */
+function activeOccurrence(schedule, now = new Date(), graceMinutes = 30) {
+  const windowMs = ((Number(schedule.durationMinutes) || 60) + graceMinutes) * 60000;
+  // Look back one window so an occurrence that started up to `windowMs` ago is caught.
+  const from = new Date(now.getTime() - windowMs);
+  const occ = nextOccurrences(schedule, from, 2);
+  for (const o of occ) {
+    if (o.start.getTime() <= now.getTime() && o.start.getTime() + windowMs > now.getTime()) return o;
+  }
+  return null;
+}
+
+module.exports = { nextOccurrences, anchorDate, activeOccurrence };

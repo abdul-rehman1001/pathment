@@ -4,6 +4,7 @@ const { models } = require('../db');
 const { NotFoundError, ForbiddenError, ValidationError } = require('../utils/errors/errorTypes');
 const authzService = require('./authzService');
 const cfg = require('../config/reviewMeeting');
+const { activeOccurrence } = require('../utils/reviewRecurrence');
 
 // A live meeting older than this with no explicit end is treated as abandoned —
 // stops a never-ended meeting from showing the mentee "Join" banner forever.
@@ -127,25 +128,46 @@ class ReviewMeetingService {
     return this._joinConfig(session, null);
   }
 
+  /**
+   * If ANY active recurring schedule for one of `clanIds` has an occurrence whose
+   * window contains `now`, ensure that clan's day-session is OPEN for it and return
+   * it. Liveness is driven by the SCHEDULE's occurrence window — NOT the session's
+   * single frozen `scheduled_at` — so a clan can run several reviews on the same
+   * day (e.g. 4:10 AM and 3:00 PM) and each goes live at its own time. Also
+   * (re)opens over an earlier call that day. Returns { schedule, occ, session } or null.
+   */
+  async _liveScheduleForClans(clanIds, now = new Date()) {
+    if (!clanIds || !clanIds.length) return null;
+    const schedules = await models.ReviewSchedule.findAll({ where: { clanId: { [Op.in]: clanIds }, active: true } });
+    for (const s of schedules) {
+      const occ = activeOccurrence(s, now);
+      if (!occ) continue;
+      const session = await require('./reviewScheduleService')._findOrCreateSession(s, occ);
+      // Deliberately ended AFTER this occurrence started → stays closed.
+      if (session.meetingEndedAt && new Date(session.meetingEndedAt).getTime() >= occ.start.getTime()) continue;
+      const openForThis = session.meetingStartedAt
+        && new Date(session.meetingStartedAt).getTime() === occ.start.getTime()
+        && !session.meetingEndedAt;
+      if (!openForThis) {
+        // Open (or re-open over an earlier ad-hoc / earlier-occurrence call today).
+        await session.update({ scheduledAt: occ.start, reviewScheduleId: s.id, meetingStartedAt: occ.start, meetingEndedAt: null, status: 'in_progress' });
+        this._notifyMenteesStarted(session).catch((err) => console.error('scheduled review start notify failed (non-fatal):', err.message));
+      }
+      return { schedule: s, occ, session };
+    }
+    return null;
+  }
+
   /** Host's embed config + live roster (attendance/talk state per mentee). */
   async hostView(mentorId, sessionId) {
     if (!cfg.enabled) return { enabled: false, comingSoon: cfg.comingSoon };
     const session = await this._hostSession(mentorId, sessionId);
-    // A SCHEDULED review auto-opens at its time. It (re)opens even if an EARLIER
-    // ad-hoc call happened on the same day's session (the day's session is shared)
-    // — otherwise a prior "Meeting ended" would leave the scheduled review dead on
-    // arrival. Guard: meeting_started_at stamped exactly to scheduled_at means we
-    // already opened THIS occurrence (so a deliberate end isn't undone).
-    const sched = session.scheduledAt ? new Date(session.scheduledAt) : null;
-    const freshCutoffOpen = new Date(Date.now() - MEETING_STALE_HOURS * 60 * 60 * 1000);
-    const alreadyOpenedForSchedule = sched && session.meetingStartedAt
-      && new Date(session.meetingStartedAt).getTime() === sched.getTime();
-    if (sched && sched <= new Date() && sched > freshCutoffOpen && !alreadyOpenedForSchedule) {
-      await session.update({ meetingStartedAt: session.scheduledAt, meetingEndedAt: null, status: 'in_progress' });
-      // The host just opened a scheduled review → light up mentees' Join banner
-      // in real time (same signal a manual start sends).
-      this._notifyMenteesStarted(session).catch((err) => console.error('scheduled review start notify failed (non-fatal):', err.message));
-    }
+    // A scheduled review auto-opens when any active schedule for this clan is live
+    // NOW (window-based, so multiple reviews/day + a stale scheduled_at both work).
+    try {
+      const live = await this._liveScheduleForClans([session.clanId], new Date());
+      if (live) await session.reload();
+    } catch (e) { console.error('scheduled review auto-open failed (non-fatal):', e.message); }
     // Reconcile first so the roster covers EVERY clan mentee, not just those who
     // already self-reported — otherwise the mentor can't mark a direct joiner
     // present, or even see who hasn't shown up.
@@ -196,12 +218,26 @@ class ReviewMeetingService {
     })).map((m) => m.clanId).filter(Boolean);
     if (!clanIds.length) return null;
 
+    const now = new Date();
+    // (0) SCHEDULE-DRIVEN liveness (the reliable path): if any active recurring
+    //     schedule for the mentee's clan is live right now, open + return it. This
+    //     is window-based off the SCHEDULE, so it works even when the shared
+    //     day-session's frozen `scheduled_at` points at a different schedule (e.g.
+    //     two reviews the same day) — the exact bug where nothing showed at 4:10.
+    try {
+      const live = await this._liveScheduleForClans(clanIds, now);
+      if (live) {
+        const u = await models.User.findByPk(userId, { attributes: ['id', 'firstName', 'lastName', 'profilePictureUrl'] });
+        const clan = await models.Clan.findByPk(live.session.clanId, { attributes: ['name'] });
+        return { ...this._joinConfig(live.session, this._fullName(u), u && u.profilePictureUrl), clanName: clan?.name || 'your clan' };
+      }
+    } catch (e) { console.error('[activeForMentee] schedule-live check failed:', e.message); }
+
     // Staleness guard: a meeting the mentor never cleanly ended (closed the tab
     // / hung up in Jitsi instead of "End & score") would otherwise leave
     // meetingEndedAt null forever and show the "Join review" banner to mentees
     // indefinitely. Only treat a meeting as live if it started recently.
     const freshCutoff = new Date(Date.now() - MEETING_STALE_HOURS * 60 * 60 * 1000);
-    const now = new Date();
     const session = await models.CohortReviewSession.findOne({
       where: {
         clanId: { [Op.in]: clanIds },
