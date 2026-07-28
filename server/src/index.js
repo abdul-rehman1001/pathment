@@ -21,7 +21,7 @@ const server = http.createServer(app);
  */
 
 // CORS configuration
-const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:3003')
+const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:3000')
   .split(',')
   .map((o) => o.trim())
   .filter(Boolean);
