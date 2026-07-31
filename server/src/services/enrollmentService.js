@@ -59,7 +59,7 @@ class EnrollmentService {
         {
           model: models.User,
           as: 'mentee',
-          attributes: ['id', 'firstName', 'lastName', 'email', 'profilePictureUrl'],
+          attributes: ['id', 'firstName', 'lastName', 'email', 'phone', 'profilePictureUrl'],
           include: [{
             model: models.MenteeProfile,
             as: 'menteeProfile',
