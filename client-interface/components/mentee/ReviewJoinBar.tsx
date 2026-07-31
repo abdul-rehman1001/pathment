@@ -11,6 +11,7 @@ interface ActiveReview {
   sessionId: string;
   domain: string; room: string; url: string;
   displayName: string | null; clanName: string; externalUrl: string | null; avatarUrl: string | null;
+  pollsEnabled?: boolean;
 }
 
 /**
@@ -154,6 +155,7 @@ export function ReviewJoinBar() {
                 displayName={active.displayName}
                 avatarUrl={active.avatarUrl}
                 role="guest"
+                polls={!!active.pollsEnabled}
                 onJoined={onJoined}
                 onLeft={onLeft}
                 onSelfDominantChange={onSelfDominant}

@@ -68,6 +68,7 @@ export const mentorApi = {
   getReviewMeetingConfig: () => apiClient.get(`/mentor/review/meeting-config`),
   getReviewMeeting: (id: string) => apiClient.get(`/mentor/review/sessions/${id}/meeting`),
   setReviewAttendanceTracking: (id: string, enabled: boolean) => apiClient.put(`/mentor/review/sessions/${id}/meeting/attendance-tracking`, { enabled }),
+  setReviewPolls: (id: string, enabled: boolean) => apiClient.put(`/mentor/review/sessions/${id}/meeting/polls`, { enabled }),
   markReviewPresent: (id: string, menteeId: string, present: boolean) =>
     apiClient.put(`/mentor/review/sessions/${id}/meeting/present/${menteeId}`, { present }),
   recordReviewTalkTime: (id: string, items: { menteeId: string; seconds: number }[]) =>

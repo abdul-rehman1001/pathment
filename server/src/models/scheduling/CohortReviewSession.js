@@ -33,6 +33,10 @@ module.exports = (sequelize, DataTypes) => {
     // auto-marked present. A mentor can still flip it off to run a general call
     // (no attendance) for a given session.
     attendanceTracking: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true, field: 'attendance_tracking' },
+    // Jitsi in-call polls. OFF by default; the mentor toggles it on. Propagated to
+    // mentees so they can vote/see results while it's on. (Jitsi can't enforce
+    // mentor-only creation or hide voters per-role — that needs a native poll.)
+    pollsEnabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: 'polls_enabled' },
     // ── Scheduling (recurring reviews) ──
     scheduledAt: { type: DataTypes.DATE, allowNull: true, field: 'scheduled_at' },
     reviewScheduleId: { type: DataTypes.UUID, allowNull: true, field: 'review_schedule_id' },

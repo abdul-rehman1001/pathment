@@ -42,7 +42,7 @@ const GUEST_TOOLBAR = [
 const HOST_TOOLBAR = [...GUEST_TOOLBAR, 'invite', 'security', 'mute-everyone', 'mute-video-everyone'];
 
 export function JitsiRoom({
-  domain, room, displayName, avatarUrl, role = 'guest', privateChat = false, onJoined, onLeft, onReadyToClose, onParticipantJoined, onParticipantLeft, onDominantSpeaker, onSelfDominantChange, onError,
+  domain, room, displayName, avatarUrl, role = 'guest', privateChat = false, polls = false, onJoined, onLeft, onReadyToClose, onParticipantJoined, onParticipantLeft, onDominantSpeaker, onSelfDominantChange, onError,
 }: {
   domain: string;
   room: string;
@@ -53,6 +53,8 @@ export function JitsiRoom({
   role?: 'host' | 'guest';
   /** Allow 1:1 private chat between participants. OFF by default; the host enables it. */
   privateChat?: boolean;
+  /** Enable in-call polls (create + vote). OFF by default; the host toggles it. */
+  polls?: boolean;
   onJoined?: () => void;
   onLeft?: () => void;
   /** Fires when the user hangs up in the Jitsi toolbar (red button, "end for me"
@@ -143,6 +145,8 @@ export function JitsiRoom({
             // Keep the feature explicitly on and un-moderated.
             disableReactions: false,
             disableReactionsModeration: true,
+            // In-call polls — OFF unless the host enabled them for this session.
+            disablePolls: !polls,
           },
           interfaceConfigOverwrite: {
             MOBILE_APP_PROMO: false,
@@ -154,7 +158,8 @@ export function JitsiRoom({
             DISPLAY_WELCOME_PAGE_CONTENT: false,
             DISPLAY_WELCOME_FOOTER: false,
             // Role-scoped toolbar: mentees can't invite / lock the room / mute all.
-            TOOLBAR_BUTTONS: role === 'host' ? HOST_TOOLBAR : GUEST_TOOLBAR,
+            // 'polls' appears only when the host enabled polls for the session.
+            TOOLBAR_BUTTONS: [...(role === 'host' ? HOST_TOOLBAR : GUEST_TOOLBAR), ...(polls ? ['polls'] : [])],
             // Don't auto-drop into the grid; keep the active speaker / shared screen
             // on the main stage.
             DEFAULT_LOCAL_DISPLAY_NAME: 'You',
@@ -222,7 +227,7 @@ export function JitsiRoom({
     };
     // Re-mount only when the room/domain changes — callbacks are read fresh via refs
     // in practice, but re-creating on room change is the intended lifecycle.
-  }, [domain, room, role, privateChat]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [domain, room, role, privateChat, polls]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return <div ref={containerRef} className="w-full h-full min-h-[420px] rounded-xl overflow-hidden bg-slate-900" />;
 }

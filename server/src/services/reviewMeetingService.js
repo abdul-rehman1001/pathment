@@ -39,6 +39,9 @@ class ReviewMeetingService {
       avatarUrl: avatarUrl || null,
       startedAt: session.meetingStartedAt,
       endedAt: session.meetingEndedAt,
+      // Mentor-controlled in-call polls (see setPolls). Propagated to mentees so
+      // they can vote/see results when it's on.
+      pollsEnabled: !!session.pollsEnabled,
     };
   }
 
@@ -247,6 +250,14 @@ class ReviewMeetingService {
       marked = count || 0;
     }
     return { attendanceTracking: !!enabled, marked };
+  }
+
+  /** Mentor toggle: enable/disable Jitsi in-call polls for the session (propagated
+   *  to mentees via the join config so they can vote/see results while it's on). */
+  async setPolls(mentorId, sessionId, enabled) {
+    const session = await this._hostSession(mentorId, sessionId);
+    await session.update({ pollsEnabled: !!enabled });
+    return { pollsEnabled: !!enabled };
   }
 
   // ── mentee: discover + join + leave ──────────────────────────────────────

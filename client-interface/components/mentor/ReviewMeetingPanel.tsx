@@ -9,7 +9,7 @@ import { ComingSoon } from '@/components/shared/ComingSoon';
 
 interface RosterRow { menteeId: string; name: string; attendance: string | null; autoPresent: boolean; talkSeconds: number; contributionPoints: number }
 interface ScoreRow { menteeId: string; name: string; talkSeconds: number; proposed: boolean; alreadyAwarded: boolean }
-interface Meeting { sessionId: string; domain: string; room: string; url: string; displayName: string | null; avatarUrl: string | null; externalUrl: string | null; startedAt: string | null; endedAt: string | null }
+interface Meeting { sessionId: string; domain: string; room: string; url: string; displayName: string | null; avatarUrl: string | null; externalUrl: string | null; startedAt: string | null; endedAt: string | null; pollsEnabled?: boolean }
 
 // Talk time: seconds under a minute (the contribution bar is 20s), minutes above.
 const fmtTalk = (s: number) => (s < 60 ? `${s}s` : `${Math.round(s / 60)}m`);
@@ -46,6 +46,9 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
   const [attendanceTracking, setAttendanceTracking] = useState(true);
   // Private 1:1 chat — OFF by default; the host toggles it on (remounts Jitsi).
   const [privateChat, setPrivateChat] = useState(false);
+  // In-call polls — OFF by default; server (session.pollsEnabled) is the source of
+  // truth and overwrites this on refresh. Propagated to mentees so they can vote.
+  const [polls, setPolls] = useState(false);
   // The whole live-video feature is behind a server flag (self-hosted Jitsi not
   // wired in prod yet). When the server reports it off, render nothing — unless
   // it also reports `comingSoon`, in which case we show an inviting teaser.
@@ -73,6 +76,7 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
       setRoster(res?.data?.roster ?? []);
       setLive(!!res?.data?.live);
       setAttendanceTracking(!!res?.data?.attendanceTracking);
+      setPolls(!!res?.data?.meeting?.pollsEnabled);
     } catch { /* keep last */ }
     finally { setLoading(false); }
   }, [liveSessionId]);
@@ -202,6 +206,11 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
     setAttendanceTracking(next); // optimistic
     try { await mentorApi.setReviewAttendanceTracking(liveSessionId, next); } catch { setAttendanceTracking(!next); toast.error('Could not update attendance tracking'); }
   };
+  const togglePolls = async () => {
+    const next = !polls;
+    setPolls(next); // optimistic (remounts Jitsi with polls on/off for everyone)
+    try { await mentorApi.setReviewPolls(liveSessionId, next); } catch { setPolls(!next); toast.error('Could not update polls'); }
+  };
 
   const togglePresent = async (r: RosterRow) => {
     const present = r.attendance !== 'present';
@@ -266,7 +275,7 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
             <JitsiRoom
               key={videoKey}
               domain={meeting.domain} room={meeting.room} displayName={meeting.displayName} avatarUrl={meeting.avatarUrl}
-              role="host" privateChat={privateChat}
+              role="host" privateChat={privateChat} polls={polls}
               onParticipantJoined={onParticipant} onDominantSpeaker={onDominant}
               onReadyToClose={endAndScore}
               onError={(m) => toast.error(m)}
@@ -287,6 +296,15 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
               <button type="button" role="switch" aria-checked={privateChat} onClick={() => setPrivateChat((v) => !v)}
                 className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${privateChat ? 'bg-brand-600' : 'bg-slate-300'}`}>
                 <span className={`absolute left-0 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${privateChat ? 'translate-x-4' : 'translate-x-0.5'}`} />
+              </button>
+            </div>
+            {/* Polls — OFF by default; the mentor turns it on to create polls. When
+                on, mentees can vote/see results too (propagated). */}
+            <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5">
+              <span className="text-xs font-medium text-slate-700" title="On lets you create in-call polls; mentees can vote and see results.">Polls</span>
+              <button type="button" role="switch" aria-checked={polls} onClick={togglePolls}
+                className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${polls ? 'bg-brand-600' : 'bg-slate-300'}`}>
+                <span className={`absolute left-0 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${polls ? 'translate-x-4' : 'translate-x-0.5'}`} />
               </button>
             </div>
             <p className="text-xs text-slate-500 mb-2">{presentCount}/{roster.length} present</p>
