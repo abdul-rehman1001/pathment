@@ -56,6 +56,7 @@ export function LiveMeetingOverlay({ meetingId, onClose }: { meetingId: string; 
             room={info.room}
             displayName={info.displayName}
             avatarUrl={info.avatarUrl}
+            role={info.isHost ? 'host' : 'guest'}
             onReadyToClose={onClose}
             onError={(m) => setError(m)}
           />

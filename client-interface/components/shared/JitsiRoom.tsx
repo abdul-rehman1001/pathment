@@ -32,14 +32,27 @@ export interface JitsiParticipant { id: string; displayName?: string }
  * self join/leave (for attendance), roster changes, and dominant speaker (for
  * the contribution signal). All wiring is disposed on unmount.
  */
+// Toolbar sets. Guests (mentees) get a locked-down bar; the host (mentor / co-
+// mentor) additionally gets room security + mute-everyone. 'invite' is removed
+// for BOTH — Pathment controls who's in the room, so no one shares a join link.
+const GUEST_TOOLBAR = [
+  'microphone', 'camera', 'desktop', 'fullscreen', 'hangup', 'chat', 'raisehand',
+  'tileview', 'videoquality', 'filmstrip', 'select-background', 'settings', 'participants-pane',
+];
+const HOST_TOOLBAR = [...GUEST_TOOLBAR, 'security', 'mute-everyone', 'mute-video-everyone'];
+
 export function JitsiRoom({
-  domain, room, displayName, avatarUrl, onJoined, onLeft, onReadyToClose, onParticipantJoined, onParticipantLeft, onDominantSpeaker, onSelfDominantChange, onError,
+  domain, room, displayName, avatarUrl, role = 'guest', privateChat = false, onJoined, onLeft, onReadyToClose, onParticipantJoined, onParticipantLeft, onDominantSpeaker, onSelfDominantChange, onError,
 }: {
   domain: string;
   room: string;
   displayName?: string | null;
   /** Pathment profile picture, so people show their real face in the call. */
   avatarUrl?: string | null;
+  /** 'host' = mentor/co-mentor (moderation toolbar); 'guest' = mentee (locked down). */
+  role?: 'host' | 'guest';
+  /** Allow 1:1 private chat between participants. OFF by default; the host enables it. */
+  privateChat?: boolean;
   onJoined?: () => void;
   onLeft?: () => void;
   /** Fires when the user hangs up in the Jitsi toolbar (red button, "end for me"
@@ -109,6 +122,21 @@ export function JitsiRoom({
             // initials. Promos are already suppressed via interfaceConfig below.
             enableWelcomePage: false,
             enableClosePage: false,
+            // ── Pathment access/moderation policy ──
+            // No one invites via Jitsi — Pathment owns membership (a shared join
+            // link would let anyone in). Disables the invite button + dial-in etc.
+            disableInviteFunctions: true,
+            // The remote-participant (three-dot) menu: guests can't kick, and no one
+            // hands out moderator from the UI. 1:1 private chat is OFF by default —
+            // the host turns it on via `privateChat`.
+            remoteVideoMenu: {
+              disableKick: role !== 'host',
+              disableGrantModerator: true,
+              disablePrivateChat: !privateChat,
+            },
+            // Screen share should take the stage (like Meet) instead of a small
+            // tile — start in stage view; we also force it on share (listener below).
+            startInTileView: false,
           },
           interfaceConfigOverwrite: {
             MOBILE_APP_PROMO: false,
@@ -119,6 +147,11 @@ export function JitsiRoom({
             HIDE_DEEP_LINKING_LOGO: true,
             DISPLAY_WELCOME_PAGE_CONTENT: false,
             DISPLAY_WELCOME_FOOTER: false,
+            // Role-scoped toolbar: mentees can't invite / lock the room / mute all.
+            TOOLBAR_BUTTONS: role === 'host' ? HOST_TOOLBAR : GUEST_TOOLBAR,
+            // Don't auto-drop into the grid; keep the active speaker / shared screen
+            // on the main stage.
+            DEFAULT_LOCAL_DISPLAY_NAME: 'You',
           },
         });
         apiRef.current = api;
@@ -164,6 +197,15 @@ export function JitsiRoom({
           } catch { /* best-effort */ }
           onDominantSpeaker?.(e.id);
         });
+        // Screen share → put it on the main stage (like Google Meet), not a tile.
+        // The event payload shape varies across Jitsi builds, so read both.
+        api.addListener('contentSharingParticipantsChanged', (e: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+          const ids: string[] = e?.data?.sharingParticipantIds || e?.sharingParticipantIds || (Array.isArray(e) ? e : []);
+          if (ids && ids.length) {
+            try { api.executeCommand('setTileView', false); } catch { /* older build */ }
+            try { api.setLargeVideoParticipant?.(ids[ids.length - 1]); } catch { /* optional */ }
+          }
+        });
       })
       .catch((e) => onError?.(e?.message || 'Could not start the video'));
 
@@ -174,7 +216,7 @@ export function JitsiRoom({
     };
     // Re-mount only when the room/domain changes — callbacks are read fresh via refs
     // in practice, but re-creating on room change is the intended lifecycle.
-  }, [domain, room]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [domain, room, role, privateChat]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return <div ref={containerRef} className="w-full h-full min-h-[420px] rounded-xl overflow-hidden bg-slate-900" />;
 }

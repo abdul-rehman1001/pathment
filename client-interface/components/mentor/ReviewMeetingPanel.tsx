@@ -44,6 +44,8 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
   // On by default for reviews (joining auto-marks present); the server is the
   // source of truth and overwrites this on the first refresh. Off = general call.
   const [attendanceTracking, setAttendanceTracking] = useState(true);
+  // Private 1:1 chat — OFF by default; the host toggles it on (remounts Jitsi).
+  const [privateChat, setPrivateChat] = useState(false);
   // The whole live-video feature is behind a server flag (self-hosted Jitsi not
   // wired in prod yet). When the server reports it off, render nothing — unless
   // it also reports `comingSoon`, in which case we show an inviting teaser.
@@ -264,6 +266,7 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
             <JitsiRoom
               key={videoKey}
               domain={meeting.domain} room={meeting.room} displayName={meeting.displayName} avatarUrl={meeting.avatarUrl}
+              role="host" privateChat={privateChat}
               onParticipantJoined={onParticipant} onDominantSpeaker={onDominant}
               onReadyToClose={endAndScore}
               onError={(m) => toast.error(m)}
@@ -275,6 +278,15 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
               <button type="button" role="switch" aria-checked={attendanceTracking} onClick={toggleAttendance}
                 className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${attendanceTracking ? 'bg-brand-600' : 'bg-slate-300'}`}>
                 <span className={`absolute left-0 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${attendanceTracking ? 'translate-x-4' : 'translate-x-0.5'}`} />
+              </button>
+            </div>
+            {/* Private 1:1 chat is OFF by default (mentees can't DM anyone); the
+                mentor flips it on when they want to message privately. */}
+            <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5">
+              <span className="text-xs font-medium text-slate-700" title="Off = no private 1:1 messages. On lets you privately message a participant.">Private chat</span>
+              <button type="button" role="switch" aria-checked={privateChat} onClick={() => setPrivateChat((v) => !v)}
+                className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${privateChat ? 'bg-brand-600' : 'bg-slate-300'}`}>
+                <span className={`absolute left-0 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${privateChat ? 'translate-x-4' : 'translate-x-0.5'}`} />
               </button>
             </div>
             <p className="text-xs text-slate-500 mb-2">{presentCount}/{roster.length} present</p>

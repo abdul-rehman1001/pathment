@@ -135,6 +135,7 @@ export function ReviewJoinBar() {
                 room={active.room}
                 displayName={active.displayName}
                 avatarUrl={active.avatarUrl}
+                role="guest"
                 onJoined={onJoined}
                 onLeft={onLeft}
                 onSelfDominantChange={onSelfDominant}
