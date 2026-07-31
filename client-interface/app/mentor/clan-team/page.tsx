@@ -8,6 +8,7 @@ import { apiClient } from '@/lib/services/api-client';
 import { clanApi } from '@/lib/services/clan-api';
 import { clanRequestsApi } from '@/lib/services/clan-requests-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
+import Link from 'next/link';
 import { Drawer } from '@/components/shared/Drawer';
 import { Avatar } from '@/components/shared/Avatar';
 import { CoMentorPermissionsDrawer } from '@/components/shared/CoMentorPermissionsDrawer';
@@ -150,9 +151,9 @@ function ClanTeamCard({ clanId, myRole }: { clanId: string; myRole: string }) {
   const mentees = members.filter((m) => m.role === 'mentee');
   const menteeCount = mentees.length;
 
-  const Person = ({ m, removable, managePerms }: { m: Member; removable: boolean; managePerms?: boolean }) => (
-    <div className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2">
-      <div className="flex items-center gap-3 min-w-0">
+  const Person = ({ m, removable, managePerms }: { m: Member; removable: boolean; managePerms?: boolean }) => {
+    const inner = (
+      <>
         <Avatar name={name(m.user)} src={m.user.profilePictureUrl} initials={initials(m.user)} size="md" />
         <div className="min-w-0">
           <p className="text-sm font-medium text-slate-900 truncate">
@@ -165,7 +166,18 @@ function ClanTeamCard({ clanId, myRole }: { clanId: string; myRole: string }) {
           </p>
           <p className="text-xs text-slate-500 truncate">{m.user.email}</p>
         </div>
-      </div>
+      </>
+    );
+    return (
+    <div className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2">
+      {/* Mentees link to their full profile; mentors have no mentee-profile page. */}
+      {m.role === 'mentee' ? (
+        <Link href={`/mentor/mentees/${m.user.id}`} className="flex items-center gap-3 min-w-0 flex-1 rounded-lg -mx-1 px-1 py-0.5 hover:bg-slate-50">
+          {inner}
+        </Link>
+      ) : (
+        <div className="flex items-center gap-3 min-w-0">{inner}</div>
+      )}
       <div className="flex items-center gap-1 shrink-0">
         {managePerms && canManageTeam && (
           <button onClick={() => setPermMember(m)} className="p-1.5 rounded-md text-slate-400 hover:text-brand-600 hover:bg-brand-50" aria-label="Edit permissions" title="Edit permissions"><SlidersHorizontal className="w-4 h-4" /></button>
@@ -175,7 +187,8 @@ function ClanTeamCard({ clanId, myRole }: { clanId: string; myRole: string }) {
         )}
       </div>
     </div>
-  );
+    );
+  };
 
   const Section = ({ icon, title, items, removable, managePerms }: { icon: React.ReactNode; title: string; items: Member[]; removable: boolean; managePerms?: boolean }) => (
     items.length === 0 ? null : (
