@@ -63,25 +63,32 @@ class ReviewMeetingService {
   }
 
   // ── host: open / close the room ──────────────────────────────────────────
+  /**
+   * Clean the attendance slate for a NEW live call so it never inherits who
+   * attended a PREVIOUS call (or a seeded / prior-day mark on the same day-session).
+   * Clears present/absent + all presence/talk/auto signals; keeps only a deliberate
+   * 'excused' mark (a "can't attend" the mentor set on purpose). Whoever actually
+   * joins THIS call re-marks present via auto-attendance.
+   */
+  async _wipePerCallAttendance(sessionId) {
+    await models.CohortReviewEntry.update(
+      { attendance: null, autoPresent: false, joinedAt: null, leftAt: null, secondsPresent: 0, talkSeconds: 0 },
+      { where: { sessionId, attendance: { [Op.ne]: 'excused' } } }
+    );
+    // Excused people weren't in the call either — zero their presence/talk too.
+    await models.CohortReviewEntry.update(
+      { autoPresent: false, joinedAt: null, leftAt: null, secondsPresent: 0, talkSeconds: 0 },
+      { where: { sessionId, attendance: 'excused' } }
+    );
+  }
+
   /** Start (or return) the live room for a session. Idempotent. */
   async startMeeting(mentorId, sessionId, { externalUrl } = {}) {
     if (!cfg.enabled) throw new ForbiddenError('Live review video is not enabled');
     const session = await this._hostSession(mentorId, sessionId);
-    // Re-opening after a prior call = a fresh call. Wipe the per-call attendance
-    // signals so a new meeting doesn't inherit who attended the LAST one (joined,
-    // seconds, talk time, and any AUTO 'present'). A mentor's MANUAL marks
-    // (auto_present = false) are kept.
-    const isRestart = !!session.meetingStartedAt;
-    if (isRestart) {
-      await models.CohortReviewEntry.update(
-        { attendance: null },
-        { where: { sessionId, autoPresent: true } }
-      );
-      await models.CohortReviewEntry.update(
-        { autoPresent: false, joinedAt: null, leftAt: null, secondsPresent: 0, talkSeconds: 0 },
-        { where: { sessionId } }
-      );
-    }
+    // Every call start begins with a clean attendance slate (no carry-over from a
+    // prior call or seeded/earlier marks) — only actual joiners of THIS call count.
+    await this._wipePerCallAttendance(sessionId);
     const patch = {};
     if (!session.meetingRoom) {
       // Non-guessable slug — the natural way in is Pathment's Join button, not
@@ -181,7 +188,9 @@ class ReviewMeetingService {
         && new Date(session.meetingStartedAt).getTime() === occ.start.getTime()
         && !session.meetingEndedAt;
       if (!openForThis) {
-        // Open (or re-open over an earlier ad-hoc / earlier-occurrence call today).
+        // Fresh occurrence — clean the attendance slate so it doesn't inherit an
+        // earlier call's / seeded marks, then open (or re-open over an earlier call).
+        await this._wipePerCallAttendance(session.id);
         await session.update({ scheduledAt: occ.start, reviewScheduleId: s.id, meetingStartedAt: occ.start, meetingEndedAt: null, status: 'in_progress' });
         this._notifyMenteesStarted(session).catch((err) => console.error('scheduled review start notify failed (non-fatal):', err.message));
       }
