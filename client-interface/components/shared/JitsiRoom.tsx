@@ -37,7 +37,7 @@ export interface JitsiParticipant { id: string; displayName?: string }
 // Only the host can invite — mentees never share a join link.
 const GUEST_TOOLBAR = [
   'microphone', 'camera', 'desktop', 'fullscreen', 'hangup', 'chat', 'raisehand',
-  'tileview', 'videoquality', 'filmstrip', 'select-background', 'settings', 'participants-pane',
+  'reactions', 'tileview', 'videoquality', 'filmstrip', 'select-background', 'settings', 'participants-pane',
 ];
 const HOST_TOOLBAR = [...GUEST_TOOLBAR, 'invite', 'security', 'mute-everyone', 'mute-video-everyone'];
 
@@ -138,6 +138,11 @@ export function JitsiRoom({
             // Screen share should take the stage (like Meet) instead of a small
             // tile — start in stage view; we also force it on share (listener below).
             startInTileView: false,
+            // Reactions must broadcast to everyone (they weren't, because the
+            // custom toolbar had dropped the 'reactions' button — re-added above).
+            // Keep the feature explicitly on and un-moderated.
+            disableReactions: false,
+            disableReactionsModeration: true,
           },
           interfaceConfigOverwrite: {
             MOBILE_APP_PROMO: false,
