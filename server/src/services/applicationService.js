@@ -354,13 +354,32 @@ class ApplicationService {
     const app = await models.Application.findByPk(applicationId);
     if (!app) throw new NotFoundError('Application not found');
 
+    const wasDecided = app.status === 'rejected';
+    const finalReason = reason || app.decisionReason;
     await app.update({
       status: 'rejected',
       decidedAt: new Date(),
       reviewedBy: reviewerId,
       // Shown to the applicant on their status page.
-      decisionReason: reason || app.decisionReason
+      decisionReason: finalReason
     });
+
+    // Email the applicant the decision (+ reason). Only on the FIRST rejection —
+    // editing the reason later shouldn't re-email. Best-effort; never fail the action.
+    if (!wasDecided) {
+      try {
+        const cohort = await models.Cohort.findByPk(app.cohortId, {
+          include: [{ model: models.Program, as: 'program', attributes: ['name'] }],
+        });
+        await require('./notificationOrchestrator').sendApplicationRejectedEmail({
+          email: app.email,
+          firstName: app.firstName,
+          reason: finalReason,
+          programName: cohort?.program?.name || null,
+          applicationId: app.id,
+        });
+      } catch (e) { console.error('[intake] rejection email failed (non-fatal):', e.message); }
+    }
     return app;
   }
 

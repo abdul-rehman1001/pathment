@@ -256,13 +256,53 @@ class NotificationOrchestrator {
     });
   }
 
-  async sendRegistrationInviteEmail({ email, role, inviteUrl }) {
+  /**
+   * Applicant rejected — a courteous decision email with the reviewer's reason
+   * (if any). Plain + transactional so it lands in Primary, not Promotions.
+   */
+  async sendApplicationRejectedEmail({ email, firstName, reason, programName, applicationId }) {
+    const name = firstName ? firstName.trim() : 'there';
+    const prog = programName ? ` for ${programName}` : '';
+    const reasonText = reason ? `\n\nFeedback from the review team:\n${reason}\n` : '\n';
+    const reasonHtml = reason
+      ? `<p style="margin:0 0 14px;color:#475569;"><strong>Feedback from the review team:</strong><br>${escHtml(reason).replace(/\n/g, '<br>')}</p>`
+      : '';
+    const text =
+      `Hi ${name},\n\n` +
+      `Thank you for applying${prog}. After careful review, we're unable to offer you a place in this cohort.` +
+      reasonText +
+      `\nWe truly appreciate the effort you put in, and we'd welcome an application from you for a future cohort.\n\n` +
+      `- The Pathment team`;
+    return emailService.enqueue({
+      to: email,
+      emailType: 'application_rejected',
+      priority: 3,
+      idempotencyKey: `reject:${email.toLowerCase()}:${applicationId || reason || 'decided'}`,
+      subject: `Your Pathment application${prog}`,
+      text,
+      html: `
+        <div style="font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b; font-size: 15px; line-height: 1.6; max-width: 520px; margin: 0 auto; padding: 8px 4px;">
+          <p style="margin: 0 0 14px;">Hi ${escHtml(name)},</p>
+          <p style="margin: 0 0 14px;">Thank you for applying${escHtml(prog)}. After careful review, we're unable to offer you a place in this cohort.</p>
+          ${reasonHtml}
+          <p style="margin: 0 0 14px; color:#475569;">We truly appreciate the effort you put in, and we'd welcome an application from you for a future cohort.</p>
+          <p style="margin: 18px 0 0; color: #475569;">- The Pathment team</p>
+        </div>
+      `
+    });
+  }
+
+  async sendRegistrationInviteEmail({ email, role, inviteUrl, whatsappLink }) {
     // Intentionally plain + transactional (no banner image, no emoji, single CTA,
     // visible URL, strong text part) so Gmail keeps it in Primary, not Promotions.
+    const whatsappText = whatsappLink
+      ? `\nAfter you set up your account, join your clan's WhatsApp group:\n${whatsappLink}\n\n`
+      : '';
     const text =
       `Hi,\n\n` +
       `You've been invited to set up your Pathment account as a ${role}.\n\n` +
       `Get started here:\n${inviteUrl}\n\n` +
+      whatsappText +
       `This link is for you only, can be used once, and expires soon. ` +
       `If you weren't expecting this, you can ignore this email.\n\n` +
       `- The Pathment team`;
@@ -286,6 +326,7 @@ class NotificationOrchestrator {
           <p style="margin: 0 0 14px; color: #475569;">Or paste this link into your browser:<br>
             <a href="${inviteUrl}" style="color: #0052D6; word-break: break-all;">${inviteUrl}</a>
           </p>
+          ${whatsappLink ? `<p style="margin: 0 0 14px;">After setup, join your clan's WhatsApp group:<br><a href="${whatsappLink}" style="color:#0052D6; word-break:break-all;">${escHtml(whatsappLink)}</a></p>` : ''}
           <p style="margin: 0 0 14px; color: #64748b; font-size: 13px;">This link is for you only, can be used once, and expires soon. If you weren't expecting this, you can ignore this email.</p>
           <p style="margin: 18px 0 0; color: #475569;">- The Pathment team</p>
         </div>
