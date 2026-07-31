@@ -109,16 +109,43 @@ class ReviewMeetingService {
     return this._joinConfig(session, this._fullName(host), host && host.profilePictureUrl);
   }
 
-  /** Emit `review:started` to every mentee in the session's clan (real-time banner). */
+  /**
+   * Tell the clan's mentees a review just went live: a real-time `review:started`
+   * socket event (instant banner) AND a persistent in-app notification (the bell).
+   * The notification is the reliable path — it survives a dropped/absent socket
+   * (e.g. a misconfigured origin) and the mentee's 12s poll still shows the banner.
+   */
   async _notifyMenteesStarted(session) {
+    if (!session.clanId) return;
     const { emitToUser } = require('../socket');
     const cohortService = require('./cohortService');
     const [menteeIds, clan] = await Promise.all([
       cohortService.resolveMenteeIdsForClan(session.clanId),
       models.Clan.findByPk(session.clanId, { attributes: ['name'] }),
     ]);
-    const payload = { sessionId: session.id, clanName: clan?.name || 'your clan' };
+    if (!menteeIds.length) return;
+    const clanName = clan?.name || 'your clan';
+    // Real-time banner.
+    const payload = { sessionId: session.id, clanName };
     for (const uid of menteeIds) emitToUser(uid, 'review:started', payload);
+    // Persistent bell notification (in-app only; no email/dedupe key so it always
+    // fires on a genuine start). Best-effort — never block the call from starting.
+    try {
+      const notificationOrchestrator = require('./notificationOrchestrator');
+      const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
+      await notificationOrchestrator.dispatch({
+        eventKey: NOTIFICATION_EVENTS.REVIEW_REMINDER,
+        recipients: menteeIds.map((id) => ({ userId: id })),
+        payload: {
+          title: 'Review is live',
+          message: `Your mentor started the ${clanName} review — join now.`,
+          actionUrl: '/mentee/dashboard',
+          actionLabel: 'Join review',
+          relatedEntityType: 'review_session',
+        },
+        channelOverrides: { inApp: true, email: false, chat: false },
+      });
+    } catch (e) { console.error('[review] start in-app notify failed (non-fatal):', e.message); }
   }
 
   /** Close the room (stops new auto-attendance; contribution is finalized separately). */

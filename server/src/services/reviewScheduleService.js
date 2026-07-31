@@ -294,9 +294,16 @@ class ReviewScheduleService {
       // (Re)open — clears any earlier ad-hoc call on the shared day's session.
       await session.update({ meetingStartedAt: session.scheduledAt, meetingEndedAt: null, status: 'in_progress' });
       // Real-time banner for mentees who are on a page right now.
+      // Mentees: socket banner + in-app bell (handled inside _notifyMenteesStarted).
       try { await require('./reviewMeetingService')._notifyMenteesStarted(session); } catch { /* non-fatal */ }
-      // Bell notification for everyone (host + mentees), incl. those off-page.
-      await this._notifyStartedInApp(session, schedule).catch((e) => console.error('[reviewSchedule] start notify failed:', e.message));
+      // Host-only bell (mentees already notified above), so the mentor knows their
+      // scheduled review auto-started even if they're not on the page.
+      const clan = await models.Clan.findByPk(schedule.clanId, { attributes: ['name'], raw: true });
+      const title = schedule.title || `${clan?.name || 'Clan'} cohort review`;
+      await this._dispatchInApp(schedule, [], {
+        eventKey: NOTIFICATION_EVENTS.REVIEW_REMINDER,
+        title: 'Review is live', message: `"${title}" is starting now — join.`, mentorLabel: 'Join review',
+      }).catch((e) => console.error('[reviewSchedule] host start notify failed:', e.message));
     }
   }
 
