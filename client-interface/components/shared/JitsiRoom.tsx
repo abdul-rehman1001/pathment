@@ -32,14 +32,14 @@ export interface JitsiParticipant { id: string; displayName?: string }
  * self join/leave (for attendance), roster changes, and dominant speaker (for
  * the contribution signal). All wiring is disposed on unmount.
  */
-// Toolbar sets. Guests (mentees) get a locked-down bar; the host (mentor / co-
-// mentor) additionally gets room security + mute-everyone. 'invite' is removed
-// for BOTH — Pathment controls who's in the room, so no one shares a join link.
+// Toolbar sets. Guests (mentees) get a locked-down bar. The host (mentor /
+// co-mentor / admin) additionally gets invite, room security + mute-everyone.
+// Only the host can invite — mentees never share a join link.
 const GUEST_TOOLBAR = [
   'microphone', 'camera', 'desktop', 'fullscreen', 'hangup', 'chat', 'raisehand',
   'tileview', 'videoquality', 'filmstrip', 'select-background', 'settings', 'participants-pane',
 ];
-const HOST_TOOLBAR = [...GUEST_TOOLBAR, 'security', 'mute-everyone', 'mute-video-everyone'];
+const HOST_TOOLBAR = [...GUEST_TOOLBAR, 'invite', 'security', 'mute-everyone', 'mute-video-everyone'];
 
 export function JitsiRoom({
   domain, room, displayName, avatarUrl, role = 'guest', privateChat = false, onJoined, onLeft, onReadyToClose, onParticipantJoined, onParticipantLeft, onDominantSpeaker, onSelfDominantChange, onError,
@@ -123,9 +123,10 @@ export function JitsiRoom({
             enableWelcomePage: false,
             enableClosePage: false,
             // ── Pathment access/moderation policy ──
-            // No one invites via Jitsi — Pathment owns membership (a shared join
-            // link would let anyone in). Disables the invite button + dial-in etc.
-            disableInviteFunctions: true,
+            // Only the host (mentor / co-mentor / admin) can invite; mentees can't
+            // share a join link. `disableInviteFunctions` is TRUE to disable, so
+            // guests = true (off), host = false (invite available).
+            disableInviteFunctions: role !== 'host',
             // The remote-participant (three-dot) menu: guests can't kick, and no one
             // hands out moderator from the UI. 1:1 private chat is OFF by default —
             // the host turns it on via `privateChat`.

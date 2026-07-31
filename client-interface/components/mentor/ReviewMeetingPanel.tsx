@@ -262,7 +262,7 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
 
       {live && meeting && (
         <div className="grid gap-3 lg:grid-cols-[1fr_240px]">
-          <div className="h-[440px]">
+          <div className="h-[68vh] min-h-[520px]">
             <JitsiRoom
               key={videoKey}
               domain={meeting.domain} room={meeting.room} displayName={meeting.displayName} avatarUrl={meeting.avatarUrl}
