@@ -96,6 +96,10 @@ class ReviewMeetingService {
     // treat a genuinely live call as stale and hide the Join banner.
     patch.meetingStartedAt = new Date();
     patch.meetingEndedAt = null; // reopening clears a prior end
+    // Starting a live call means the review is active again — flip a 'finished'
+    // session back to in_progress so the whole flow (roster edits, attendance)
+    // is consistent with a call being live.
+    if (session.status !== 'in_progress') patch.status = 'in_progress';
     if (externalUrl !== undefined) patch.externalMeetingUrl = externalUrl || null;
     if (Object.keys(patch).length) await session.update(patch);
 
@@ -139,7 +143,8 @@ class ReviewMeetingService {
         payload: {
           title: 'Review is live',
           message: `Your mentor started the ${clanName} review — join now.`,
-          actionUrl: '/mentee/dashboard',
+          // ?join=review makes the dashboard open the call directly (see ReviewJoinBar).
+          actionUrl: '/mentee/dashboard?join=review',
           actionLabel: 'Join review',
           relatedEntityType: 'review_session',
         },
@@ -269,9 +274,12 @@ class ReviewMeetingService {
       where: {
         clanId: { [Op.in]: clanIds },
         [Op.or]: [
-          // (a) Ad-hoc / manual: the mentor started it recently and hasn't ended
-          //     it. Requires an in-progress session (a finished one isn't live).
-          { status: 'in_progress', meetingStartedAt: { [Op.gt]: freshCutoff }, meetingEndedAt: null },
+          // (a) Ad-hoc / manual: the mentor started a call recently and hasn't
+          //     ended it. Liveness tracks the CALL (started + not ended), NOT the
+          //     review's workflow status — a mentor can run a live call on a
+          //     'finished' review (reopen / "start a new call"), and mentees must
+          //     still see the Join banner.
+          { meetingStartedAt: { [Op.gt]: freshCutoff }, meetingEndedAt: null },
           // (b) SCHEDULED review whose time has arrived. Deliberately does NOT
           //     depend on `status` or on any earlier call that day: the day's
           //     session is shared with ad-hoc reviews, so a prior finish/end must

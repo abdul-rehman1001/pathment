@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { Video, X, ExternalLink } from 'lucide-react';
 import { menteeApi } from '@/lib/services/mentee-api';
 import { JitsiRoom } from '@/components/shared/JitsiRoom';
@@ -23,9 +24,13 @@ interface ActiveReview {
 const SPEAK_SPAN_CAP = 15;
 
 export function ReviewJoinBar() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const [active, setActive] = useState<ActiveReview | null>(null);
   const [open, setOpen] = useState(false);
   const [dismissed, setDismissed] = useState<string | null>(null);
+  const autoJoinedRef = useRef(false);
   const joinedAtRef = useRef<number | null>(null);
   const leavingRef = useRef(false);
   // Own dominant-speaker time: talkRef = accumulated seconds, speakingSince =
@@ -60,6 +65,19 @@ export function ReviewJoinBar() {
     socket?.on('review:started', onStarted);
     return () => { clearInterval(t); socket?.off('review:started', onStarted); };
   }, [poll]);
+
+  // Deep-link from the "Join review" notification (`?join=review`): the moment the
+  // active review loads, open the call directly instead of just landing on the
+  // dashboard. Fires once, then strips the param so a refresh doesn't re-join.
+  useEffect(() => {
+    if (autoJoinedRef.current || searchParams.get('join') !== 'review' || !active) return;
+    autoJoinedRef.current = true;
+    setDismissed(null);
+    setOpen(true);
+    const params = new URLSearchParams(Array.from(searchParams.entries()));
+    params.delete('join');
+    router.replace(`${pathname}${params.toString() ? `?${params.toString()}` : ''}`, { scroll: false });
+  }, [active, searchParams, router, pathname]);
 
   const onJoined = async () => {
     if (!active) return;
