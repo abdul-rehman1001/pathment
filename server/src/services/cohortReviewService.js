@@ -291,7 +291,7 @@ class CohortReviewService {
           recipients: [{ userId: entry.menteeId, email: entry.mentee?.email }],
           payload: {
             title: `We missed you at today's review!`,
-            message: `Hi ${menteeName}, you were missed during today's cohort review session for ${clanName}. Be sure to check your dashboard for notes and stay on track for the next session!`,
+            message: `Hi ${menteeName}, you were missed during today's cohort review session for ${clanName}. Be sure to check your dashboard and stay on track for the next session!`,
             actionUrl: '/mentee/dashboard',
             actionLabel: 'View Dashboard',
             relatedEntityType: 'review_session',
