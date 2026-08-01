@@ -103,14 +103,15 @@ export function ReviewScheduleDrawer({ open, onClose, clans, defaultClanId }: Pr
   const clanName = (id: string) => clans.find((c) => c.id === id)?.name || 'Clan';
 
   const submit = async () => {
-    if (!clanId) { toast.error('Pick a clan'); return; }
+    const finalClanId = clanId || defaultClanId || clans[0]?.id;
+    if (!finalClanId) { toast.error('Pick a clan'); return; }
     if (!/^\d{2}:\d{2}$/.test(timeLocal)) { toast.error('Pick a time'); return; }
     if (!startsOn) { toast.error('Pick a start date'); return; }
     if (endsOn && endsOn < startsOn) { toast.error('End date must be after the start date'); return; }
     try {
       setCreating(true);
       await mentorApi.createReviewSchedule({
-        clanId,
+        clanId: finalClanId,
         title: title.trim() || undefined,
         dayOfWeek: Number(dayOfWeek),
         timeLocal,
