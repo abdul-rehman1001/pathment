@@ -163,10 +163,19 @@ class ReviewMeetingService {
     } catch (e) { console.error('[review] start in-app notify failed (non-fatal):', e.message); }
   }
 
-  /** Close the room (stops new auto-attendance; contribution is finalized separately). */
+  /** Close the room (stops new auto-attendance; contribution is finalized separately).
+   *  Ending the call also FINISHES the review automatically — the mentor no longer
+   *  has to click "Finish" separately. A later "Start a new call" reopens it
+   *  (startMeeting flips status back to in_progress). */
   async endMeeting(mentorId, sessionId) {
     const session = await this._hostSession(mentorId, sessionId);
-    if (!session.meetingEndedAt) await session.update({ meetingEndedAt: new Date() });
+    const patch = {};
+    if (!session.meetingEndedAt) patch.meetingEndedAt = new Date();
+    if (session.status !== 'finished') {
+      patch.status = 'finished';
+      patch.finishedAt = session.finishedAt || new Date();
+    }
+    if (Object.keys(patch).length) await session.update(patch);
     return this._joinConfig(session, null);
   }
 

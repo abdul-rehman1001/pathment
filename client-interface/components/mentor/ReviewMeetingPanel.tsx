@@ -25,7 +25,7 @@ const SPEAK_SPAN_CAP = 15;
  * signal, and on "End & score" awards the contribution point to the confirmed
  * speakers. The mentor's page is the source of truth for attendance + talk time.
  */
-export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttendanceSync }: {
+export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttendanceSync, onEnded }: {
   sessionId: string;
   isDraft?: boolean;
   /** Creates today's session on demand, so "Start meeting" works from a blank page. */
@@ -33,6 +33,9 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
   /** Push live auto-attendance up to the review page so its attendance strip and
    *  present/absent/excused counts reflect who joined the call (server truth). */
   onAttendanceSync?: (rows: { menteeId: string; attendance: string | null }[]) => void;
+  /** Fired after the call ends (which now auto-finishes the session server-side) so
+   *  the page can reload and show the "Finished" state. */
+  onEnded?: () => void;
 }) {
   // The session id can arrive late (created by Start), so track it locally.
   const [liveSessionId, setLiveSessionId] = useState(sessionId);
@@ -180,14 +183,15 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
     setBusy(true);
     try {
       await flushTalk();
-      await mentorApi.endReviewMeeting(liveSessionId);
+      await mentorApi.endReviewMeeting(liveSessionId); // also finishes the session server-side
       const res = await mentorApi.proposeReviewContribution(liveSessionId) as { data?: { proposed: ScoreRow[] } };
       setLive(false);
       setScoring(res?.data?.proposed ?? []);
       await refresh();
+      onEnded?.(); // let the page reload → header shows "Finished"
     } catch { toast.error('Could not end the meeting'); endingRef.current = false; }
     finally { setBusy(false); }
-  }, [flushTalk, liveSessionId, refresh]);
+  }, [flushTalk, liveSessionId, refresh, onEnded]);
 
   const onDominant = (id: string) => {
     // Close the previous span (capped) and open the new one.

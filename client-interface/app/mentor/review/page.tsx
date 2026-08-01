@@ -806,7 +806,7 @@ export default function CohortReview() {
 
       {/* Live video (Jitsi): start the room, auto-attendance, contribution points. */}
       {session && (session.id || isDraft) && (
-        <ReviewMeetingPanel sessionId={session.id} isDraft={isDraft} ensureSession={ensureSession} onAttendanceSync={syncMeetingAttendance} />
+        <ReviewMeetingPanel sessionId={session.id} isDraft={isDraft} ensureSession={ensureSession} onAttendanceSync={syncMeetingAttendance} onEnded={loadSession} />
       )}
 
       {/* Attendance Strip */}
