@@ -61,19 +61,21 @@ export function AttendanceSection({
 
   return (
     <div className="space-y-3 mb-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3 flex-wrap">
-          <AttendanceFilters currentFilter={currentFilter} onFilterChange={setCurrentFilter} />
-          <span className="text-xs text-slate-500">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 min-w-0">
+          <div className="overflow-x-auto no-scrollbar pb-1 sm:pb-0">
+            <AttendanceFilters currentFilter={currentFilter} onFilterChange={setCurrentFilter} />
+          </div>
+          <span className="text-xs text-slate-500 truncate">
             {counts.marked}/{cohort.length} marked
             {counts.marked > 0 && (
-              <span className="text-slate-400"> · {counts.present} present · {counts.absent} absent · {counts.excused} excused</span>
+              <span className="text-slate-400 hidden sm:inline"> · {counts.present} P · {counts.absent} A · {counts.excused} E</span>
             )}
           </span>
         </div>
         <button
           onClick={() => setIsModalOpen(true)}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition-colors shrink-0"
+          className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs sm:text-sm font-medium transition-colors shrink-0 w-full sm:w-auto"
         >
           <CheckCircle2 className="w-4 h-4" />
           Attendance Sheet
