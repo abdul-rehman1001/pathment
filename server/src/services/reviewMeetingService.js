@@ -176,6 +176,7 @@ class ReviewMeetingService {
       patch.finishedAt = session.finishedAt || new Date();
     }
     if (Object.keys(patch).length) await session.update(patch);
+    require('./cohortReviewService')._notifyAbsentMentees(session).catch(() => {});
     return this._joinConfig(session, null);
   }
 
