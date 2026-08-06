@@ -13,7 +13,7 @@ const createRequest = catchAsync(async (req, res) => {
 });
 
 const resolveRequest = catchAsync(async (req, res) => {
-  const request = await clanRequestsService.resolveRequest(req.params.id, req.body);
+  const request = await clanRequestsService.resolveRequest(req.params.id, req.body, req.user?.id);
   res.status(200).json(successResponse('Request resolved', { request }));
 });
 

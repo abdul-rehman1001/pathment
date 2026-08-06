@@ -17,6 +17,7 @@ class ClanRequestsService {
         order: [['status', 'ASC'], ['created_at', 'DESC']],
         include: [
           { model: models.User, as: 'mentee', attributes: ['firstName', 'lastName'] },
+          { model: models.User, as: 'requester', attributes: ['firstName', 'lastName'] },
           { model: models.Clan, as: 'fromClan', attributes: ['name'] },
           { model: models.Clan, as: 'toClan', attributes: ['name'] }
         ]
@@ -40,6 +41,10 @@ class ClanRequestsService {
         reason: r.reason,
         status: r.status,
         resolutionNote: r.resolutionNote,
+        // 'mentor' rows are waiting on the RECEIVING clan, not on the admin —
+        // the admin can still decide, but should know they're stepping in.
+        origin: r.origin || 'admin',
+        requestedBy: fullName(r.requester),
         at: r.createdAt
       })),
       crossClan: crossClan.map((c) => ({
@@ -60,30 +65,56 @@ class ClanRequestsService {
     return models.ClanChangeRequest.create({ menteeId, toClanId, fromClanId: fromClanId || null, reason: reason || null, createdBy });
   }
 
-  async resolveRequest(id, { status, note }) {
+  /**
+   * Admin decision on a change request — including the ones mentors now raise
+   * themselves (origin='mentor'), which land in this same queue.
+   *
+   * Approving delegates to `clanService.reassignMentee`, the one placement
+   * routine: it closes the old membership AND handles the enrollment properly
+   * (kept within a program, wiped with its tasks/matches across programs). The
+   * previous hand-rolled "remove row then addMember" skipped that, so an admin
+   * approving a request produced a different result from a mentor accepting the
+   * same one. One path, one outcome.
+   */
+  async resolveRequest(id, { status, note }, actorId = null) {
     if (!['approved', 'denied'].includes(status)) throw new ValidationError('status must be approved or denied');
     const req = await models.ClanChangeRequest.findByPk(id);
     if (!req) throw new NotFoundError('Request not found');
+    if (req.status !== 'pending') throw new ValidationError('This request has already been decided');
 
-    return sequelize.transaction(async (transaction) => {
-      req.status = status;
-      req.resolutionNote = note || null;
-      await req.save({ transaction });
+    // Move first: if placement fails the request stays pending rather than
+    // claiming a move that never happened.
+    if (status === 'approved') {
+      await clanService.reassignMentee(req.menteeId, req.toClanId, actorId);
+    }
 
-      if (status === 'approved') {
-        // Move the mentee: remove old membership, add to the target clan.
-        if (req.fromClanId) {
-          const old = await models.ClanMembership.findOne({ where: { clanId: req.fromClanId, userId: req.menteeId, role: 'mentee' }, transaction });
-          if (old) { old.status = 'removed'; old.leftAt = new Date(); await old.save({ transaction }); }
-        }
+    req.status = status;
+    req.resolutionNote = note || null;
+    req.resolvedBy = actorId || null;
+    req.resolvedAt = new Date();
+    await req.save();
+
+    // A mentor asked for this one — tell them the answer, same as when a peer
+    // mentor decides it. Best-effort; the decision itself is already saved.
+    if (req.origin === 'mentor' && actorId) {
+      try {
+        const full = await models.ClanChangeRequest.findByPk(req.id, {
+          include: [
+            { model: models.User, as: 'mentee', attributes: ['id', 'firstName', 'lastName'] },
+            { model: models.Clan, as: 'fromClan', attributes: ['id', 'name'] },
+            { model: models.Clan, as: 'toClan', attributes: ['id', 'name'] },
+          ],
+        });
+        const responder = await models.User.findByPk(actorId, { attributes: ['id', 'firstName', 'lastName'] });
+        await require('./menteeTransferService')._notifyDecided({
+          request: full, responder, accepted: status === 'approved',
+        });
+      } catch (e) {
+        console.error('[clanRequests] admin decision notify failed (non-fatal):', e.message);
       }
-      return req;
-    }).then(async (req) => {
-      if (status === 'approved') {
-        await clanService.addMember(req.toClanId, { userId: req.menteeId, role: 'mentee' });
-      }
-      return req;
-    });
+    }
+
+    return req;
   }
 
   async createCrossClan(data, createdBy) {

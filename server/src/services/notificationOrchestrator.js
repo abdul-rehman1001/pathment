@@ -31,7 +31,14 @@ class NotificationOrchestrator {
     );
   }
 
-  async dispatch({ eventKey, recipients, payload, dedupe = null, channelOverrides = null }) {
+  /**
+   * @param {boolean} [emailOnlyIfOffline] Send the email ONLY to recipients who
+   *   have no live socket right now. Someone sitting in the app already got the
+   *   bell (and a toast) the instant this fired — mailing them too is noise. Used
+   *   for time-sensitive asks that need a nudge if the person isn't looking.
+   *   Still subject to the user's email preferences and the global switches.
+   */
+  async dispatch({ eventKey, recipients, payload, dedupe = null, channelOverrides = null, emailOnlyIfOffline = false }) {
     const matrix = NOTIFICATION_MATRIX[eventKey];
     if (!matrix || !Array.isArray(recipients) || recipients.length === 0) {
       return { delivered: 0, skipped: recipients?.length || 0 };
@@ -123,7 +130,15 @@ class NotificationOrchestrator {
           respectQuietHours: false
         }).should_create;
 
-        if (notificationEmailEnabled && !isEventEmailDisabled && !shouldSkipByDedupe && allowedByPrefs && user.email) {
+        // "Only if they're not here": a live socket means they're in the app and
+        // already saw the bell. Presence is best-effort — if we can't tell, we
+        // send (missing a time-sensitive email is worse than one extra email).
+        let onlineNow = false;
+        if (emailOnlyIfOffline) {
+          try { onlineNow = require('../socket').isUserOnline(recipient.userId); } catch { onlineNow = false; }
+        }
+
+        if (notificationEmailEnabled && !isEventEmailDisabled && !shouldSkipByDedupe && allowedByPrefs && user.email && !onlineNow) {
           // ENQUEUE, don't send inline. The DB worker owns delivery + retries,
           // so a slow/failing Resend call never blocks the request or aborts the
           // recipient loop. Wrapped defensively for the same reason.

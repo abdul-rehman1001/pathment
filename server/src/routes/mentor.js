@@ -9,6 +9,7 @@ const linearRoadmapController = require('../controllers/linearRoadmapController'
 const promotionController = require('../controllers/promotionController');
 const feedbackController = require('../controllers/feedbackController');
 const mentorshipPauseController = require('../controllers/mentorshipPauseController');
+const menteeTransferController = require('../controllers/menteeTransferController');
 const { authenticate, authorize } = require('../middlewares/auth');
 const { requirePermission } = require('../middlewares/authz');
 const { PERMISSIONS } = require('../config/permissions');
@@ -38,6 +39,19 @@ router.post('/pause-suggestions/:menteeId/dismiss', mentorOnly, mentorshipPauseC
 router.get('/mentees/:menteeId/pause-state', mentorOnly, mentorshipPauseController.menteeState);
 router.post('/mentees/:menteeId/pause', mentorOnly, mentorshipPauseController.pause);
 router.post('/mentees/:menteeId/resume', mentorOnly, mentorshipPauseController.resume);
+
+// Mentee transfers — a mentor asks another clan to take one of their mentees;
+// that clan's lead (or a co-mentor who still holds mentee.transfer) decides.
+// `/transfers/config` and the collection routes are declared before `/:id` so
+// they aren't captured as an id. The service enforces the clan-scoped
+// permission and the release gate, so these need only the mentor guard.
+router.get('/transfers/config', mentorOnly, menteeTransferController.config);
+router.get('/transfers/targets', mentorOnly, menteeTransferController.targets);
+router.get('/transfers/incoming', mentorOnly, menteeTransferController.incoming);
+router.get('/transfers/outgoing', mentorOnly, menteeTransferController.outgoing);
+router.post('/transfers', mentorOnly, menteeTransferController.create);
+router.post('/transfers/:id/respond', mentorOnly, menteeTransferController.respond);
+router.post('/transfers/:id/cancel', mentorOnly, menteeTransferController.cancel);
 
 // Rich profile bundle for a single mentee.
 router.get('/mentee/:id', authenticate, authorize(['mentor', 'admin']), cohortController.getMenteeProfile);

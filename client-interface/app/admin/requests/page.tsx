@@ -18,6 +18,8 @@ const CROSS_KINDS = [
 ];
 const STATUS_CLASS: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700', approved: 'bg-emerald-100 text-emerald-700', denied: 'bg-slate-100 text-slate-500',
+  // A mentor withdrew their own request before anyone decided.
+  cancelled: 'bg-slate-100 text-slate-500',
 };
 const CROSS_STATUS_CLASS: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700', active: 'bg-emerald-100 text-emerald-700', declined: 'bg-slate-100 text-slate-500',
@@ -133,11 +135,25 @@ function AdminClanRequestsInner() {
                 {requests.map((r) => (
                   <div key={r.id} className="bg-card rounded-2xl border border-slate-200 p-4 flex items-center gap-3">
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-slate-900">{r.mentee}</p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-medium text-slate-900">{r.mentee}</p>
+                        {/* A mentor's ask is already with the receiving clan — say
+                            so, so an admin doesn't think it's stuck on them. */}
+                        {r.origin === 'mentor' && (
+                          <span className="inline-flex items-center rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700">
+                            Mentor request{r.requestedBy ? ` · ${r.requestedBy}` : ''}
+                          </span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5">
                         <span>{r.fromClan || '-'}</span><ArrowRight className="w-3 h-3" /><span>{r.toClan}</span>
                       </div>
                       {r.reason && <p className="text-xs text-slate-500 mt-1">{r.reason}</p>}
+                      {r.origin === 'mentor' && r.status === 'pending' && (
+                        <p className="mt-1 text-[11px] text-slate-400">
+                          Waiting on {r.toClan}&apos;s mentors — approve here only if you want to decide it for them.
+                        </p>
+                      )}
                     </div>
                     {r.status === 'pending' ? (
                       <div className="flex items-center gap-1.5 shrink-0">

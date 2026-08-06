@@ -12,6 +12,7 @@ import Link from 'next/link';
 import { Drawer } from '@/components/shared/Drawer';
 import { Avatar } from '@/components/shared/Avatar';
 import { CoMentorPermissionsDrawer } from '@/components/shared/CoMentorPermissionsDrawer';
+import { IncomingTransfers, OutgoingTransfers } from '@/components/mentor/IncomingTransfers';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 
 interface Member {
@@ -62,7 +63,11 @@ export default function ClanTeamPage() {
         <p className="text-slate-600">Manage your clan - add or remove mentees, co-mentors, and core-team members.</p>
       </div>
 
+      {/* Requests waiting on YOU come before the clans themselves — an incoming
+          mentee is a decision someone else is blocked on. */}
+      <IncomingTransfers />
       <PendingCoverInvites />
+      <OutgoingTransfers />
 
       {loading ? (
         <div className="py-20 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-brand-600" /></div>

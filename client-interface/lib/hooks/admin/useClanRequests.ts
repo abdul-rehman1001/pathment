@@ -7,8 +7,12 @@ export interface ChangeRequest {
   fromClan: string | null;
   toClan: string | null;
   reason: string | null;
-  status: 'pending' | 'approved' | 'denied';
+  status: 'pending' | 'approved' | 'denied' | 'cancelled';
   resolutionNote: string | null;
+  /** 'mentor' = a mentor asked the target clan directly; that clan decides, but
+   *  an admin can still step in. 'admin' = raised here. */
+  origin?: 'admin' | 'mentor';
+  requestedBy?: string | null;
   at: string;
 }
 export interface CrossClanItem {

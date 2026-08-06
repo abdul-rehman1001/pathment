@@ -21,6 +21,7 @@ import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { DualProgress } from '@/components/mentor/DualProgress';
 import { AISummaryPanel } from '@/components/mentor/AISummaryPanel';
 import { NudgeButton } from '@/components/mentor/NudgeButton';
+import { MoveMenteeButton } from '@/components/mentor/MoveMenteeButton';
 import { ReviewDrawer } from '@/components/mentor/ReviewDrawer';
 import { AssignTaskDrawer } from '@/components/mentor/AssignTaskDrawer';
 import { MenteeTaskDrawer } from '@/components/mentor/MenteeTaskDrawer';
@@ -878,6 +879,10 @@ export default function CohortReview() {
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 <NudgeButton menteeId={mentee!.id} menteeName={mentee!.name} variant="icon" />
+                {/* Reviewing someone is exactly when you realise they'd do better
+                    with another mentor — so the move lives here too, not only on
+                    the profile. */}
+                <MoveMenteeButton menteeId={mentee!.id} menteeName={mentee!.name} variant="icon" />
                 <button
                   onClick={pauseCurrent}
                   disabled={pausing}

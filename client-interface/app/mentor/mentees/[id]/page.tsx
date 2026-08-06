@@ -24,6 +24,7 @@ import { OneOnOneDrawer, type OneOnOneData } from '@/components/mentor/OneOnOneD
 import { AssignTaskDrawer } from '@/components/mentor/AssignTaskDrawer';
 import { TaskDrawerById } from '@/components/mentor/TaskDrawerById';
 import { NudgeButton } from '@/components/mentor/NudgeButton';
+import { MoveMenteeButton } from '@/components/mentor/MoveMenteeButton';
 import { CollaboratorsCard } from '@/components/mentor/CollaboratorsCard';
 import { TracksPanel } from '@/components/mentor/TracksPanel';
 import { Drawer } from '@/components/shared/Drawer';
@@ -309,6 +310,11 @@ export default function MenteeDetail() {
               <Plus className="w-4 h-4" />Assign task
             </button>
             <NudgeButton menteeId={menteeId} menteeName={insights?.name} className="!rounded-xl !px-4" />
+            <MoveMenteeButton
+              menteeId={menteeId}
+              menteeName={insights?.name || `${mentee?.firstName ?? ''} ${mentee?.lastName ?? ''}`.trim()}
+              className="!rounded-xl !px-4 !py-2"
+            />
             <button
               onClick={openAttendance}
               className="px-4 py-2 bg-card hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl transition-colors flex items-center gap-2"

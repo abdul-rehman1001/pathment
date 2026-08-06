@@ -27,6 +27,8 @@ EXTENSION_HANDLED: 'extension_handled',
   MEETING_BOOKED: 'meeting_booked',
   CROSS_CLAN_ASSIGNED: 'cross_clan_assigned',
   NEW_MENTEE_IN_CLAN: 'new_mentee_in_clan',
+  MENTEE_TRANSFER_REQUESTED: 'mentee_transfer_requested',
+  MENTEE_TRANSFER_DECIDED: 'mentee_transfer_decided',
   PROMOTION_NOMINATED: 'promotion_nominated',
   REVIEW_UNLOCK_REQUESTED: 'review_unlock_requested',
   REVIEW_UNLOCK_HANDLED: 'review_unlock_handled',
@@ -254,6 +256,24 @@ const NOTIFICATION_MATRIX = {
     type: 'system',
     audience: 'mentor',
     preferenceKey: 'new_mentee_in_clan',
+    channels: { inApp: true, email: true, chat: false }
+  },
+  // Another mentor asks THIS clan to take one of their mentees. Always in-app;
+  // the email is dispatched with emailOnlyIfOffline so someone who is already in
+  // the app just gets the bell (see notificationOrchestrator.dispatch).
+  [NOTIFICATION_EVENTS.MENTEE_TRANSFER_REQUESTED]: {
+    type: 'system',
+    audience: 'mentor',
+    preferenceKey: 'mentee_transfer_requested',
+    channels: { inApp: true, email: true, chat: false }
+  },
+  // The outcome, back to the requester (and to the mentee once they've moved).
+  [NOTIFICATION_EVENTS.MENTEE_TRANSFER_DECIDED]: {
+    type: 'system',
+    // Dual-use: the decision goes to the requesting mentor AND to the moved
+    // mentee, so the per-notification actionUrl resolves the audience.
+    audience: 'any',
+    preferenceKey: 'mentee_transfer_decided',
     channels: { inApp: true, email: true, chat: false }
   },
   [NOTIFICATION_EVENTS.PROMOTION_NOMINATED]: {

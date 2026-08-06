@@ -1,6 +1,52 @@
 import {apiClient} from './api-client';
 import { apiConfig } from '@/lib/config/api';
 
+// ── Mentee transfers ────────────────────────────────────────────────────────
+export interface TransferConfig {
+  /** False before the release date → the UI teases instead of acting. */
+  enabled: boolean;
+  comingSoon: boolean;
+  releaseAt: string;
+  /** Released within the last week → worth a "New" badge. */
+  isNew: boolean;
+}
+
+export interface TransferPerson { id: string; name: string; avatarUrl?: string | null; email?: string | null }
+
+export interface TransferClanOption {
+  id: string;
+  name: string;
+  programId: string | null;
+  programName: string | null;
+  /** A move across programs wipes the old enrollment + tasks — the picker warns. */
+  crossProgram: boolean;
+  menteeCount: number;
+  leadMentor: TransferPerson | null;
+  coMentors: TransferPerson[];
+  coMentorCount: number;
+}
+
+export interface TransferTargets {
+  mentee: { id: string; name: string };
+  currentClan: { id: string; name: string; programId: string | null };
+  pendingRequest: { id: string; toClanId: string } | null;
+  clans: TransferClanOption[];
+}
+
+export interface TransferRequest {
+  id: string;
+  status: 'pending' | 'approved' | 'denied' | 'cancelled';
+  reason: string | null;
+  resolutionNote: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+  mentee: TransferPerson | null;
+  requester: TransferPerson | null;
+  resolver: { id: string; name: string } | null;
+  fromClan: { id: string; name: string } | null;
+  toClan: { id: string; name: string } | null;
+}
+
 export const mentorApi = {
   // Get all active mentors
   getAll: async (search?: string) => {
@@ -195,6 +241,25 @@ export const mentorApi = {
     apiClient.put(`/mentor/roadmaps/${id}/links`, { toIds }),
   advanceRoadmap: (menteeId: string, nextRoadmapId: string) =>
     apiClient.post('/mentor/roadmaps/advance', { menteeId, nextRoadmapId }),
+
+  // ── Mentee transfers (mentor → mentor clan moves) ────────────────────────
+  // Ask another clan to take one of your mentees; their lead (or a co-mentor who
+  // still holds `mentee.transfer`) accepts or declines. Accepting runs the same
+  // reassignment an admin move does.
+  transfers: {
+    /** Release gate: live yet, still teasing, and is it new enough to badge. */
+    config: () => apiClient.get<{ data: TransferConfig }>('/mentor/transfers/config'),
+    /** Clans this mentee could move to, with each clan's lead + team + size. */
+    targets: (menteeId: string, q?: string) =>
+      apiClient.get<{ data: TransferTargets }>('/mentor/transfers/targets', { params: { menteeId, q: q || undefined } }),
+    request: (menteeId: string, toClanId: string, reason?: string) =>
+      apiClient.post<{ data: { request: TransferRequest } }>('/mentor/transfers', { menteeId, toClanId, reason }),
+    incoming: () => apiClient.get<{ data: { requests: TransferRequest[] } }>('/mentor/transfers/incoming'),
+    outgoing: () => apiClient.get<{ data: { requests: TransferRequest[] } }>('/mentor/transfers/outgoing'),
+    respond: (id: string, accept: boolean, note?: string) =>
+      apiClient.post<{ data: { request: TransferRequest } }>(`/mentor/transfers/${id}/respond`, { accept, note }),
+    cancel: (id: string) => apiClient.post(`/mentor/transfers/${id}/cancel`, {}),
+  },
 
   deleteUser: (id: string) => {
     return apiClient.delete(`/admin/users/${id}`);
