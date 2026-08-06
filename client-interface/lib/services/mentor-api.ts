@@ -59,9 +59,39 @@ export const mentorApi = {
   finishReviewSession: (id: string) => apiClient.post(`/mentor/review/sessions/${id}/finish`, {}),
   reopenReviewSession: (id: string) => apiClient.post(`/mentor/review/sessions/${id}/reopen`, {}),
   deleteReviewSession: (id: string) => apiClient.delete(`/mentor/review/sessions/${id}`),
+  // Live-video (Jitsi) host controls for a review session.
+  startReviewMeeting: (id: string, externalUrl?: string) =>
+    apiClient.post(`/mentor/review/sessions/${id}/meeting/start`, { externalUrl }),
+  endReviewMeeting: (id: string) => apiClient.post(`/mentor/review/sessions/${id}/meeting/end`, {}),
+  // Feature availability, independent of any session — lets the panel decide to
+  // show / hide / "coming soon" before a review session exists (draft state).
+  getReviewMeetingConfig: () => apiClient.get(`/mentor/review/meeting-config`),
+  getReviewMeeting: (id: string) => apiClient.get(`/mentor/review/sessions/${id}/meeting`),
+  setReviewAttendanceTracking: (id: string, enabled: boolean) => apiClient.put(`/mentor/review/sessions/${id}/meeting/attendance-tracking`, { enabled }),
+  setReviewPolls: (id: string, enabled: boolean) => apiClient.put(`/mentor/review/sessions/${id}/meeting/polls`, { enabled }),
+  markReviewPresent: (id: string, menteeId: string, present: boolean) =>
+    apiClient.put(`/mentor/review/sessions/${id}/meeting/present/${menteeId}`, { present }),
+  recordReviewTalkTime: (id: string, items: { menteeId: string; seconds: number }[]) =>
+    apiClient.post(`/mentor/review/sessions/${id}/meeting/talk-time`, { items }),
+  proposeReviewContribution: (id: string) => apiClient.get(`/mentor/review/sessions/${id}/meeting/contribution`),
+  finalizeReviewContribution: (id: string, menteeIds: string[]) =>
+    apiClient.post(`/mentor/review/sessions/${id}/meeting/contribution`, { menteeIds }),
+
+  // Recurring review schedules (weekly / biweekly). Each occurrence auto-creates
+  // a session, opens its room at the scheduled time, and emails timezone-correct
+  // invites + 24h/1h reminders with a calendar (.ics) attachment.
+  listReviewSchedules: () => apiClient.get('/mentor/review/schedules'),
+  createReviewSchedule: (data: {
+    clanId: string; title?: string; dayOfWeek: number; timeLocal: string;
+    timezone: string; intervalWeeks: 1 | 2; durationMinutes?: number;
+    startsOn: string; endsOn?: string | null;
+  }) => apiClient.post('/mentor/review/schedules', data),
+  cancelReviewSchedule: (id: string) => apiClient.delete(`/mentor/review/schedules/${id}`),
 
   // Approvals queue (pending reviews across the cohort) + bulk approve.
   getApprovals: () => apiClient.get('/mentor/approvals'),
+  /** Just the review-queue size (+ per-clan breakdown) for the sidebar badge. */
+  getApprovalsCount: () => apiClient.get('/mentor/approvals/count'),
   // Tasks the mentor sent back for changes, awaiting the mentee's resubmission.
   getChangesRequested: () => apiClient.get('/mentor/approvals/changes-requested'),
   // Tasks the mentor has already approved (the "Reviewed" history, with scores).
@@ -83,7 +113,12 @@ export const mentorApi = {
   // reports and receive re-engagement reminders.
   listPausedMentees: () => apiClient.get('/mentor/paused'),
   getMenteePauseState: (menteeId: string) => apiClient.get(`/mentor/mentees/${menteeId}/pause-state`),
-  listPauseSuggestions: () => apiClient.get('/mentor/pause-suggestions'),
+  listPauseSuggestions: (clanId?: string) =>
+    apiClient.get(`/mentor/pause-suggestions${clanId ? `?clanId=${clanId}` : ''}`),
+  // Run an inactivity check now. autoPause=false previews the flagged list;
+  // autoPause=true pauses them (and emails them). clanId scopes to one clan.
+  runInactivityCheck: (opts?: { clanId?: string; autoPause?: boolean }) =>
+    apiClient.post('/mentor/inactivity-check', { clanId: opts?.clanId, autoPause: !!opts?.autoPause }),
   pauseMentee: (menteeId: string, reason?: string, clanId?: string) =>
     apiClient.post(`/mentor/mentees/${menteeId}/pause`, { reason, clanId }),
   resumeMentee: (menteeId: string, clanId?: string) =>

@@ -32,6 +32,7 @@ import {
   PackageOpen,
   Mic,
   ListChecks,
+  Video,
   type LucideIcon
 } from 'lucide-react';
 import { UserRole } from '@/lib/types';
@@ -48,7 +49,8 @@ export interface NavLink {
   path: string;
   icon: LucideIcon;
   label: string;
-  hasBadge?: boolean;
+  /** Which live counter to show as a badge on this item. */
+  badge?: 'messages' | 'approvals';
   /** Hide unless the user holds this permission (any scope). Omit = always show. */
   permission?: string;
   /** Hide unless the user holds ANY of these permissions. */
@@ -67,7 +69,7 @@ export const navigationConfig: Record<string, NavLink[]> = {
   // a synthetic `group:*` path - they only expand/collapse, they never navigate.
   admin: [
     { path: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard', permission: 'analytics.view' },
-    { path: '/admin/messages', icon: MessageSquare, label: 'Messages', hasBadge: true },
+    { path: '/admin/messages', icon: MessageSquare, label: 'Messages', badge: 'messages' },
     {
       path: 'group:admissions', icon: CalendarRange, label: 'Admissions',
       children: [
@@ -99,6 +101,7 @@ export const navigationConfig: Record<string, NavLink[]> = {
       path: 'group:engagement', icon: Megaphone, label: 'Engagement',
       children: [
         { path: '/admin/announcements', icon: Megaphone, label: 'Announcements', permission: 'community.moderate' },
+        { path: '/admin/meetings', icon: Video, label: 'Live Meetings', permission: 'analytics.view' },
         { path: '/admin/changelog', icon: PackageOpen, label: "What's New", permission: 'system.settings' },
         { path: '/admin/rewards', icon: Gift, label: 'Rewards', permission: 'gamification.manage' },
         { path: '/admin/moderation', icon: ShieldAlert, label: 'Moderation', permission: 'community.moderate' },
@@ -109,6 +112,7 @@ export const navigationConfig: Record<string, NavLink[]> = {
       path: 'group:analytics', icon: TrendingUp, label: 'Analytics',
       children: [
         { path: '/admin/insights', icon: TrendingUp, label: 'Insights', permission: 'analytics.view' },
+        { path: '/admin/review-records', icon: CalendarRange, label: 'Review Records', permission: 'analytics.view' },
         { path: '/admin/activity', icon: BarChart2, label: 'Activity', permission: 'analytics.view' },
         { path: '/admin/emails', icon: Mail, label: 'Email Queue', permission: 'system.settings' },
       ],
@@ -121,8 +125,8 @@ export const navigationConfig: Record<string, NavLink[]> = {
   mentor: [
     { path: '/mentor/dashboard', icon: LayoutDashboard, label: 'Cockpit' },
     { path: '/mentor/review', icon: CalendarRange, label: 'Cohort Review' },
-    { path: '/mentor/messages', icon: MessageSquare, label: 'Messages', hasBadge: true },
-    { path: '/mentor/approvals', icon: ClipboardCheck, label: 'Approvals' },
+    { path: '/mentor/messages', icon: MessageSquare, label: 'Messages', badge: 'messages' },
+    { path: '/mentor/approvals', icon: ClipboardCheck, label: 'Approvals', badge: 'approvals' },
     {
       path: 'group:mentees', icon: Users2, label: 'My Mentees',
       children: [
@@ -161,7 +165,7 @@ export const navigationConfig: Record<string, NavLink[]> = {
     { path: '/mentee/dashboard', icon: LayoutDashboard, label: 'This Week' },
     { path: '/mentee/tasks', icon: ClipboardList, label: 'My Tasks' },
     { path: '/mentee/meetings', icon: CalendarClock, label: 'My Mentor' },
-    { path: '/mentee/messages', icon: MessageSquare, label: 'Messages', hasBadge: true },
+    { path: '/mentee/messages', icon: MessageSquare, label: 'Messages', badge: 'messages' },
     {
       path: 'group:mentee-progress', icon: BarChart2, label: 'Progress',
       children: [

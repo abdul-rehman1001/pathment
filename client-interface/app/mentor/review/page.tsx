@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import {
   ChevronLeft, ChevronRight, SkipForward, Check, Loader2,
   TrendingUp, TrendingDown, Minus, Flag, Clock, ClipboardCheck, Keyboard, CheckCircle2, ArrowUpRight, Send, Plus, ListTodo, CalendarClock,
-  Trash2, X, History, RotateCcw, CalendarDays, AlertTriangle, StickyNote, Search, Lock, Unlock, PauseCircle,
+  Trash2, X, History, RotateCcw, CalendarDays, AlertTriangle, StickyNote, Search, Lock, Unlock, PauseCircle, Sparkles,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useMentorCohort, useMentorApprovals, type CohortMentee, type CohortMomentum, type CohortRisk, type ApprovalItem } from '@/lib/hooks/mentor';
@@ -24,10 +24,14 @@ import { NudgeButton } from '@/components/mentor/NudgeButton';
 import { ReviewDrawer } from '@/components/mentor/ReviewDrawer';
 import { AssignTaskDrawer } from '@/components/mentor/AssignTaskDrawer';
 import { MenteeTaskDrawer } from '@/components/mentor/MenteeTaskDrawer';
+import { InterviewReviewDrawer } from '@/components/mentor/InterviewReviewDrawer';
+import { QuizReviewDrawer } from '@/components/mentor/QuizReviewDrawer';
 import { Drawer } from '@/components/shared/Drawer';
 import { Avatar } from '@/components/shared/Avatar';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 import { AttendanceSection } from '@/components/mentor/attendance/AttendanceSection';
+import { ReviewMeetingPanel } from '@/components/mentor/ReviewMeetingPanel';
+import { ReviewScheduleDrawer } from '@/components/mentor/ReviewScheduleDrawer';
 
 type Attendance = 'present' | 'absent' | 'excused';
 type EntryStatus = 'pending' | 'reviewed' | 'deferred';
@@ -107,6 +111,7 @@ export default function CohortReview() {
   const [extReview, setExtReview] = useState<any>(null); // eslint-disable-line @typescript-eslint/no-explicit-any
   const [extDays, setExtDays] = useState(3);
   const [isSavingAttendance, setIsSavingAttendance] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
 
   const mentee: CohortMentee | undefined = cohort[idx];
   const menteeId = mentee?.id;
@@ -252,6 +257,30 @@ export default function CohortReview() {
     entries.some((e) => e.menteeId === mId)
       ? entries.map((e) => (e.menteeId === mId ? { ...e, ...patch } : e))
       : [...entries, { menteeId: mId, attendance: null, status: 'pending', ...patch } as ReviewEntry];
+
+  // Live auto-attendance sync: the meeting panel pushes the roster's attendance
+  // (server truth — includes mentees auto-marked present on joining the call) so
+  // the attendance strip and the present/absent/excused counts reflect it live,
+  // instead of the stale session loaded once on page open. Server already
+  // persisted these marks; we only mirror them into local state (no write). A
+  // change guard keeps the 8s roster poll from re-rendering when nothing moved.
+  const syncMeetingAttendance = useCallback((rows: { menteeId: string; attendance: string | null }[]) => {
+    setSession((s) => {
+      if (!s) return s;
+      let entries = s.entries;
+      let changed = false;
+      for (const row of rows) {
+        const att = row.attendance as Attendance | null;
+        if (!att) continue;
+        const cur = entries.find((e) => e.menteeId === row.menteeId);
+        if (!cur || cur.attendance !== att) {
+          entries = upsert(entries, row.menteeId, { attendance: att, status: 'reviewed' });
+          changed = true;
+        }
+      }
+      return changed ? { ...s, entries } : s;
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const patchEntry = useCallback(async (mId: string, patch: { attendance?: Attendance | null; status?: EntryStatus; note?: string }, commit = false) => {
     if (!session) return;
@@ -709,6 +738,7 @@ export default function CohortReview() {
           <p className="text-slate-600 text-sm">{idx + 1} of {cohort.length} · {session?.title || 'review each mentee, then finish'}</p>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={() => setScheduleOpen(true)} className="px-3 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm hover:bg-slate-50 inline-flex items-center gap-1" title="Recurring reviews"><CalendarClock className="w-4 h-4" />Schedule</button>
           <button onClick={openHistory} className="px-3 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm hover:bg-slate-50 inline-flex items-center gap-1" title="Past reviews"><History className="w-4 h-4" />History</button>
           <button onClick={() => setAssigning(true)} className="px-3 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm hover:bg-slate-50 inline-flex items-center gap-1" title="Assign a task (t)"><Plus className="w-4 h-4" />Assign task</button>
           <button onClick={() => setShowHelp(true)} className="p-2 rounded-lg text-slate-400 hover:bg-slate-100" title="Shortcuts"><Keyboard className="w-4 h-4" /></button>
@@ -774,6 +804,11 @@ export default function CohortReview() {
         )}
       </div>
 
+      {/* Live video (Jitsi): start the room, auto-attendance, contribution points. */}
+      {session && (session.id || isDraft) && (
+        <ReviewMeetingPanel sessionId={session.id} isDraft={isDraft} ensureSession={ensureSession} onAttendanceSync={syncMeetingAttendance} onEnded={loadSession} />
+      )}
+
       {/* Attendance Strip */}
       <AttendanceSection
         cohort={cohort}
@@ -828,6 +863,14 @@ export default function CohortReview() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <h2 className="font-semibold text-slate-900 truncate">{mentee!.name}</h2>
+                  {mentee!.isNew && (
+                    <span
+                      title={mentee!.daysSinceJoined != null ? `Joined ${mentee!.daysSinceJoined === 0 ? 'today' : `${mentee!.daysSinceJoined} day${mentee!.daysSinceJoined === 1 ? '' : 's'} ago`}` : 'New to the platform'}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"
+                    >
+                      <Sparkles className="w-3 h-3" /> New mentee
+                    </span>
+                  )}
                   <MomentumIcon m={mentee!.momentum} />
                   <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-xs font-medium ${risk.cls}`}><span className={`w-1.5 h-1.5 rounded-full ${risk.dot}`} />{risk.label}</span>
                 </div>
@@ -1190,9 +1233,30 @@ export default function CohortReview() {
         )}
       </Drawer>
 
-      {reviewing && <ReviewDrawer item={reviewing} onClose={() => setReviewing(null)} onReviewed={refresh} />}
+      {/* Review the right way for the task's type — interview + quiz have their
+          own review UIs; everything else uses the generic ReviewDrawer. */}
+      {reviewing && reviewing.type === 'interview' && (
+        <InterviewReviewDrawer taskId={reviewing.taskId} onClose={() => setReviewing(null)} onFinalized={refresh} />
+      )}
+      {reviewing && reviewing.type === 'quiz' && (
+        <QuizReviewDrawer taskId={reviewing.taskId} onClose={() => setReviewing(null)} onReviewed={refresh} />
+      )}
+      {reviewing && reviewing.type !== 'interview' && reviewing.type !== 'quiz' && (
+        <ReviewDrawer item={reviewing} onClose={() => setReviewing(null)} onReviewed={refresh} />
+      )}
 
-      {taskDetail && <MenteeTaskDrawer task={taskDetail} onClose={() => setTaskDetail(null)} onChanged={refresh} />}
+      {/* Opening a task also respects its type, so an interview/quiz doesn't fall
+          into the generic task drawer. */}
+      {taskDetail && (() => {
+        const taskType = taskDetail.roadmapTask?.type || taskDetail.type;
+        if (taskType === 'interview') {
+          return <InterviewReviewDrawer taskId={taskDetail.id} onClose={() => setTaskDetail(null)} onFinalized={refresh} />;
+        }
+        if (taskType === 'quiz') {
+          return <QuizReviewDrawer taskId={taskDetail.id} onClose={() => setTaskDetail(null)} onReviewed={refresh} />;
+        }
+        return <MenteeTaskDrawer task={taskDetail} onClose={() => setTaskDetail(null)} onChanged={refresh} />;
+      })()}
 
       {assigning && mentee && (
         <AssignTaskDrawer
@@ -1202,6 +1266,14 @@ export default function CohortReview() {
           onAssigned={refresh}
         />
       )}
+
+      {/* Recurring reviews: set up / cancel weekly-biweekly reviews with invites. */}
+      <ReviewScheduleDrawer
+        open={scheduleOpen}
+        onClose={() => setScheduleOpen(false)}
+        clans={clans}
+        defaultClanId={effectiveClanId}
+      />
 
       {/* Cohort-review history: browse & open past dated sessions to view or edit. */}
       <Drawer open={historyOpen} onClose={() => setHistoryOpen(false)} width="md" title="Cohort review history" subtitle="Open a past session to view or edit it">

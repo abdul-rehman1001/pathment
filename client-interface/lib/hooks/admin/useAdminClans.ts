@@ -15,9 +15,14 @@ export interface Clan {
   id: string;
   name: string;
   description?: string;
+  whatsappGroupLink?: string | null;
   status: string;
   tags: string[];
   levelLabel?: string | null;
+  /** Cohort level keys this clan serves (empty = any level). */
+  levels?: string[];
+  /** Countries this clan serves (empty = any country). */
+  countries?: string[];
   maxMentees: number;
   programId: string;
   program?: { id: string; name: string };

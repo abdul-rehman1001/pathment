@@ -291,7 +291,7 @@ class CohortService {
       lastAttendance = preloads.attendance[menteeId] || null;
     } else {
       mentee = await models.User.findByPk(menteeId, {
-        attributes: ['id', 'firstName', 'lastName', 'email', 'profilePictureUrl'],
+        attributes: ['id', 'firstName', 'lastName', 'email', 'phone', 'profilePictureUrl'],
         include: [
           { model: models.MenteeProfile, as: 'menteeProfile', attributes: ['lastActivityDate', 'currentOccupation'] },
           {
@@ -364,6 +364,7 @@ class CohortService {
       name: `${mentee.firstName} ${mentee.lastName}`.trim(),
       avatar: initialsOf(mentee.firstName, mentee.lastName),
       email: mentee.email,
+      phone: mentee.phone || null,
       profilePictureUrl: mentee.profilePictureUrl || null,
       program: enrollment?.program?.name || '-',
       level: '-',
@@ -852,6 +853,22 @@ class CohortService {
     } else {
       cohort.forEach((r) => { r.clan = null; });
     }
+
+    // New-mentee flag: joined the platform within the last NEW_MENTEE_DAYS, so a
+    // mentor can spot a brand-new mentee at a glance (they need more hand-holding,
+    // and "no activity yet" is expected, not a risk signal).
+    const NEW_MENTEE_DAYS = 10;
+    const newCutoff = Date.now() - NEW_MENTEE_DAYS * 86400000;
+    const createdRows = await models.User.findAll({
+      where: { id: { [Op.in]: menteeIds } }, attributes: ['id', 'createdAt'], raw: true,
+    });
+    const createdById = new Map(createdRows.map((u) => [u.id, u.createdAt]));
+    cohort.forEach((r) => {
+      const joined = createdById.get(r.id);
+      r.joinedAt = joined || null;
+      r.isNew = !!joined && new Date(joined).getTime() >= newCutoff;
+      r.daysSinceJoined = joined ? Math.floor((Date.now() - new Date(joined).getTime()) / 86400000) : null;
+    });
 
     const totals = {
       mentees: cohort.length,

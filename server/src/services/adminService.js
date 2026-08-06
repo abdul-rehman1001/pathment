@@ -89,6 +89,14 @@ class AdminService {
       throw new ConflictError('An active invite already exists for this email and role');
     }
 
+    // An expired, unused, unrevoked invite is dead but still occupies the
+    // active-unique slot (the index predicate ignores expiry) — revoke it so a
+    // fresh invite can be issued after an old one lapses.
+    await models.RegistrationInvite.update(
+      { revokedAt: new Date() },
+      { where: { email: normalizedEmail, role, usedAt: null, revokedAt: null, expiresAt: { [Op.lte]: new Date() } } }
+    );
+
     const placement = await this._resolveInvitePlacement({
       role,
       program: inviteData.programId ?? inviteData.program,
@@ -98,17 +106,28 @@ class AdminService {
     const rawToken = generateRandomToken();
     const tokenHash = hashToken(rawToken);
 
-    const invite = await models.RegistrationInvite.create({
-      tokenHash,
-      email: normalizedEmail,
-      role,
-      invitedBy: createdBy,
-      expiresAt,
-      programId: placement.programId,
-      clanId: placement.clanId,
-      // Set when the invite is issued from an accepted application.
-      cohortId: inviteData.cohortId || null
-    });
+    let invite;
+    try {
+      invite = await models.RegistrationInvite.create({
+        tokenHash,
+        email: normalizedEmail,
+        role,
+        invitedBy: createdBy,
+        expiresAt,
+        programId: placement.programId,
+        clanId: placement.clanId,
+        // Set when the invite is issued from an accepted application.
+        cohortId: inviteData.cohortId || null
+      });
+    } catch (e) {
+      // The partial unique index (migration 082) is the last line of defence: if
+      // a concurrent request created the active invite between our check above
+      // and this insert, surface the same ConflictError so callers reuse it.
+      if (e && e.name === 'SequelizeUniqueConstraintError') {
+        throw new ConflictError('An active invite already exists for this email and role');
+      }
+      throw e;
+    }
 
     await createAuditLog({
       userId: createdBy,
@@ -127,10 +146,19 @@ class AdminService {
     const clientBaseUrl = process.env.CLIENT_URL || 'http://localhost:3003';
     const inviteUrl = `${clientBaseUrl.replace(/\/$/, '')}/register?invite=${encodeURIComponent(rawToken)}`;
 
+    // A mentee placed in a clan gets that clan's WhatsApp group link in the email
+    // so they can join it (WhatsApp can't be auto-joined via API).
+    let whatsappLink = null;
+    if (placement.clanId) {
+      const clan = await models.Clan.findByPk(placement.clanId, { attributes: ['whatsappGroupLink'] });
+      whatsappLink = clan?.whatsappGroupLink || null;
+    }
+
     const emailDelivery = await notificationOrchestrator.sendRegistrationInviteEmail({
       email: invite.email,
       role: invite.role,
-      inviteUrl
+      inviteUrl,
+      whatsappLink
     });
 
     if (!emailDelivery?.queued && !emailDelivery?.sent && !emailDelivery?.deduped) {
