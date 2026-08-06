@@ -328,11 +328,26 @@ class TaskService {
   }
 
   /**
+   * Lightweight task read for the mentor's mentee-profile view — just the
+   * columns the profile renders (no submissions/feedback/track enrichment).
+   * Kept separate from getMenteeTasks so that heavy consumer isn't penalised
+   * by this view, and vice-versa.
+   */
+  async listMenteeProfileTasks(menteeId) {
+    return models.AssignedTask.findAll({
+      where: { menteeId },
+      attributes: ['id', 'status', 'dueDate', 'submittedAt', 'completedAt', 'isLate', 'finalRating', 'enrollmentId'],
+      include: [{ model: models.RoadmapTask, as: 'roadmapTask', attributes: ['title', 'type'] }],
+      order: [['dueDate', 'ASC']]
+    });
+  }
+
+  /**
    * Get tasks for a mentee
    */
   async getMenteeTasks(menteeId, filters = {}) {
     const where = { menteeId };
-    
+
     if (filters.status) {
       where.status = filters.status;
     }

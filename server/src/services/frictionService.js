@@ -20,6 +20,19 @@ class FrictionService {
     return models.Blocker.findAll({ where, order: [['openedAt', 'DESC']] });
   }
 
+  /**
+   * Blockers for a single mentee, eager-loaded with their linked task title —
+   * the shape the mentor's mentee-profile view renders. Owned here (not by
+   * cohortService) so the friction domain keeps its query/includes in one place.
+   */
+  async listBlockersWithTask(menteeId) {
+    return models.Blocker.findAll({
+      where: { menteeId },
+      order: [['status', 'ASC'], ['openedAt', 'DESC']],
+      include: [{ model: models.AssignedTask, as: 'task', attributes: ['id'], include: [{ model: models.RoadmapTask, as: 'roadmapTask', attributes: ['title'] }] }]
+    });
+  }
+
   async createBlocker(data, createdBy) {
     const { menteeId } = data;
     const title = typeof data.title === 'string' ? data.title.trim() : '';
