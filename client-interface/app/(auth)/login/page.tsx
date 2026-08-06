@@ -30,6 +30,13 @@ export default function LoginPage() {
     return () => clearInterval(t);
   }, [cooldownUntil]);
 
+  // Where to land after signing in. An expired session carries the page the user
+  // was on (`?next=`) so they resume where they were — a mentor bounced out of a
+  // live review comes back to the review, not to a dashboard. Same-origin paths
+  // only: anything else is ignored so the param can't be used as an open redirect.
+  const nextParam = searchParams.get('next');
+  const returnTo = nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//') ? nextParam : null;
+
   // Check if redirected due to expired session
   useEffect(() => {
     const expired = searchParams.get('expired');
@@ -41,10 +48,9 @@ export default function LoginPage() {
   // Redirect if already logged in
   useEffect(() => {
     if (!isLoading && user && !requiresTwoFactor) {
-      const dashboard = `/${user.role}/dashboard`;
-      router.push(dashboard);
+      router.push(returnTo || `/${user.role}/dashboard`);
     }
-  }, [user, isLoading, requiresTwoFactor, router]);
+  }, [user, isLoading, requiresTwoFactor, router, returnTo]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,7 +62,7 @@ export default function LoginPage() {
       // Use returned result instead of state to avoid stale value race.
       if (!result.requiresTwoFactor) {
         toast.success('Welcome back!');
-        router.push('/');
+        router.push(returnTo || '/');
       }
     } catch (err: any) {
       const rl = getRateLimit(err);
@@ -77,9 +83,9 @@ export default function LoginPage() {
   const handle2FAVerify = async (code: string) => {
     try {
       await verify2FA(code, rememberMe);
-      // After successful 2FA, redirect to dashboard
+      // After successful 2FA, resume where they were (or the dashboard).
       if (user) {
-        router.push(`/${user.role}/dashboard`);
+        router.push(returnTo || `/${user.role}/dashboard`);
       }
     } catch (err: any) {
       throw err;

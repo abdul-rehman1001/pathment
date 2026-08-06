@@ -2,17 +2,10 @@ import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { apiConfig } from '../config/api';
 import { normalizeAxiosError } from '../utils/api-error';
 import { tokenStore } from './token-store';
+import { refreshAccessToken, handleSessionExpired, SessionExpiredError } from './auth-session';
 
 class ApiClient {
   private client: AxiosInstance;
-  // Single-flight refresh: when the access token expires, a page fires many
-  // requests that all 401 at once. Without this they each POST /auth/refresh —
-  // a dozen concurrent refreshes that hammer the 10/hour limiter (some get 429'd
-  // and log the user out mid-session). We coalesce them into ONE refresh and let
-  // every waiter reuse its result.
-  private refreshPromise: Promise<string> | null = null;
-  // Guard so a burst of failures triggers ONE logout/redirect, not a dozen.
-  private authFailing = false;
   private readonly publicAuthPaths = [
     '/auth/login',
     '/auth/register',
@@ -65,16 +58,23 @@ class ApiClient {
         const hasAccessToken = Boolean(this.getToken());
         const isPublicAuthRequest = this.publicAuthPaths.some((path) => requestUrl.includes(path));
 
-        // Handle 401 Unauthorized - try to refresh token (single-flight)
+        // 401 → renew the access token once and replay the request. The refresh
+        // itself is single-flight and shared app-wide (see auth-session), so a
+        // burst of simultaneous 401s produces ONE /auth/refresh.
         if (error.response?.status === 401 && !originalRequest._retry && hasAccessToken && !isPublicAuthRequest) {
           originalRequest._retry = true;
           try {
-            const newToken = await this.refreshAccessToken();
+            const newToken = await refreshAccessToken();
             originalRequest.headers.Authorization = `Bearer ${newToken}`;
             return this.client(originalRequest);
           } catch (refreshError) {
-            this.handleAuthFailure('Your session has expired. Redirecting to login...');
-            return Promise.reject(refreshError);
+            // ONLY an explicit rejection of the refresh token ends the session.
+            // A transient failure (offline, timeout, 5xx, 429) must not log the
+            // user out — this is what used to boot people mid-video-call. Their
+            // tokens stay put and auth-session retries in the background; this
+            // one request just fails and the caller's next poll recovers.
+            if (refreshError instanceof SessionExpiredError) handleSessionExpired();
+            return Promise.reject(error);
           }
         }
 
@@ -83,66 +83,8 @@ class ApiClient {
     );
   }
 
-  /**
-   * Refresh the access token, at most ONE request in flight at a time. Every
-   * caller that arrives while a refresh is running awaits the same promise, so a
-   * burst of 401s produces a single /auth/refresh — not a dozen.
-   */
-  private refreshAccessToken(): Promise<string> {
-    if (this.refreshPromise) return this.refreshPromise;
-
-    const refreshToken = this.getRefreshToken();
-    if (!refreshToken) return Promise.reject(new Error('No refresh token'));
-
-    this.refreshPromise = axios
-      .post(
-        `${apiConfig.baseUrl}${apiConfig.endpoints.refreshToken}`,
-        { refreshToken },
-        { headers: { 'Content-Type': 'application/json' } }
-      )
-      .then((response) => {
-        const newToken = response.data?.data?.accessToken || response.data?.accessToken || response.data?.data?.token || response.data?.token;
-        if (!newToken) throw new Error('No token in refresh response');
-        this.setToken(newToken);
-        return newToken as string;
-      })
-      .finally(() => { this.refreshPromise = null; });
-
-    return this.refreshPromise;
-  }
-
-  private handleAuthFailure(message: string): void {
-    // A single expiry 401s many requests; only the first should log out + redirect.
-    if (this.authFailing) return;
-    this.authFailing = true;
-    this.clearTokens();
-    if (typeof window !== 'undefined') {
-      // Show toast notification if available
-      if ((window as any).toast?.error) {
-        (window as any).toast.error(message);
-      }
-      
-      // Redirect after a short delay to allow toast to show
-      setTimeout(() => {
-        window.location.href = '/login?expired=true';
-      }, 1500);
-    }
-  }
-
   private getToken(): string | null {
     return tokenStore.getToken();
-  }
-
-  private getRefreshToken(): string | null {
-    return tokenStore.getRefreshToken();
-  }
-
-  private setToken(token: string): void {
-    tokenStore.setToken(token);
-  }
-
-  private clearTokens(): void {
-    tokenStore.clearSession();
   }
 
   async get<T = any>(url: string, config?: AxiosRequestConfig): Promise<T> {

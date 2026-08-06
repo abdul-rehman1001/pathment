@@ -39,8 +39,14 @@ const verifyEmailLimiter = make({ windowMs: 60 * 60 * 1000, max: 5, message: 'To
 // Resend verification: 5 / hour.
 const resendVerificationLimiter = make({ windowMs: 60 * 60 * 1000, max: 5, message: 'Too many resend requests. Please try again later.' });
 
-// Token refresh: 10 / hour.
-const refreshTokenLimiter = make({ windowMs: 60 * 60 * 1000, max: 10, message: 'Rate limit exceeded. Please try again later.' });
+// Token refresh: 60 FAILED refreshes / hour (successful ones don't count, see
+// skipSuccessfulRequests in make()). The old cap of 10 was set as if refreshing
+// were rare, but a 15-minute access token means ~4 renewals per hour PER TAB,
+// and several people can share one public IP (office / carrier NAT). Once the
+// bucket tripped, /auth/refresh returned 429 and the client logged everyone out.
+// This limit still stops refresh-token brute-forcing (only failures count) while
+// never punishing a normal long session.
+const refreshTokenLimiter = make({ windowMs: 60 * 60 * 1000, max: 60, message: 'Rate limit exceeded. Please try again later.' });
 
 module.exports = {
   loginLimiter,

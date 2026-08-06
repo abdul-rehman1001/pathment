@@ -1,7 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
-import { toast } from 'sonner';
 import { normalizeAxiosError } from '../utils/api-error';
 import { tokenStore } from './token-store';
+import { refreshAccessToken, handleSessionExpired, SessionExpiredError } from './auth-session';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
@@ -42,55 +42,25 @@ axiosInstance.interceptors.response.use(
       '/auth/validate-invite',
     ].some((path) => requestUrl.includes(path));
 
-    // Handle 401 Unauthorized
+    // 401 → renew once and replay, sharing the app-wide single-flight refresh
+    // with api-client. Never sniff the message text to decide whether to try:
+    // any 401 on an authenticated request is worth one refresh attempt, and the
+    // refresh result (not a string match) decides whether the session is over.
     if (error.response?.status === 401 && !originalRequest._retry && hasAccessToken && !isPublicAuthRequest) {
       originalRequest._retry = true;
-
-      // Check if token expired
-      const errorMessage = error.response?.data?.message || '';
-      if (errorMessage.toLowerCase().includes('expired')) {
-        // Token expired - try to refresh
-        const refreshToken = tokenStore.getRefreshToken();
-
-        if (refreshToken) {
-          try {
-            const response = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
-            const newToken = response.data?.data?.accessToken || response.data?.accessToken;
-
-            if (newToken) {
-              // Save new token
-              tokenStore.setToken(newToken);
-              // Retry original request
-              originalRequest.headers.Authorization = `Bearer ${newToken}`;
-              return axiosInstance(originalRequest);
-            }
-          } catch (refreshError) {
-            console.error('Token refresh failed:', refreshError);
-          }
-        }
-
-        // If refresh failed or no refresh token, clear auth and redirect
-        handleAuthFailure();
-      } else {
-        // Invalid token or other 401 error
-        handleAuthFailure();
+      try {
+        const newToken = await refreshAccessToken();
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        return axiosInstance(originalRequest);
+      } catch (refreshError) {
+        // Only a refresh the SERVER rejected ends the session. Offline / 5xx /
+        // 429 keep the user logged in — auth-session retries in the background.
+        if (refreshError instanceof SessionExpiredError) handleSessionExpired();
       }
     }
 
     return Promise.reject(error);
   }
 );
-
-function handleAuthFailure() {
-  if (typeof window !== 'undefined') {
-    tokenStore.clearSession();
-
-    toast.error('Your session has expired. Please log in again.');
-    
-    setTimeout(() => {
-      window.location.href = '/login?expired=true';
-    }, 1500);
-  }
-}
 
 export default axiosInstance;

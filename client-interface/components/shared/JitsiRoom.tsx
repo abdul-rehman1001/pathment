@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 declare global {
@@ -25,6 +25,9 @@ function loadJitsi(domain: string): Promise<void> {
 }
 
 export interface JitsiParticipant { id: string; displayName?: string }
+
+/** Channel used to make sure ONE browser tab at a time is in a given room. */
+const TAB_CHANNEL = 'pathment-call';
 
 /**
  * Embeds a Jitsi room. Provider-flexible via `domain` (meet.jit.si by default,
@@ -73,15 +76,121 @@ export function JitsiRoom({
   const apiRef = useRef<any>(null);
   const localIdRef = useRef<string | null>(null);
 
+  // Callbacks live in a ref so they are NOT effect dependencies. Two reasons:
+  // (1) the iframe must not be torn down and rebuilt just because the parent
+  // re-rendered, and (2) the listeners always see the LATEST callback — the old
+  // code captured whatever closure existed at mount, so e.g. the mentor's
+  // "end & score" handler could still point at a previous session id.
+  const cbRef = useRef({ onJoined, onLeft, onReadyToClose, onParticipantJoined, onParticipantLeft, onDominantSpeaker, onSelfDominantChange, onError });
+  // The most recent identity, read at join time (a late-arriving name shouldn't
+  // need a remount to take effect).
+  const identityRef = useRef({ displayName, avatarUrl });
   useEffect(() => {
+    cbRef.current = { onJoined, onLeft, onReadyToClose, onParticipantJoined, onParticipantLeft, onDominantSpeaker, onSelfDominantChange, onError };
+    identityRef.current = { displayName, avatarUrl };
+  });
+
+  // Another tab of this browser joined the same room, so this one stepped out —
+  // otherwise the person appears TWICE in the call (once per tab).
+  const [superseded, setSuperseded] = useState(false);
+  // Bumped by "Rejoin here" to re-run the effect and re-claim the room.
+  const [joinNonce, setJoinNonce] = useState(0);
+  const rejoin = useCallback(() => { setSuperseded(false); setJoinNonce((n) => n + 1); }, []);
+  // Stable for the life of this component, so rebuilding the room (a polls
+  // toggle, "Reload video") is never mistaken for a second tab claiming it.
+  // (useId is no good here: it is derived from tree position, so two tabs would
+  // produce the SAME id and neither would recognise the other.)
+  const [tabId] = useState(() => (typeof window === 'undefined' ? '' : window.crypto.randomUUID()));
+
+  useEffect(() => {
+    if (superseded) return;
     let disposed = false;
+    // While THIS room instance is being torn down (prop change, unmount) Jitsi
+    // still fires `readyToClose` / `videoConferenceLeft`. Those must not reach the
+    // parent: for the mentor, `onReadyToClose` ends the meeting for everyone, so
+    // a simple "Polls" toggle would have ended the whole review. Deliberately a
+    // per-run local (not a ref) so a previous, still-closing room can never
+    // un-suppress itself when the next one starts.
+    let tearingDown = false;
+    // Our own node inside the container. We create it (rather than handing Jitsi
+    // React's div) so that on teardown we can move the iframe OUT of the React
+    // tree and let it finish leaving the conference before it is destroyed.
+    const host = document.createElement('div');
+    host.style.width = '100%';
+    host.style.height = '100%';
+    containerRef.current?.appendChild(host);
+
+    /**
+     * Leave the conference properly, THEN dispose. Just calling dispose() rips
+     * the iframe out of the DOM before Jitsi can send its "I'm leaving" presence,
+     * so the server keeps the participant around until it times out — which is
+     * why people showed up twice after a reload, a reconnect, or any prop change
+     * that rebuilt the room (the ghost still held the moderator badge).
+     */
+    const teardown = () => {
+      const api = apiRef.current;
+      apiRef.current = null;
+      tearingDown = true;
+      if (!api) { host.remove(); return; }
+
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        try { api.dispose(); } catch { /* already gone */ }
+        host.remove();
+      };
+      // `hangup` ends with `readyToClose` — dispose a beat later so the leave is
+      // fully flushed, with the timeout below as the backstop if it never fires.
+      try { api.addListener('readyToClose', () => setTimeout(finish, 250)); } catch { /* older build */ }
+      try {
+        api.executeCommand('hangup');
+      } catch {
+        finish();
+        return;
+      }
+      // Park the iframe off-screen, outside the container React is about to
+      // remove, so the leave actually reaches the server.
+      try {
+        host.style.cssText = 'position:fixed;left:-99999px;top:0;width:1px;height:1px;opacity:0;pointer-events:none';
+        document.body.appendChild(host);
+      } catch { /* container already detached — dispose below still runs */ }
+      setTimeout(finish, 2_000);
+    };
+
+    // Closing / reloading the tab: hang up so the server drops us immediately
+    // instead of leaving a ghost participant behind for the next connection.
+    const onPageHide = () => { try { apiRef.current?.executeCommand('hangup'); } catch { /* best-effort */ } };
+    window.addEventListener('pagehide', onPageHide);
+
+    // One tab per room. When another tab of this browser claims the room, this
+    // instance leaves rather than joining twice under the same name.
+    let channel: BroadcastChannel | null = null;
+    // (tabId is stable per mounted component — see the useState above.)
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        channel = new BroadcastChannel(TAB_CHANNEL);
+        channel.onmessage = (ev: MessageEvent) => {
+          const data = ev.data as { type?: string; room?: string; tabId?: string } | null;
+          if (data?.type === 'claim' && data.room === room && data.tabId !== tabId) setSuperseded(true);
+        };
+        channel.postMessage({ type: 'claim', room, tabId });
+      } catch { /* no cross-tab guard available; a duplicate is still recoverable */ }
+    }
+
+    // The toolbar the user gets. Passed BOTH as config.toolbarButtons (what
+    // current Jitsi reads) and as interfaceConfig.TOOLBAR_BUTTONS (older builds)
+    // — if only the deprecated one is sent, a newer deployment silently ignores
+    // it and mentees get the full toolbar, invite button and all.
+    const toolbar = [...(role === 'host' ? HOST_TOOLBAR : GUEST_TOOLBAR), ...(polls ? ['polls'] : [])];
+
     loadJitsi(domain)
       .then(() => {
-        if (disposed || !containerRef.current || !window.JitsiMeetExternalAPI) return;
+        if (disposed || !window.JitsiMeetExternalAPI) return;
         const api = new window.JitsiMeetExternalAPI(domain, {
           roomName: room,
-          parentNode: containerRef.current,
-          userInfo: displayName ? { displayName } : undefined,
+          parentNode: host,
+          userInfo: identityRef.current.displayName ? { displayName: identityRef.current.displayName } : undefined,
           configOverwrite: {
             // Both keys: `prejoinPageEnabled` is the legacy flag, `prejoinConfig`
             // is what current Jitsi (2.0.10000+) reads — set both so the host and
@@ -147,6 +256,14 @@ export function JitsiRoom({
             disableReactionsModeration: true,
             // In-call polls — OFF unless the host enabled them for this session.
             disablePolls: !polls,
+            // Modern equivalents of the interfaceConfig keys below. Recent Jitsi
+            // reads these and ignores interfaceConfig, so both are set.
+            toolbarButtons: toolbar,
+            defaultLocalDisplayName: 'You',
+            // Someone who reaches the room WITHOUT an identity (straight from the
+            // room URL rather than through Pathment) reads as "Guest" instead of
+            // Jitsi's stock "Fellow Jitster".
+            defaultRemoteDisplayName: 'Guest',
           },
           interfaceConfigOverwrite: {
             MOBILE_APP_PROMO: false,
@@ -159,10 +276,9 @@ export function JitsiRoom({
             DISPLAY_WELCOME_FOOTER: false,
             // Role-scoped toolbar: mentees can't invite / lock the room / mute all.
             // 'polls' appears only when the host enabled polls for the session.
-            TOOLBAR_BUTTONS: [...(role === 'host' ? HOST_TOOLBAR : GUEST_TOOLBAR), ...(polls ? ['polls'] : [])],
-            // Don't auto-drop into the grid; keep the active speaker / shared screen
-            // on the main stage.
+            TOOLBAR_BUTTONS: toolbar,
             DEFAULT_LOCAL_DISPLAY_NAME: 'You',
+            DEFAULT_REMOTE_DISPLAY_NAME: 'Guest',
           },
         });
         apiRef.current = api;
@@ -171,46 +287,54 @@ export function JitsiRoom({
         // joined before the host opened the panel would never be identifiable
         // (and so could never be credited for speaking).
         api.addListener('videoConferenceJoined', (e: { id?: string }) => {
+          if (tearingDown) return;
           if (e?.id) localIdRef.current = e.id; // our own participant id (for self-dominant)
+          // Re-assert our identity. `userInfo` sets the name at construction, but
+          // it does not always survive (a stored name on the Jitsi origin, a
+          // reconnect) and everyone else then sees "Fellow Jitster". Sending the
+          // command after joining also re-broadcasts the name to the room.
+          const { displayName: name, avatarUrl: avatar } = identityRef.current;
+          if (name) { try { api.executeCommand('displayName', name); } catch { /* optional */ } }
           try {
             const existing = api.getParticipantsInfo?.() || [];
             for (const p of existing) {
-              if (p?.participantId) onParticipantJoined?.({ id: p.participantId, displayName: p.displayName || p.formattedDisplayName });
+              if (p?.participantId) cbRef.current.onParticipantJoined?.({ id: p.participantId, displayName: p.displayName || p.formattedDisplayName });
             }
           } catch { /* roster seeding is best-effort */ }
           // Show the Pathment profile picture instead of Jitsi's initials.
-          if (avatarUrl) { try { api.executeCommand('avatarUrl', avatarUrl); } catch { /* optional */ } }
-          onJoined?.();
+          if (avatar) { try { api.executeCommand('avatarUrl', avatar); } catch { /* optional */ } }
+          cbRef.current.onJoined?.();
         });
-        if (onLeft) api.addListener('videoConferenceLeft', () => onLeft());
+        api.addListener('videoConferenceLeft', () => { if (!tearingDown) cbRef.current.onLeft?.(); });
         // `readyToClose` = the user hung up (red button / "end for all"). Wire it
-        // so hanging up runs the same flow as the panel's own End button.
-        if (onReadyToClose) api.addListener('readyToClose', () => onReadyToClose());
-        if (onParticipantJoined) api.addListener('participantJoined', (p: JitsiParticipant) => onParticipantJoined(p));
-        if (onParticipantLeft) api.addListener('participantLeft', (p: JitsiParticipant) => onParticipantLeft(p));
+        // so hanging up runs the same flow as the panel's own End button — but
+        // never during our own teardown (see tearingDown).
+        api.addListener('readyToClose', () => { if (!tearingDown) cbRef.current.onReadyToClose?.(); });
+        api.addListener('participantJoined', (p: JitsiParticipant) => cbRef.current.onParticipantJoined?.(p));
+        api.addListener('participantLeft', (p: JitsiParticipant) => cbRef.current.onParticipantLeft?.(p));
         // Names often aren't on `participantJoined` (Jitsi sends them a beat later).
         // Capture `displayNameChanged` too, so speaker→roster matching works.
         api.addListener('displayNameChanged', (e: { id: string; displayname?: string; displayName?: string }) => {
           const name = e.displayName || e.displayname;
-          if (e.id && name) onParticipantJoined?.({ id: e.id, displayName: name });
+          if (e.id && name) cbRef.current.onParticipantJoined?.({ id: e.id, displayName: name });
         });
-        if (onDominantSpeaker || onSelfDominantChange) api.addListener('dominantSpeakerChanged', (e: { id: string }) => {
+        api.addListener('dominantSpeakerChanged', (e: { id: string }) => {
           // Self-report path (robust, no name matching): tell the local user when
           // THEY are / aren't the dominant speaker.
-          onSelfDominantChange?.(e.id === localIdRef.current);
+          cbRef.current.onSelfDominantChange?.(e.id === localIdRef.current);
           // Resolve the speaker's CURRENT name right now (participantJoined may have
           // fired before the name was set) so their talk time can be attributed.
           try {
             const info = (api.getParticipantsInfo?.() || []).find((p: { participantId?: string }) => p.participantId === e.id);
             const name = (info as { displayName?: string; formattedDisplayName?: string } | undefined);
             const resolved = name?.displayName || name?.formattedDisplayName;
-            if (resolved) onParticipantJoined?.({ id: e.id, displayName: resolved });
+            if (resolved) cbRef.current.onParticipantJoined?.({ id: e.id, displayName: resolved });
           } catch { /* best-effort */ }
-          onDominantSpeaker?.(e.id);
+          cbRef.current.onDominantSpeaker?.(e.id);
         });
         // Screen share → put it on the main stage (like Google Meet), not a tile.
         // The event payload shape varies across Jitsi builds, so read both.
-        api.addListener('contentSharingParticipantsChanged', (e: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+        api.addListener('contentSharingParticipantsChanged', (e: any) => {
           const ids: string[] = e?.data?.sharingParticipantIds || e?.sharingParticipantIds || (Array.isArray(e) ? e : []);
           if (ids && ids.length) {
             try { api.executeCommand('setTileView', false); } catch { /* older build */ }
@@ -218,16 +342,29 @@ export function JitsiRoom({
           }
         });
       })
-      .catch((e) => onError?.(e?.message || 'Could not start the video'));
+      .catch((e) => cbRef.current.onError?.(e?.message || 'Could not start the video'));
 
     return () => {
       disposed = true;
-      try { apiRef.current?.dispose(); } catch { /* already gone */ }
-      apiRef.current = null;
+      window.removeEventListener('pagehide', onPageHide);
+      try { channel?.close(); } catch { /* already closed */ }
+      teardown();
     };
-    // Re-mount only when the room/domain changes — callbacks are read fresh via refs
-    // in practice, but re-creating on room change is the intended lifecycle.
-  }, [domain, room, role, privateChat, polls]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Only room identity + the config knobs Jitsi can't change after construction
+    // rebuild the call. Callbacks and identity are read through refs.
+  }, [domain, room, role, privateChat, polls, superseded, joinNonce, tabId]);
+
+  if (superseded) {
+    return (
+      <div className="w-full h-full min-h-[420px] rounded-xl bg-slate-900 flex flex-col items-center justify-center gap-3 px-6 text-center">
+        <p className="text-sm text-slate-200">You opened this call in another tab.</p>
+        <p className="text-xs text-slate-400">Only one tab can be in the call, otherwise you appear twice to everyone else.</p>
+        <button onClick={rejoin} className="rounded-lg bg-white/10 px-4 py-2 text-sm font-medium text-white hover:bg-white/20">
+          Rejoin here
+        </button>
+      </div>
+    );
+  }
 
   return <div ref={containerRef} className="w-full h-full min-h-[420px] rounded-xl overflow-hidden bg-slate-900" />;
 }

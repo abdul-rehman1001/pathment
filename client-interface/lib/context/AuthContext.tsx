@@ -5,6 +5,7 @@ import { User, AuthResponse, LoginCredentials, RegisterData, TwoFactorLoginRespo
 import { apiClient } from '../services/api-client';
 import { apiConfig } from '../config/api';
 import { tokenStore } from '../services/token-store';
+import { startAuthSession, resetAuthSession } from '../services/auth-session';
 
 /** Capabilities a user holds, always falling back to their primary role. */
 function getCapabilities(user: User | null): UserRole[] {
@@ -49,6 +50,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     checkAuth();
   }, []);
+
+  // Renew the access token in the background — shortly before it expires, and
+  // whenever the tab wakes or the network returns. Without this the ONLY way we
+  // discover an expired token is by failing a request, which is exactly when the
+  // user is mid-task (e.g. in a live review call).
+  useEffect(() => startAuthSession(), []);
 
   // Keep activeRole valid as the user changes: prefer a persisted choice if it
   // is still one of the user's capabilities, otherwise fall back to the
@@ -117,8 +124,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error('Auth check failed:', error);
-      tokenStore.clearSession();
-      setUser(null);
+      // Only a definitive rejection clears the session. A network error / 5xx on
+      // the very first /auth/me (offline reload, backend restart) must not throw
+      // away a perfectly good refresh token — the interceptor handles a real
+      // expiry, and the next successful request restores the user.
+      const status = getHttpStatus(error);
+      if (status === 401 || status === 403) {
+        tokenStore.clearSession();
+        setUser(null);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -155,8 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       tokenStore.setSession({ token: accessToken, refreshToken, user }, rememberMe);
-
-      console.log('Login successful, tokens stored');
+      resetAuthSession(); // fresh session: re-arm proactive renewal, clear any prior expiry latch
       setUser(user);
       setRequiresTwoFactor(false);
       setTemporaryToken(null);
@@ -198,9 +211,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       tokenStore.setSession({ token: accessToken, refreshToken, user: currentUser }, rememberMe);
+      resetAuthSession();
 
-      console.log('2FA verified, tokens stored');
-      
       // Clear 2FA state
       setRequiresTwoFactor(false);
       setTemporaryToken(null);
