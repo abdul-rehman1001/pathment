@@ -656,6 +656,10 @@ class AdminService {
     const user = await models.User.findByPk(targetUserId);
     if (!user) throw new NotFoundError('User not found');
 
+    if (user.role === 'admin') {
+      throw new ValidationError('Admin accounts cannot be modified through the general user management endpoint.');
+    }
+
     const before = { firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role };
 
     if (updates.firstName !== undefined) user.firstName = String(updates.firstName).trim().slice(0, 100);
@@ -676,9 +680,6 @@ class AdminService {
       if (!['mentee', 'mentor'].includes(updates.role)) {
         throw new ValidationError('Base role must be mentee or mentor');
       }
-      if (user.role === 'admin') {
-        throw new ValidationError('Admin accounts cannot be re-roled here — manage them in Roles & Access');
-      }
       user.role = updates.role; // beforeSave hook adds it to capabilities
     }
 
@@ -687,7 +688,7 @@ class AdminService {
     await createAuditLog({
       userId: adminUserId, action: 'USER_UPDATED_BY_ADMIN', entityType: 'User', entityId: user.id,
       oldValues: before, newValues: { firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role },
-    }).catch(() => {});
+    }).catch(() => { });
 
     return {
       id: user.id, firstName: user.firstName, lastName: user.lastName,
@@ -713,7 +714,7 @@ class AdminService {
 
     await createAuditLog({
       userId: adminUserId, action: 'USER_PASSWORD_SET_BY_ADMIN', entityType: 'User', entityId: user.id,
-    }).catch(() => {});
+    }).catch(() => { });
 
     return { message: `Password updated for ${user.firstName} ${user.lastName}. They've been signed out.` };
   }
@@ -741,7 +742,7 @@ class AdminService {
     await securityService.disable2FA(targetUserId);
     await createAuditLog({
       userId: adminUserId, action: 'USER_2FA_DISABLED_BY_ADMIN', entityType: 'User', entityId: targetUserId,
-    }).catch(() => {});
+    }).catch(() => { });
     return { message: `Two-factor disabled for ${user.firstName} ${user.lastName}. They can log in without a code and re-enable it in Settings.` };
   }
 
