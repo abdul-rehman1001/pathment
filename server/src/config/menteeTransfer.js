@@ -14,7 +14,7 @@
  *                               regardless of the date. A kill switch.
  */
 
-const DEFAULT_RELEASE_AT = '2026-08-10T00:00:00.000Z';
+const DEFAULT_RELEASE_AT = '2026-08-07T00:00:00.000Z';
 /** How long after release the UI keeps calling it new. */
 const NEW_FOR_DAYS = 7;
 
