@@ -85,6 +85,11 @@ class FrictionService {
    * Blockers for a single mentee, eager-loaded with their linked task title —
    * the shape the mentor's mentee-profile view renders. Owned here (not by
    * cohortService) so the friction domain keeps its query/includes in one place.
+   *
+   * Like `listDelaysFor`, this is an INTERNAL read for a caller that has already
+   * authorized the mentee (cohortController runs `canViewMentee` before building
+   * the profile). It takes a bare menteeId and does no check of its own — never
+   * reach it straight from a route.
    */
   async listBlockersWithTask(menteeId) {
     return models.Blocker.findAll({
@@ -151,6 +156,17 @@ class FrictionService {
     const where = {};
     if (scope !== undefined) where.menteeId = scope;
     return models.DelayEvent.findAll({ where, order: [['occurredAt', 'DESC']] });
+  }
+
+  /**
+   * Delays for one mentee, for a caller that has ALREADY authorized them — the
+   * mentor's mentee-profile assembly, where cohortController checks
+   * `canViewMentee` before any of this runs. The counterpart to
+   * `listBlockersWithTask`; `listDelays` stays the request-facing entry point
+   * and keeps its own check. Route handlers must not call this.
+   */
+  async listDelaysFor(menteeId) {
+    return models.DelayEvent.findAll({ where: { menteeId }, order: [['occurredAt', 'DESC']] });
   }
 
   async createDelay(data, createdBy, currentUser) {

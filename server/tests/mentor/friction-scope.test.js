@@ -196,6 +196,22 @@ describe('logging friction as the mentee themselves (over HTTP)', () => {
     expect(res.status).toBe(403);
   });
 
+  // getMenteeDetail assembles the mentor's profile view under Promise.allSettled,
+  // so a guard that rejects its server-to-server read doesn't 500 — the section
+  // just comes back empty and the delays vanish from the page. Internal reads go
+  // through listDelaysFor / listBlockersWithTask, which take a bare menteeId;
+  // cohortController has already run canViewMentee by then.
+  it('still surfaces delays on the mentee profile, which reads without a user', async () => {
+    await models.DelayEvent.create({ menteeId: mentee.id, reason: 'power cut', kind: 'other', days: 1 });
+
+    await expect(frictionService.listDelaysFor(mentee.id)).resolves.toHaveLength(1);
+
+    const cohortService = require('../../src/services/cohortService');
+    const detail = await cohortService.getMenteeDetail(mentee.id);
+    expect(detail.sectionErrors?.delays).toBeUndefined();
+    expect(detail.delays).toHaveLength(1);
+  });
+
   it('refuses a blocker logged against someone else', async () => {
     const outsider = await createMentee({ email: 'out@test.com' });
     await expect(frictionService.createBlocker({ menteeId: outsider.id, title: 'not mine' }, mentee.id, mentee))

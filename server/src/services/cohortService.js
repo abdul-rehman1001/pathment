@@ -412,7 +412,7 @@ class CohortService {
       // assembles the profile, it doesn't know other domains' schemas.
       Promise.allSettled([
         taskService.listMenteeProfileTasks(menteeId),
-        frictionService.listDelays({ menteeId }),
+        frictionService.listDelaysFor(menteeId),
         frictionService.listBlockersWithTask(menteeId),
         insightService.getInsightsByMentee(menteeId),
         models.MeetingNote.findAll({
