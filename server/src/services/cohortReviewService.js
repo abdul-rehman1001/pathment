@@ -259,11 +259,57 @@ class CohortReviewService {
     return this._entryJson(fresh);
   }
 
+  /**
+   * Notify absent mentees when a cohort review session is completed.
+   * Sends an automated email and in-app check-in message.
+   */
+  async _notifyAbsentMentees(session) {
+    if (!session || !session.id) return;
+    try {
+      await this._reconcileEntries(session);
+      const absentEntries = await models.CohortReviewEntry.findAll({
+        where: {
+          sessionId: session.id,
+          [Op.or]: [{ attendance: 'absent' }, { attendance: null }],
+        },
+        include: [{ model: models.User, as: 'mentee', attributes: ['id', 'email', 'firstName', 'lastName'] }],
+      });
+
+      if (!absentEntries.length) return;
+
+      const clan = session.clanId ? await models.Clan.findByPk(session.clanId, { attributes: ['name'] }) : null;
+      const clanName = clan?.name || 'your clan';
+
+      const notificationOrchestrator = require('./notificationOrchestrator');
+      const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
+
+      for (const entry of absentEntries) {
+        if (!entry.menteeId) continue;
+        const menteeName = entry.mentee?.firstName || 'Mentee';
+        await notificationOrchestrator.dispatch({
+          eventKey: NOTIFICATION_EVENTS.REVIEW_REMINDER,
+          recipients: [{ userId: entry.menteeId, email: entry.mentee?.email }],
+          payload: {
+            title: `We missed you at today's review!`,
+            message: `Hi ${menteeName}, you were missed during today's cohort review session for ${clanName}. Be sure to check your dashboard and stay on track for the next session!`,
+            actionUrl: '/mentee/dashboard',
+            actionLabel: 'View Dashboard',
+            relatedEntityType: 'review_session',
+          },
+          channelOverrides: { inApp: true, email: true },
+        }).catch((e) => console.error(`[review] absent notify failed for mentee ${entry.menteeId}:`, e.message));
+      }
+    } catch (err) {
+      console.error('[review] _notifyAbsentMentees failed (non-fatal):', err.message);
+    }
+  }
+
   async finishSession(mentorId, sessionId) {
     const session = await this._canAccess(mentorId, sessionId);
     session.status = 'finished';
     session.finishedAt = new Date();
     await session.save();
+    this._notifyAbsentMentees(session).catch(() => {});
     return this._withEntries(session);
   }
 
