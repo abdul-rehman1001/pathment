@@ -192,7 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const response = await apiClient.post<any>(
         apiConfig.endpoints.verify2FALogin,
-        { code },
+        { code, rememberMe },
         {
           headers: {
             Authorization: `Bearer ${temporaryToken}`,
