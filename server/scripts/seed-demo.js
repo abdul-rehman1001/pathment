@@ -821,7 +821,7 @@ async function seed() {
       await openSlot(mentor, 4, 16);
     }
     await book(aisha, byLocal("mentee.maya"), 2, 14, "scheduled");
-    await book(aisha, byLocal("mentee.leo"), -3, 15, "completed");
+    await book(aisha, byLocal("mentee.leo"), -3, 15, "done");
     await book(omar, byLocal("mentee.noor"), 1, 16, "scheduled");
     await book(omar, byLocal("mentee.priya"), -1, 13, "cancelled", "Hit a work deadline — will rebook for next week.");
     console.log("✅ Availability slots + 1:1 meetings created (open / upcoming / completed / cancelled)\n");
@@ -898,7 +898,7 @@ async function seed() {
   // with an accepted answer and some kudos, so every community surface has life.
   if (models.CommunityPost && models.CommunityComment && models.CommunityReaction) {
     console.log("💬 Seeding community posts, comments & reactions…");
-    const REACTIONS = ["like", "celebrate", "insightful", "helpful"];
+    const REACTIONS = ["cheers", "celebrate", "insightful", "helpful"];
     async function makePost(author, o) {
       const p = await models.CommunityPost.create({
         authorId: author.id, type: o.type || "discussion",
@@ -1091,6 +1091,7 @@ async function seed() {
         roadmapId: advanced.id, title: advTasks[i].title,
         description: `${advTasks[i].title}. Build, then submit for mentor review.`,
         type: advTasks[i].type, difficulty: advTasks[i].difficulty, taskOrder: i + 1,
+        deliverable: "Implementation passing all requirements.",
         estimatedHours: 10, pointsBase: 14 + i * 2,
       });
     }
