@@ -135,7 +135,7 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
   useEffect(() => {
     if (phase === 'lobby' && lobbyVideoRef.current && previewStream) {
       lobbyVideoRef.current.srcObject = previewStream;
-      lobbyVideoRef.current.play().catch(() => {});
+      lobbyVideoRef.current.play().catch(() => { });
     }
   }, [phase, previewStream]);
 
@@ -148,7 +148,7 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
   useEffect(() => {
     if (phase === 'active' && videoRef.current && camStreamRef.current) {
       videoRef.current.srcObject = camStreamRef.current;
-      videoRef.current.play().catch(() => {});
+      videoRef.current.play().catch(() => { });
     }
   }, [phase]);
 
@@ -382,7 +382,7 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       camStreamRef.current?.getTracks().forEach((t) => t.stop());
       camStreamRef.current = stream;
-      if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play().catch(() => {}); }
+      if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play().catch(() => { }); }
     } catch {
       toast.error('Still no camera access — enable it for this site in your browser, then retry.');
     }
@@ -447,7 +447,7 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
       code: d?.code || null,
       answerText: d?.answerText || null,
       timeSpentSeconds: d?.seconds || 0,
-    }).catch(() => {});
+    }).catch(() => { });
     if (blob) uploadAudioBg(sessionId, audioOwner, blob);
   };
 
@@ -480,7 +480,7 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
       await interviewApi.submitInterview(sessionId);
       clearActiveInterview();
       camStreamRef.current?.getTracks().forEach((t) => t.stop());
-      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => { });
       setPhase('done');
     } catch (e: any) {
       toast.error(extractApiErrorMessage(e, 'Could not submit the interview'));
@@ -728,8 +728,18 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
                 >
                   {recording ? <MicOff className="w-8 h-8" /> : <Mic className="w-8 h-8" />}
                 </button>
-                <p className="text-sm text-slate-300 mt-3">{recording ? 'Listening… tap to stop' : draft?.audioBlob ? 'Recorded · tap to re-record' : 'Tap to answer by voice'}</p>
-                {!recorderSupported() && <p className="text-xs text-amber-400 mt-1">Recording isn&apos;t supported here — type your answer below.</p>}
+                <div className="mt-3 flex flex-col items-center">
+                  <p className="text-sm font-medium text-slate-200 flex items-center gap-2">
+                    {recording && <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />}
+                    {recording ? 'Recording in progress… tap to stop' : draft?.audioBlob ? 'Recorded · tap to re-record' : 'Tap to answer by voice'}
+                  </p>
+                  {recording && (
+                    <p className="text-xs text-slate-400 mt-2 bg-slate-900/50 px-3 py-2 rounded-lg border border-slate-700/50 max-w-sm text-center">
+                      Your voice recording and transcript will both be shared with your mentor.
+                    </p>
+                  )}
+                </div>
+                {!recorderSupported() && <p className="text-xs text-amber-400 mt-2">Recording isn&apos;t supported here — type your answer below.</p>}
               </div>
               <div className="mt-5">
                 <label className="block text-xs font-medium text-slate-400 mb-1">Transcript {recognitionSupported() && <span className="text-slate-500">(auto — edit if needed)</span>}</label>
