@@ -7,6 +7,8 @@ import { enrollmentApi } from '@/lib/services/enrollment-api';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/context/AuthContext';
 
+export type TaskView = 'active' | 'completed';
+
 export interface UseMenteeTasksReturn {
   tasks: any[];
   filteredTasks: any[];
@@ -16,9 +18,13 @@ export interface UseMenteeTasksReturn {
   selectedEnrollmentId: string | null;
   filterStatus: string;
   searchTerm: string;
+  view: TaskView;
+  activeCount: number;
+  completedCount: number;
   setSelectedEnrollmentId: (id: string | null) => void;
   setFilterStatus: (status: string) => void;
   setSearchTerm: (term: string) => void;
+  setView: (view: TaskView) => void;
   handleStartTask: (taskId: string) => Promise<void>;
   fetchTasks: () => Promise<void>;
 }
@@ -34,6 +40,7 @@ export function useMenteeTasks(): UseMenteeTasksReturn {
   const [enrollmentsReady, setEnrollmentsReady] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [view, setView] = useState<TaskView>('active');
 
   const fetchEnrollments = useCallback(async () => {
     if (!user?.id) return;
@@ -96,15 +103,50 @@ export function useMenteeTasks(): UseMenteeTasksReturn {
     }
   }, [fetchTasks]);
 
+  const changeView = useCallback((next: TaskView) => {
+    setView(next);
+    // A completed/active split is meaningless if a conflicting status filter is
+    // still applied, so clear it whenever the view flips.
+    setFilterStatus('all');
+  }, []);
+
+  const isActiveStatus = (status: string) =>
+    ['assigned', 'in_progress', 'submitted', 'revision_needed'].includes(status);
+
   const filteredTasks = useMemo(() => {
-    if (!searchTerm.trim()) return tasks;
-    const lower = searchTerm.toLowerCase();
-    return tasks.filter(
-      (task) =>
-        task.roadmapTask?.title?.toLowerCase().includes(lower) ||
-        task.roadmapTask?.description?.toLowerCase().includes(lower)
-    );
-  }, [tasks, searchTerm]);
+    let list = tasks;
+    if (view === 'completed') {
+      list = list.filter((task) => task.status === 'completed');
+    } else {
+      list = list.filter((task) => isActiveStatus(task.status));
+    }
+    if (searchTerm.trim()) {
+      const lower = searchTerm.toLowerCase();
+      list = list.filter(
+        (task) =>
+          task.roadmapTask?.title?.toLowerCase().includes(lower) ||
+          task.roadmapTask?.description?.toLowerCase().includes(lower)
+      );
+    }
+    // Active view: actionable, due-soonest tasks first (overdue > due date > none).
+    if (view === 'active') {
+      list = [...list].sort((a: any, b: any) => {
+        const aDate = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
+        const bDate = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
+        return aDate - bDate;
+      });
+    }
+    return list;
+  }, [tasks, view, searchTerm]);
+
+  const activeCount = useMemo(
+    () => tasks.filter((task) => isActiveStatus(task.status)).length,
+    [tasks]
+  );
+  const completedCount = useMemo(
+    () => tasks.filter((task) => task.status === 'completed').length,
+    [tasks]
+  );
 
   return {
     tasks,
@@ -115,9 +157,13 @@ export function useMenteeTasks(): UseMenteeTasksReturn {
     selectedEnrollmentId,
     filterStatus,
     searchTerm,
+    view,
+    activeCount,
+    completedCount,
     setSelectedEnrollmentId,
     setFilterStatus,
     setSearchTerm,
+    setView: changeView,
     handleStartTask,
     fetchTasks,
   };

@@ -19,9 +19,13 @@ export default function MenteeTasks() {
     selectedEnrollmentId,
     filterStatus,
     searchTerm,
+    view,
+    activeCount,
+    completedCount,
     setSelectedEnrollmentId,
     setFilterStatus,
     setSearchTerm,
+    setView,
     handleStartTask,
     fetchTasks,
   } = useMenteeTasks();
@@ -129,24 +133,63 @@ export default function MenteeTasks() {
         <StatsCard icon={AlertCircle}   label="Overdue"        value={stats?.overdue || 0}     colorClass="text-red-600 bg-red-50" />
       </div>
 
+      {/* Active / Completed toggle */}
+      <div className="inline-flex rounded-xl border border-slate-200 bg-card p-1">
+        <button
+          onClick={() => setView('active')}
+          aria-pressed={view === 'active'}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            view === 'active'
+              ? 'bg-brand-600 text-white shadow-sm'
+              : 'text-slate-600 hover:text-brand-600'
+          }`}
+        >
+          <Clock className="w-4 h-4" />
+          Active
+          {loading ? null : (
+            <span className={`text-xs tabular-nums ${view === 'active' ? 'text-white/80' : 'text-slate-400'}`}>
+              {activeCount}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setView('completed')}
+          aria-pressed={view === 'completed'}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            view === 'completed'
+              ? 'bg-brand-600 text-white shadow-sm'
+              : 'text-slate-600 hover:text-brand-600'
+          }`}
+        >
+          <CheckCircle2 className="w-4 h-4" />
+          Completed
+          {loading ? null : (
+            <span className={`text-xs tabular-nums ${view === 'completed' ? 'text-white/80' : 'text-slate-400'}`}>
+              {completedCount}
+            </span>
+          )}
+        </button>
+      </div>
+
       {/* Filters */}
       <SearchAndFilterBar
         search={searchTerm}
         onSearch={setSearchTerm}
-        placeholder="Search tasks..."
+        placeholder={view === 'completed' ? 'Search completed tasks...' : 'Search tasks...'}
         filters={[
-          {
-            value: filterStatus,
-            onChange: setFilterStatus,
-            options: [
-              { value: 'all', label: 'All Tasks' },
-              { value: 'assigned', label: 'New Tasks' },
-              { value: 'in_progress', label: 'In Progress' },
-              { value: 'submitted', label: 'Submitted' },
-              { value: 'revision_needed', label: 'Needs Revision' },
-              { value: 'completed', label: 'Completed' },
-            ],
-          },
+          ...(view === 'active'
+            ? [{
+                value: filterStatus,
+                onChange: setFilterStatus,
+                options: [
+                  { value: 'all', label: 'All Tasks' },
+                  { value: 'assigned', label: 'New Tasks' },
+                  { value: 'in_progress', label: 'In Progress' },
+                  { value: 'submitted', label: 'Submitted' },
+                  { value: 'revision_needed', label: 'Needs Revision' },
+                ],
+              }]
+            : []),
         ]}
       />
 
@@ -158,10 +201,22 @@ export default function MenteeTasks() {
           </div>
         ) : filteredTasks.length === 0 ? (
           <div className="text-center py-12">
-            <CheckCircle2 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-            <p className="text-slate-600 mb-2">No tasks found</p>
+            {view === 'completed' ? (
+              <CheckCircle2 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+            ) : (
+              <ClipboardList className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+            )}
+            <p className="text-slate-600 mb-2">
+              {view === 'completed' ? 'No completed tasks yet' : 'No active tasks'}
+            </p>
             <p className="text-slate-500 text-sm">
-              {searchTerm ? 'Try a different search term' : filterStatus !== 'all' ? 'No tasks in this category' : 'Tasks will appear here when assigned'}
+              {searchTerm
+                ? 'Try a different search term'
+                : filterStatus !== 'all'
+                  ? 'No tasks in this category'
+                  : view === 'completed'
+                    ? 'Completed tasks will appear here when you finish them'
+                    : 'Tasks will appear here when assigned'}
             </p>
           </div>
         ) : (
