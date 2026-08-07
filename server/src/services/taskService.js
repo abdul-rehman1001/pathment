@@ -328,11 +328,26 @@ class TaskService {
   }
 
   /**
+   * Lightweight task read for the mentor's mentee-profile view — just the
+   * columns the profile renders (no submissions/feedback/track enrichment).
+   * Kept separate from getMenteeTasks so that heavy consumer isn't penalised
+   * by this view, and vice-versa.
+   */
+  async listMenteeProfileTasks(menteeId) {
+    return models.AssignedTask.findAll({
+      where: { menteeId },
+      attributes: ['id', 'status', 'dueDate', 'submittedAt', 'completedAt', 'isLate', 'finalRating', 'enrollmentId'],
+      include: [{ model: models.RoadmapTask, as: 'roadmapTask', attributes: ['title', 'type'] }],
+      order: [['dueDate', 'ASC']]
+    });
+  }
+
+  /**
    * Get tasks for a mentee
    */
   async getMenteeTasks(menteeId, filters = {}) {
     const where = { menteeId };
-    
+
     if (filters.status) {
       where.status = filters.status;
     }
@@ -1212,11 +1227,13 @@ class TaskService {
 
     // Annotate each task with this mentee's assignment status, if asked.
     if (menteeId) {
+      const assignedTasks = await models.AssignedTask.findAll({
+        where: { menteeId, roadmapTaskId: { [Op.in]: tasks.map(t => t.id) } },
+        attributes: ['id', 'status', 'submittedAt', 'completedAt', 'roadmapTaskId']
+      });
+      const assignedByTaskId = new Map(assignedTasks.map(at => [at.roadmapTaskId, at]));
       for (const task of tasks) {
-        const assignedTask = await models.AssignedTask.findOne({
-          where: { menteeId, roadmapTaskId: task.id },
-          attributes: ['id', 'status', 'submittedAt', 'completedAt']
-        });
+        const assignedTask = assignedByTaskId.get(task.id);
         task.dataValues.assignmentStatus = assignedTask ? {
           isAssigned: true,
           taskId: assignedTask.id,

@@ -79,6 +79,8 @@ export interface MenteeProfile extends CohortMentee {
     isLate: boolean;
     finalRating: number | null;
   }>>;
+  /** Sections that failed to load — each key maps to a short error message. */
+  sectionErrors?: Record<string, string>;
 }
 
 export interface UseMenteeProfileReturn {

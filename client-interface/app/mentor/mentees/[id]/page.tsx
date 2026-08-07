@@ -469,7 +469,9 @@ export default function MenteeDetail() {
               <h2 className="text-slate-900">Blockers</h2>
             </div>
             <div className="p-6">
-              {insights.blockers.filter((b) => b.status === 'open').length === 0 ? (
+              {insights.sectionErrors?.blockers ? (
+                <p className="text-sm text-slate-500">Blockers failed to load.</p>
+              ) : insights.blockers.filter((b) => b.status === 'open').length === 0 ? (
                 <p className="text-sm text-slate-500">No open blockers.</p>
               ) : (
                 <div className="space-y-2">
@@ -502,7 +504,9 @@ export default function MenteeDetail() {
               <h2 className="text-slate-900">Logged delays</h2>
             </div>
             <div className="p-6">
-              {insights.delays.length === 0 ? (
+              {insights.sectionErrors?.delays ? (
+                <p className="text-sm text-slate-500">Delays failed to load.</p>
+              ) : insights.delays.length === 0 ? (
                 <p className="text-sm text-slate-500">No delays logged.</p>
               ) : (
                 <div className="space-y-2">
