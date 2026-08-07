@@ -311,7 +311,8 @@ class CohortService {
       if (enrollment) taskWhere.enrollmentId = enrollment.id;
       tasks = await models.AssignedTask.findAll({
         where: taskWhere,
-        attributes: ['id', 'status', 'isLate', 'completedAt', 'dueDate', 'enrollmentId']
+        attributes: ['id', 'status', 'isLate', 'completedAt', 'dueDate', 'enrollmentId', 'pointsAwarded'],
+        include: [{ model: models.RoadmapTask, as: 'roadmapTask', attributes: ['difficulty'], required: false }]
       });
 
       delays = await models.DelayEvent.findAll({
@@ -384,6 +385,11 @@ class CohortService {
       lastAttendance, // { status, date } | null — most recent review attendance
       taskCount: tasks.length, // total assigned tasks — 0 = never been given work
       tasksCompleted: tasks.filter((t) => t.status === 'completed').length, // real output, for effort-weighted leaderboard
+      pointsEarned: tasks.filter((t) => t.status === 'completed').reduce((s, t) => s + (t.pointsAwarded || 0), 0),
+      // Per-difficulty counts on completed tasks — drives the leaderboard breakdown and AI report brief.
+      tasksEasy:   tasks.filter((t) => t.status === 'completed' && (t.roadmapTask?.difficulty || '').toLowerCase() === 'easy').length,
+      tasksMedium: tasks.filter((t) => t.status === 'completed' && (t.roadmapTask?.difficulty || '').toLowerCase() === 'medium').length,
+      tasksHard:   tasks.filter((t) => t.status === 'completed' && ['hard', 'expert'].includes((t.roadmapTask?.difficulty || '').toLowerCase())).length,
       sentiment: 'neutral'
     };
   }
@@ -780,7 +786,8 @@ class CohortService {
       }),
       models.AssignedTask.findAll({
         where: { menteeId: inIds },
-        attributes: ['id', 'status', 'isLate', 'completedAt', 'dueDate', 'menteeId', 'enrollmentId']
+        attributes: ['id', 'status', 'isLate', 'completedAt', 'dueDate', 'menteeId', 'enrollmentId', 'pointsAwarded'],
+        include: [{ model: models.RoadmapTask, as: 'roadmapTask', attributes: ['difficulty'], required: false }]
       }),
       models.DelayEvent.findAll({
         where: { menteeId: inIds },
@@ -958,6 +965,11 @@ class CohortService {
     const top = [...cohort].sort((a, b) => (b.absoluteProgress + b.onTimeRate) - (a.absoluteProgress + a.onTimeRate)).slice(0, 3);
     const activity = await this.getPeriodActivity(mentorId, period);
 
+    // Cohort-wide difficulty breakdown — sum per band across all mentees.
+    const totalEasy   = cohort.reduce((n, m) => n + (m.tasksEasy   || 0), 0);
+    const totalMedium = cohort.reduce((n, m) => n + (m.tasksMedium || 0), 0);
+    const totalHard   = cohort.reduce((n, m) => n + (m.tasksHard   || 0), 0);
+
     const brief = [
       `Period: the last ${activity.days} days (this ${period})`,
       `Cohort size: ${size} mentees`,
@@ -969,9 +981,10 @@ class CohortService {
       `Average progress through programs: ${avgProgress}%`,
       `Overall on-time delivery: ${avgOnTime}%`,
       avgRating ? `Average work quality: ${avgRating}/5` : 'Average work quality: no ratings yet',
+      `Task difficulty breakdown (all-time completed): ${totalEasy} easy, ${totalMedium} medium, ${totalHard} hard/expert`,
       `On track: ${onTrack.length}; to watch: ${watch.length}; at risk: ${high.length}`,
       `Pending reviews: ${pending}; open blockers: ${openBlockers}`,
-      `Top performers: ${top.map((m) => `${m.name} (${round(m.absoluteProgress)}% done, ${round(m.onTimeRate)}% on time)`).join('; ') || 'none'}`,
+      `Top performers: ${top.map((m) => `${m.name} (${round(m.absoluteProgress)}% done, ${round(m.onTimeRate)}% on time, ${(m.tasksEasy||0)}e/${(m.tasksMedium||0)}m/${(m.tasksHard||0)}h tasks)`).join('; ') || 'none'}`,
       `Needs attention: ${[...high, ...watch].map((m) => `${m.name} - ${m.riskReason || m.risk}`).join('; ') || 'none'}`,
     ].join('\n');
 

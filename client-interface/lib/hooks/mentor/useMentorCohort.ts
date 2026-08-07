@@ -31,6 +31,12 @@ export interface CohortMentee {
   taskCount: number;
   /** Tasks actually completed — real output, used to effort-weight the leaderboard. */
   tasksCompleted: number;
+  /** Sum of pointsAwarded on completed tasks — reflects difficulty of work done. */
+  pointsEarned: number;
+  /** Completed tasks split by difficulty band — drives leaderboard chips and AI brief. */
+  tasksEasy: number;
+  tasksMedium: number;
+  tasksHard: number;
   sentiment: string;
   clan?: { id: string; name: string } | null;
   /** Joined the platform within the last ~10 days — show a "New" badge. */
