@@ -143,7 +143,7 @@ class AdminService {
       }
     });
 
-    const clientBaseUrl = process.env.CLIENT_URL || 'http://localhost:3003';
+    const clientBaseUrl = process.env.CLIENT_URL || 'http://localhost:3000';
     const inviteUrl = `${clientBaseUrl.replace(/\/$/, '')}/register?invite=${encodeURIComponent(rawToken)}`;
 
     // A mentee placed in a clan gets that clan's WhatsApp group link in the email
