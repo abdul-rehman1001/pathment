@@ -33,6 +33,7 @@ import { useConfirm } from '@/lib/context/ConfirmContext';
 import { AttendanceSection } from '@/components/mentor/attendance/AttendanceSection';
 import { ReviewMeetingPanel } from '@/components/mentor/ReviewMeetingPanel';
 import { ReviewScheduleDrawer } from '@/components/mentor/ReviewScheduleDrawer';
+import { MobileReviewActionBar } from '@/components/mentor/MobileReviewActionBar';
 
 type Attendance = 'present' | 'absent' | 'excused';
 type EntryStatus = 'pending' | 'reviewed' | 'deferred';
@@ -723,29 +724,31 @@ export default function CohortReview() {
     : '';
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-20 lg:pb-0">
       {/* Header */}
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-slate-900">Cohort review</h1>
+            <h1 className="text-slate-900 text-xl sm:text-2xl font-bold">Cohort review</h1>
             {sessionDateLabel && (
-              <span className="inline-flex items-center gap-1 text-xs text-slate-500 bg-slate-100 rounded-full px-2 py-0.5"><CalendarDays className="w-3 h-3" />{sessionDateLabel}</span>
+              <span className="inline-flex items-center gap-1 text-xs text-slate-500 bg-slate-100 rounded-full px-2.5 py-0.5"><CalendarDays className="w-3 h-3" />{sessionDateLabel}</span>
             )}
             {session?.status === 'finished' && (
-              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5"><CheckCircle2 className="w-3 h-3" />Finished</span>
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-0.5"><CheckCircle2 className="w-3 h-3" />Finished</span>
             )}
           </div>
-          <p className="text-slate-600 text-sm">{idx + 1} of {cohort.length} · {session?.title || 'review each mentee, then finish'}</p>
+          <p className="text-slate-600 text-xs sm:text-sm mt-0.5">{idx + 1} of {cohort.length} · {session?.title || 'review each mentee, then finish'}</p>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setScheduleOpen(true)} className="px-3 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm hover:bg-slate-50 inline-flex items-center gap-1" title="Recurring reviews"><CalendarClock className="w-4 h-4" />Schedule</button>
-          <button onClick={openHistory} className="px-3 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm hover:bg-slate-50 inline-flex items-center gap-1" title="Past reviews"><History className="w-4 h-4" />History</button>
-          <button onClick={() => setAssigning(true)} className="px-3 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm hover:bg-slate-50 inline-flex items-center gap-1" title="Assign a task (t)"><Plus className="w-4 h-4" />Assign task</button>
-          <button onClick={() => setShowHelp(true)} className="p-2 rounded-lg text-slate-400 hover:bg-slate-100" title="Shortcuts"><Keyboard className="w-4 h-4" /></button>
-          <button onClick={() => go(-1)} disabled={idx === 0} className="px-3 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-40 inline-flex items-center gap-1"><ChevronLeft className="w-4 h-4" />Prev</button>
-          <button onClick={skip} className="px-3 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm hover:bg-slate-50 inline-flex items-center gap-1"><SkipForward className="w-4 h-4" />Skip</button>
-          <button onClick={() => go(1)} disabled={idx === cohort.length - 1} className="px-3 py-2 rounded-lg bg-brand-600 text-white text-sm hover:bg-brand-700 disabled:opacity-40 inline-flex items-center gap-1">Next<ChevronRight className="w-4 h-4" /></button>
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+          <button onClick={() => setScheduleOpen(true)} className="px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg border border-slate-200 text-slate-700 text-xs sm:text-sm hover:bg-slate-50 inline-flex items-center gap-1" title="Recurring reviews"><CalendarClock className="w-3.5 h-3.5 sm:w-4 sm:h-4" /><span className="hidden sm:inline">Schedule</span></button>
+          <button onClick={openHistory} className="px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg border border-slate-200 text-slate-700 text-xs sm:text-sm hover:bg-slate-50 inline-flex items-center gap-1" title="Past reviews"><History className="w-3.5 h-3.5 sm:w-4 sm:h-4" /><span className="hidden sm:inline">History</span></button>
+          <button onClick={() => setAssigning(true)} className="px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg border border-slate-200 text-slate-700 text-xs sm:text-sm hover:bg-slate-50 inline-flex items-center gap-1" title="Assign a task (t)"><Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />Assign task</button>
+          <button onClick={() => setShowHelp(true)} className="p-1.5 sm:p-2 rounded-lg text-slate-400 hover:bg-slate-100 hidden sm:inline-flex" title="Shortcuts"><Keyboard className="w-4 h-4" /></button>
+          <div className="hidden sm:flex items-center gap-1.5 ml-1">
+            <button onClick={() => go(-1)} disabled={idx === 0} className="px-3 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-40 inline-flex items-center gap-1"><ChevronLeft className="w-4 h-4" />Prev</button>
+            <button onClick={skip} className="px-3 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm hover:bg-slate-50 inline-flex items-center gap-1"><SkipForward className="w-4 h-4" />Skip</button>
+            <button onClick={() => go(1)} disabled={idx === cohort.length - 1} className="px-3 py-2 rounded-lg bg-brand-600 text-white text-sm hover:bg-brand-700 disabled:opacity-40 inline-flex items-center gap-1">Next<ChevronRight className="w-4 h-4" /></button>
+          </div>
         </div>
       </div>
 
@@ -857,27 +860,30 @@ export default function CohortReview() {
         {/* Main */}
         <div className="lg:col-span-2 space-y-5">
           {/* Mentee card */}
-          <div className="bg-card rounded-2xl border border-slate-200 p-5">
-            <div className="flex items-start gap-3">
-              <Avatar name={mentee!.name} src={mentee!.profilePictureUrl} initials={mentee!.avatar} size="lg" href={`/mentor/mentees/${mentee!.id}`} />
+          <div className="bg-card rounded-2xl border border-slate-200 p-4 sm:p-5">
+            <div className="flex flex-col sm:flex-row items-start justify-between gap-3">
+              <div className="flex items-start gap-3 min-w-0 w-full sm:w-auto">
+                <Avatar name={mentee!.name} src={mentee!.profilePictureUrl} initials={mentee!.avatar} size="lg" href={`/mentor/mentees/${mentee!.id}`} />
 
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <h2 className="font-semibold text-slate-900 truncate">{mentee!.name}</h2>
-                  {mentee!.isNew && (
-                    <span
-                      title={mentee!.daysSinceJoined != null ? `Joined ${mentee!.daysSinceJoined === 0 ? 'today' : `${mentee!.daysSinceJoined} day${mentee!.daysSinceJoined === 1 ? '' : 's'} ago`}` : 'New to the platform'}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"
-                    >
-                      <Sparkles className="w-3 h-3" /> New mentee
-                    </span>
-                  )}
-                  <MomentumIcon m={mentee!.momentum} />
-                  <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-xs font-medium ${risk.cls}`}><span className={`w-1.5 h-1.5 rounded-full ${risk.dot}`} />{risk.label}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="font-semibold text-slate-900 text-base sm:text-lg truncate">{mentee!.name}</h2>
+                    {mentee!.isNew && (
+                      <span
+                        title={mentee!.daysSinceJoined != null ? `Joined ${mentee!.daysSinceJoined === 0 ? 'today' : `${mentee!.daysSinceJoined} day${mentee!.daysSinceJoined === 1 ? '' : 's'} ago`}` : 'New to the platform'}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"
+                      >
+                        <Sparkles className="w-3 h-3" /> New mentee
+                      </span>
+                    )}
+                    <MomentumIcon m={mentee!.momentum} />
+                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-xs font-medium ${risk.cls}`}><span className={`w-1.5 h-1.5 rounded-full ${risk.dot}`} />{risk.label}</span>
+                  </div>
+                  <div className="mt-0.5 text-xs text-slate-500">{mentee!.level} · Wk {mentee!.week}/{mentee!.totalWeeks || '-'} · {mentee!.onTimeRate}% on-time</div>
                 </div>
-                <div className="mt-0.5 text-xs text-slate-500">{mentee!.level} · Wk {mentee!.week}/{mentee!.totalWeeks || '-'} · {mentee!.onTimeRate}% on-time</div>
               </div>
-              <div className="flex items-center gap-1 shrink-0">
+
+              <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto border-t sm:border-t-0 border-slate-100 pt-2 sm:pt-0 w-full sm:w-auto justify-end">
                 <NudgeButton menteeId={mentee!.id} menteeName={mentee!.name} variant="icon" />
                 {/* Reviewing someone is exactly when you realise they'd do better
                     with another mentor — so the move lives here too, not only on
@@ -891,7 +897,7 @@ export default function CohortReview() {
                 >
                   <PauseCircle className="w-4 h-4" />
                 </button>
-                <Link href={`/mentor/mentees/${mentee!.id}`} className="text-xs text-brand-600 hover:text-brand-700 inline-flex items-center gap-0.5">Profile <ArrowUpRight className="w-3.5 h-3.5" /></Link>
+                <Link href={`/mentor/mentees/${mentee!.id}`} className="text-xs text-brand-600 hover:text-brand-700 inline-flex items-center gap-0.5 px-2 py-1 rounded-md hover:bg-brand-50">Profile <ArrowUpRight className="w-3.5 h-3.5" /></Link>
               </div>
             </div>
             <div className="mt-4"><DualProgress absolute={mentee!.absoluteProgress} relative={mentee!.relativeProgress} compact /></div>
@@ -966,14 +972,14 @@ export default function CohortReview() {
                             const isEditingDue = editingDue === t.id;
                             const busy = busyTaskId === t.id;
                             return (
-                              <div key={t.id} className="p-2.5 rounded-xl border border-slate-200">
-                                <div className="flex items-center gap-3">
+                              <div key={t.id} className="p-2.5 sm:p-3 rounded-xl border border-slate-200">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                                   <button type="button" onClick={() => setTaskDetail(t)} className="min-w-0 flex-1 text-left group">
-                                    <p className="text-sm text-slate-900 truncate group-hover:text-brand-600 group-hover:underline">
+                                    <p className="text-sm font-medium text-slate-900 truncate group-hover:text-brand-600 group-hover:underline">
                                       {t.roadmapTask?.title || t.title || 'Task'}
                                       {t.hasOverrides && <span className="ml-1.5 align-middle text-[10px] font-medium text-amber-600">• customized</span>}
                                     </p>
-                                    <div className="flex items-center gap-2 text-xs text-slate-500 flex-wrap">
+                                    <div className="flex items-center gap-2 text-xs text-slate-500 flex-wrap mt-0.5">
                                       {/* Source: which roadmap, or a custom task. */}
                                       <span className="inline-flex items-center rounded-full bg-slate-100 text-slate-600 px-1.5 py-0.5 text-[10px] font-medium max-w-[14rem] truncate">
                                         {t.isCustomTask ? 'Custom' : (t.roadmapName ? `Roadmap · ${t.roadmapName}` : 'Roadmap')}
@@ -985,21 +991,24 @@ export default function CohortReview() {
                                       {t.mentorNote && <span className="inline-flex items-center gap-0.5 text-amber-600"><StickyNote className="w-3 h-3" />note</span>}
                                     </div>
                                   </button>
-                                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium shrink-0 ${meta.cls}`}>{meta.label}</span>
-                                  {canManage && (
-                                    <div className="flex items-center gap-0.5 shrink-0">
-                                      <button onClick={() => { setEditingDue(isEditingDue ? null : t.id); setDueVal(t.dueDate ? new Date(t.dueDate).toISOString().split('T')[0] : ''); }}
-                                        title="Change deadline" className="p-1 text-slate-400 hover:text-brand-600 disabled:opacity-40" disabled={busy}>
-                                        <CalendarClock className="w-3.5 h-3.5" />
-                                      </button>
-                                      {canUnassign && (
-                                        <button onClick={() => unassignTask(t.id)} title="Unassign task"
-                                          className="p-1 text-slate-400 hover:text-red-500 disabled:opacity-40" disabled={busy}>
-                                          {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+
+                                  <div className="flex items-center justify-between sm:justify-end gap-2 shrink-0 border-t sm:border-t-0 border-slate-100 pt-1.5 sm:pt-0">
+                                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium shrink-0 ${meta.cls}`}>{meta.label}</span>
+                                    {canManage && (
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        <button onClick={() => { setEditingDue(isEditingDue ? null : t.id); setDueVal(t.dueDate ? new Date(t.dueDate).toISOString().split('T')[0] : ''); }}
+                                          title="Change deadline" className="p-1.5 text-slate-400 hover:text-brand-600 disabled:opacity-40 rounded-lg hover:bg-slate-50" disabled={busy}>
+                                          <CalendarClock className="w-4 h-4" />
                                         </button>
-                                      )}
-                                    </div>
-                                  )}
+                                        {canUnassign && (
+                                          <button onClick={() => unassignTask(t.id)} title="Unassign task"
+                                            className="p-1.5 text-slate-400 hover:text-red-500 disabled:opacity-40 rounded-lg hover:bg-slate-50" disabled={busy}>
+                                            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                                          </button>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                                 {isEditingDue && (
                                   <div className="mt-2 flex items-center gap-2">
@@ -1425,6 +1434,17 @@ export default function CohortReview() {
           </div>
         </div>
       )}
+
+      {/* Mobile sticky action bar for cohort review */}
+      <MobileReviewActionBar
+        currentIndex={idx}
+        totalCount={cohort.length}
+        onPrev={() => go(-1)}
+        onSkip={skip}
+        onNext={() => go(1)}
+        canPrev={idx > 0}
+        canNext={idx < cohort.length - 1}
+      />
     </div>
   );
 }
