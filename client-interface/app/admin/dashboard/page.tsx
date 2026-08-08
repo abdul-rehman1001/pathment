@@ -183,7 +183,7 @@ export default function AdminDashboardPage() {
       ) : programs.length === 0 ? (
         <div className="bg-card rounded-2xl border border-slate-200 py-16 text-center">
           <Users2 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-          <p className="text-slate-600">No clans yet - create a program and form clans to see their health here.</p>
+          <p className="text-slate-600">No clans yet. Create a program and form clans to see their health here.</p>
           <Link href="/admin/clans" className="mt-3 inline-block text-brand-600 hover:text-brand-700 text-sm font-medium">
             Go to Clans
           </Link>

@@ -56,7 +56,7 @@ interface Props {
 }
 
 /**
- * ReviewScheduleDrawer — set up and manage recurring cohort reviews. A mentor
+ * ReviewScheduleDrawer — set up and manage recurring clan reviews. A mentor
  * picks a clan, weekday, local time and cadence; the backend materialises each
  * occurrence as a session (room auto-opens at the time) and emails everyone a
  * timezone-correct invite + reminders with a calendar attachment.
@@ -134,7 +134,7 @@ export function ReviewScheduleDrawer({ open, onClose, clans, defaultClanId }: Pr
   const cancel = async (s: ReviewSchedule) => {
     const ok = await confirm({
       title: 'Cancel this recurring review?',
-      description: `New occurrences of "${s.title || `${clanName(s.clanId)} cohort review`}" will stop. Upcoming, not-yet-started sessions are removed; past ones stay.`,
+      description: `New occurrences of "${s.title || `${clanName(s.clanId)} clan review`}" will stop. Upcoming, not-yet-started sessions are removed; past ones stay.`,
       variant: 'danger',
       confirmLabel: 'Cancel schedule',
     });
@@ -188,7 +188,7 @@ export function ReviewScheduleDrawer({ open, onClose, clans, defaultClanId }: Pr
               {active.map((s) => (
                 <li key={s.id} className="rounded-xl border border-slate-200 px-4 py-3 flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="font-medium text-slate-900 truncate">{s.title || `${clanName(s.clanId)} cohort review`}</div>
+                    <div className="font-medium text-slate-900 truncate">{s.title || `${clanName(s.clanId)} clan review`}</div>
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
                       {multiClan && <span>{clanName(s.clanId)}</span>}
                       <span className="inline-flex items-center gap-1"><Repeat className="w-3 h-3" />{s.intervalWeeks === 2 ? 'Biweekly' : 'Weekly'}</span>
@@ -233,7 +233,7 @@ export function ReviewScheduleDrawer({ open, onClose, clans, defaultClanId }: Pr
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder={`${clanName(clanId)} cohort review`}
+              placeholder={`${clanName(clanId)} clan review`}
               className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500"
             />
           </div>

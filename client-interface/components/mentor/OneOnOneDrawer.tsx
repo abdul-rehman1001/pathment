@@ -165,7 +165,7 @@ export function OneOnOneDrawer({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Blockers to track <span className="text-slate-400 font-normal">(one per line)</span></label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Roadblocks to track <span className="text-slate-400 font-normal">(one per line)</span></label>
             <textarea value={blockers} onChange={(e) => setBlockers(e.target.value)} rows={2} placeholder="Anything in their way to follow up on" className={`${field} resize-none`} />
           </div>
 

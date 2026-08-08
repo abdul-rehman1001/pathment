@@ -45,7 +45,7 @@ export default function AdminRewardsPage() {
             {gifts.length === 0 && (
               <div className="sm:col-span-2 bg-card rounded-2xl border border-slate-200 p-12 text-center">
                 <GiftIcon className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                <p className="text-slate-600">No gifts yet - add one to start the catalog.</p>
+                <p className="text-slate-600">No gifts yet. Add one to start the catalog.</p>
               </div>
             )}
             {gifts.map((g) => (

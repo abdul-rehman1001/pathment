@@ -210,7 +210,7 @@ export default function AdminMenteesListPage() {
       toast.success(`${name} has been deleted.`);
       refetch();
     } catch (err: any) {
-      toast.error(extractApiErrorMessage(err, 'Failed to delete user'));
+      toast.error(extractApiErrorMessage(err, 'Could not delete user'));
     } finally {
       setDeleteLoading(null);
     }
@@ -248,7 +248,7 @@ export default function AdminMenteesListPage() {
       toast.error(
         extractApiErrorMessage(
           err,
-          `Failed to ${isSuspended ? 'unsuspend' : 'suspend'} user`,
+          `Could not ${isSuspended ? 'unsuspend' : 'suspend'} user`,
         ),
       );
     } finally {

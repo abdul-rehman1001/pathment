@@ -119,12 +119,12 @@ export const navigationConfig: Record<string, NavLink[]> = {
     },
     { path: '/admin/access', icon: ShieldCheck, label: 'Roles & Access', permission: 'access.manage' },
     { path: '/admin/library', icon: BookOpen, label: 'Library' },
-    { path: '/admin/mentor-spec', icon: Compass, label: 'Mentor Spec' },
+    { path: '/admin/mentor-spec', icon: Compass, label: 'Mentor Handbook' },
     { path: '/admin/settings', icon: Settings, label: 'Settings', permission: 'system.settings' },
   ],
   mentor: [
     { path: '/mentor/dashboard', icon: LayoutDashboard, label: 'Cockpit' },
-    { path: '/mentor/review', icon: CalendarRange, label: 'Cohort Review' },
+    { path: '/mentor/review', icon: CalendarRange, label: 'Clan Review' },
     { path: '/mentor/messages', icon: MessageSquare, label: 'Messages', badge: 'messages' },
     { path: '/mentor/approvals', icon: ClipboardCheck, label: 'Approvals', badge: 'approvals' },
     {
@@ -158,7 +158,7 @@ export const navigationConfig: Record<string, NavLink[]> = {
         { path: '/mentor/library', icon: BookOpen, label: 'Library' },
       ],
     },
-    { path: '/mentor/spec', icon: Compass, label: 'Mentor Spec' },
+    { path: '/mentor/spec', icon: Compass, label: 'Mentor Handbook' },
     { path: '/mentor/settings', icon: Settings, label: 'Settings' },
   ],
   mentee: [
@@ -172,7 +172,7 @@ export const navigationConfig: Record<string, NavLink[]> = {
         { path: '/mentee/daily-log', icon: CalendarCheck, label: 'Daily Log' },
         { path: '/mentee/blockers', icon: Flag, label: 'Blockers' },
         { path: '/mentee/progress', icon: BarChart2, label: 'My Progress' },
-        { path: '/mentee/gamification', icon: Trophy, label: 'Gamification' },
+        { path: '/mentee/gamification', icon: Trophy, label: 'Points & Badges' },
       ],
     },
     {

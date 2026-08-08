@@ -95,7 +95,7 @@ export function MenteeCard({ m, onOpen, showClan = false, onAssign }: { m: Cohor
         )}
         {m.openBlockers > 0 && (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-50 text-red-700 text-xs font-medium">
-            <Flag className="w-3 h-3" />{m.openBlockers} blocker{m.openBlockers > 1 ? 's' : ''}
+            <Flag className="w-3 h-3" />{m.openBlockers} roadblock{m.openBlockers > 1 ? 's' : ''}
           </span>
         )}
         <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs font-medium">

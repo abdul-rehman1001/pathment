@@ -69,7 +69,7 @@ export default function VerifyEmailPage() {
       setErrorMessage('');
       toast.success('Verification email sent');
     } catch (error: any) {
-      toast.error(extractApiErrorMessage(error, 'Failed to resend verification email'));
+      toast.error(extractApiErrorMessage(error, 'Could not resend verification email'));
     } finally {
       setResending(false);
     }

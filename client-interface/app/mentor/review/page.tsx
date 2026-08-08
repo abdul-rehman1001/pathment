@@ -7,6 +7,7 @@ import {
   ChevronLeft, ChevronRight, SkipForward, Check, Loader2,
   TrendingUp, TrendingDown, Minus, Flag, Clock, ClipboardCheck, Keyboard, CheckCircle2, ArrowUpRight, Send, Plus, ListTodo, CalendarClock,
   Trash2, X, History, RotateCcw, CalendarDays, AlertTriangle, StickyNote, Search, Lock, Unlock, PauseCircle, Sparkles,
+  ChevronDown,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useMentorCohort, useMentorApprovals, type CohortMentee, type CohortMomentum, type CohortRisk, type ApprovalItem } from '@/lib/hooks/mentor';
@@ -65,6 +66,8 @@ const TASK_STATUS_META: Record<string, { label: string; cls: string }> = {
   cancelled: { label: 'Cancelled', cls: 'bg-slate-100 text-slate-400' },
 };
 const TASK_STATUS_ORDER = ['revision_needed', 'submitted', 'in_progress', 'assigned', 'not_started', 'completed', 'cancelled'];
+// Groups that are history rather than live work — shown collapsed until asked for.
+const COLLAPSED_TASK_GROUPS = ['completed', 'cancelled'];
 
 export default function CohortReview() {
   const router = useRouter();
@@ -75,7 +78,7 @@ export default function CohortReview() {
   const { queue, refetch: refetchQueue } = useMentorApprovals();
   const confirm = useConfirm();
 
-  // Cohort review is CLAN-scoped: a session belongs to a clan, shared by its
+  // Clan review is CLAN-scoped: a session belongs to a clan, shared by its
   // lead + co-mentors. "All clans" can't map to one dated session, so for a
   // multi-clan mentor we pin to a concrete clan (keeps the cohort list and the
   // session on the same clan). Single-clan mentors never see the picker and the
@@ -338,7 +341,7 @@ export default function CohortReview() {
 
       toast.success(`Attendance updated for ${changes.length} mentee${changes.length === 1 ? '' : 's'}`);
     } catch {
-      toast.error('Failed to save some attendance records');
+      toast.error('Some attendance marks didn\'t save. Try again.');
     } finally {
       setIsSavingAttendance(false);
     }
@@ -349,6 +352,7 @@ export default function CohortReview() {
   useEffect(() => {
     if (!mentee) return;
     setFocus(0); setNote(''); setNoteSent(false); setBlockers([]); setTasks([]); setProfile(null); setAttHistory([]);
+    setOpenTaskGroups({}); // finished work re-collapses for each mentee you land on
     frictionApi.listBlockers(mentee.id, 'open').then((r: any) => setBlockers(r?.data?.blockers ?? [])).catch(() => {}); // eslint-disable-line @typescript-eslint/no-explicit-any
     mentorApi.getMenteeProfile(mentee.id).then((r: any) => setProfile(r?.data?.profile ?? r?.data ?? null)).catch(() => setProfile(null)); // eslint-disable-line @typescript-eslint/no-explicit-any
     mentorApi.getMenteeAttendanceHistory(mentee.id).then((r) => setAttHistory((r?.data?.history ?? []) as typeof attHistory)).catch(() => setAttHistory([]));
@@ -400,6 +404,16 @@ export default function CohortReview() {
     dayTasks.forEach((t) => { const k = t.status || 'assigned'; (by[k] = by[k] || []).push(t); });
     return TASK_STATUS_ORDER.filter((s) => by[s]?.length).map((s) => ({ status: s, items: by[s] }));
   }, [dayTasks]);
+
+  // Finished work collapses by default. A mentee a few months in has far more
+  // completed tasks than live ones, and leaving them all expanded pushed the
+  // "To review" queue — the reason you're on this screen — below the fold.
+  // The count stays on the header, so nothing looks missing when it's shut.
+  const [openTaskGroups, setOpenTaskGroups] = useState<Record<string, boolean>>({});
+  const isTaskGroupOpen = (status: string) =>
+    openTaskGroups[status] ?? !COLLAPSED_TASK_GROUPS.includes(status);
+  const toggleTaskGroup = (status: string) =>
+    setOpenTaskGroups((s) => ({ ...s, [status]: !isTaskGroupOpen(status) }));
 
   // Latest mentor note + rating for a task, surfaced on reviewed/changes rows.
   const reviewOf = (t: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -632,7 +646,7 @@ export default function CohortReview() {
     const first = next.name.split(' ')[0];
     setPinged((p) => new Set(p).add(next.id)); // optimistic
     try {
-      await mentorApi.nudge(next.id, `Heads up ${first} — you're up next in today's cohort review. Please be ready 🙌`);
+      await mentorApi.nudge(next.id, `Heads up ${first} — you're up next in today's clan review. Please be ready 🙌`);
       toast.success(`${first} was told they're up next`);
     } catch {
       setPinged((p) => { const n = new Set(p); n.delete(next.id); return n; });
@@ -663,12 +677,12 @@ export default function CohortReview() {
   const addBlocker = async () => {
     if (!bTitle.trim() || !mentee) return;
     try {
-      setBusy('add-blocker');
+      setBusy('add-roadblock');
       const r: any = await frictionApi.createBlocker({ menteeId: mentee.id, title: bTitle.trim(), category: bCat, severity: bSev }); // eslint-disable-line @typescript-eslint/no-explicit-any
       if (r?.data?.blocker) setBlockers((b) => [r.data.blocker, ...b]);
       setBTitle(''); setBCat('technical'); setBSev('medium'); setShowAddBlocker(false);
-      toast.success('Blocker logged');
-    } catch { toast.error('Could not add blocker'); } finally { setBusy(null); }
+      toast.success('Roadblock logged');
+    } catch { toast.error('Could not add roadblock'); } finally { setBusy(null); }
   };
 
   // Keyboard shortcuts.
@@ -729,7 +743,7 @@ export default function CohortReview() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-slate-900 text-xl sm:text-2xl font-bold">Cohort review</h1>
+            <h1 className="text-slate-900 text-xl sm:text-2xl font-bold">Clan review</h1>
             {sessionDateLabel && (
               <span className="inline-flex items-center gap-1 text-xs text-slate-500 bg-slate-100 rounded-full px-2.5 py-0.5"><CalendarDays className="w-3 h-3" />{sessionDateLabel}</span>
             )}
@@ -956,13 +970,29 @@ export default function CohortReview() {
                 <div className="space-y-4">
                   {taskGroups.map((g) => {
                     const meta = TASK_STATUS_META[g.status] ?? TASK_STATUS_META.assigned;
+                    const collapsible = COLLAPSED_TASK_GROUPS.includes(g.status);
+                    const open = isTaskGroupOpen(g.status);
                     return (
                       <div key={g.status}>
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{meta.label}</span>
-                          <span className="text-xs text-slate-400">{g.items.length}</span>
-                        </div>
-                        <div className="space-y-1.5">
+                        {collapsible ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleTaskGroup(g.status)}
+                            aria-expanded={open}
+                            aria-controls={`task-group-${g.status}`}
+                            className="w-full flex items-center gap-2 mb-1.5 text-left rounded-lg -mx-1 px-1 py-0.5 hover:bg-slate-50"
+                          >
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{meta.label}</span>
+                            <span className="text-xs text-slate-400">{g.items.length}</span>
+                            <ChevronDown className={`w-3.5 h-3.5 text-slate-400 ml-auto transition-transform ${open ? 'rotate-180' : ''}`} />
+                          </button>
+                        ) : (
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{meta.label}</span>
+                            <span className="text-xs text-slate-400">{g.items.length}</span>
+                          </div>
+                        )}
+                        <div id={`task-group-${g.status}`} className={`space-y-1.5 ${collapsible && !open ? 'hidden' : ''}`}>
                           {g.items.map((t: any) => { /* eslint-disable-line @typescript-eslint/no-explicit-any */
                             const due = t.dueDate ? new Date(t.dueDate) : null;
                             const overdue = due && t.status !== 'completed' && due.getTime() < Date.now();
@@ -1048,7 +1078,7 @@ export default function CohortReview() {
             </div>
             <div className="p-4">
               {pending.length === 0 ? (
-                <p className="text-sm text-slate-500 flex items-center gap-2 px-1 py-2"><CheckCircle2 className="w-4 h-4 text-emerald-400" />Nothing waiting - all clear.</p>
+                <p className="text-sm text-slate-500 flex items-center gap-2 px-1 py-2"><CheckCircle2 className="w-4 h-4 text-emerald-400" />Nothing waiting. All clear.</p>
               ) : (
                 <div className="space-y-2">
                   {pending.map((item, i) => (
@@ -1121,8 +1151,8 @@ export default function CohortReview() {
           {/* Blockers */}
           <div className="bg-card rounded-2xl border border-slate-200 p-5">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-slate-900 flex items-center gap-2"><Flag className="w-4 h-4 text-red-500" />Open blockers</h3>
-              <button onClick={() => setShowAddBlocker(true)} title="Log a blocker" className="p-1 rounded-lg text-slate-400 hover:text-brand-600 hover:bg-slate-100"><Plus className="w-4 h-4" /></button>
+              <h3 className="font-semibold text-slate-900 flex items-center gap-2"><Flag className="w-4 h-4 text-red-500" />Open roadblocks</h3>
+              <button onClick={() => setShowAddBlocker(true)} title="Log a roadblock" className="p-1 rounded-lg text-slate-400 hover:text-brand-600 hover:bg-slate-100"><Plus className="w-4 h-4" /></button>
             </div>
             {blockers.length === 0 ? (
               <p className="text-sm text-slate-500">None open.</p>
@@ -1144,27 +1174,28 @@ export default function CohortReview() {
           </div>
 
           {/* Progress / finish */}
-          <div className="bg-[#0f172a] rounded-2xl p-5 text-white">
-            <div className="text-sm space-y-1">
-              <div className="flex justify-between"><span className="text-slate-300">Reviewed</span><span>{seen.size}/{cohort.length}</span></div>
-              <div className="flex justify-between"><span className="text-slate-300">Present</span><span>{Object.values(attendance).filter((v) => v === 'present').length}</span></div>
-              <div className="flex justify-between"><span className="text-slate-300">Absent</span><span>{Object.values(attendance).filter((v) => v === 'absent').length}</span></div>
-              <div className="flex justify-between"><span className="text-slate-300">Excused</span><span>{Object.values(attendance).filter((v) => v === 'excused').length}</span></div>
-              <div className="flex justify-between"><span className="text-amber-300">Deferred</span><span className="text-amber-300">{deferred.size}</span></div>
+          <div className="bg-card rounded-2xl border border-slate-200 p-5">
+            <h3 className="font-semibold text-slate-900 mb-3">Session progress</h3>
+            <div className="text-sm space-y-1.5">
+              <div className="flex justify-between"><span className="text-slate-500">Reviewed</span><span className="font-medium text-slate-900">{seen.size}/{cohort.length}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Present</span><span className="font-medium text-slate-900">{Object.values(attendance).filter((v) => v === 'present').length}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Absent</span><span className="font-medium text-slate-900">{Object.values(attendance).filter((v) => v === 'absent').length}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Excused</span><span className="font-medium text-slate-900">{Object.values(attendance).filter((v) => v === 'excused').length}</span></div>
+              <div className="flex justify-between"><span className="text-amber-600">Deferred</span><span className="font-medium text-amber-600">{deferred.size}</span></div>
             </div>
             {deferred.size > 0 && editable && (
-              <div className="mt-3 rounded-lg bg-amber-500/15 border border-amber-500/30 px-3 py-2 text-xs text-amber-200">
+              <div className="mt-3 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
                 {deferred.size} deferred — jump to them from the dots above before finishing.
               </div>
             )}
             <button onClick={finishOrReopen}
-              className={`mt-4 w-full px-3 py-2 rounded-xl text-sm font-medium inline-flex items-center justify-center gap-1.5 ${session?.status === 'finished' ? 'bg-card/10 text-white hover:bg-card/20' : allSeen ? 'bg-card text-slate-900 hover:bg-slate-100' : 'bg-card/10 text-white/80 hover:bg-card/20'}`}>
+              className={`mt-4 w-full px-3 py-2 rounded-xl text-sm font-medium inline-flex items-center justify-center gap-1.5 ${session?.status === 'finished' || !allSeen ? 'bg-slate-100 text-slate-700 hover:bg-slate-200' : 'bg-brand-600 text-white hover:bg-brand-700'}`}>
               {session?.status === 'finished'
                 ? (<><RotateCcw className="w-4 h-4" />Reopen to edit</>)
                 : allSeen ? 'Finish review' : `Finish (${pendingCount} not reviewed)`}
             </button>
             {session?.status === 'finished' && session?.finishedAt && (
-              <p className="mt-2 text-[11px] text-slate-400 text-center">Finished {new Date(session.finishedAt).toLocaleString()}</p>
+              <p className="mt-2 text-[11px] text-slate-500 text-center">Finished {new Date(session.finishedAt).toLocaleString()}</p>
             )}
           </div>
         </div>
@@ -1174,13 +1205,13 @@ export default function CohortReview() {
       <Drawer
         open={showAddBlocker}
         onClose={() => setShowAddBlocker(false)}
-        title="Log a blocker"
+        title="Log a roadblock"
         subtitle={mentee ? `Capture what's slowing ${mentee.name.split(' ')[0]} down.` : undefined}
         footer={
           <>
             <button onClick={() => setShowAddBlocker(false)} className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm hover:bg-slate-50">Cancel</button>
-            <button onClick={addBlocker} disabled={busy === 'add-blocker' || !bTitle.trim()} className="px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium inline-flex items-center gap-2 disabled:opacity-50">
-              {busy === 'add-blocker' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}Log blocker
+            <button onClick={addBlocker} disabled={busy === 'add-roadblock' || !bTitle.trim()} className="px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium inline-flex items-center gap-2 disabled:opacity-50">
+              {busy === 'add-roadblock' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}Log roadblock
             </button>
           </>
         }
@@ -1290,7 +1321,7 @@ export default function CohortReview() {
       />
 
       {/* Cohort-review history: browse & open past dated sessions to view or edit. */}
-      <Drawer open={historyOpen} onClose={() => setHistoryOpen(false)} width="md" title="Cohort review history" subtitle="Open a past session to view or edit it">
+      <Drawer open={historyOpen} onClose={() => setHistoryOpen(false)} width="md" title="Clan review history" subtitle="Open a past session to view or edit it">
         {/* Deletion lock: org-enforced for audit integrity. Mentor can request access. */}
         {deletionBlocked && (
           <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-500/10 dark:border-amber-500/30 px-4 py-3">
@@ -1380,7 +1411,7 @@ export default function CohortReview() {
         </div>
       </Drawer>
 
-      {/* Per-mentee attendance history — every cohort review they were marked on,
+      {/* Per-mentee attendance history — every clan review they were marked on,
           newest first. A late-joiner simply has no entries before they joined. */}
       <Drawer open={attOpen} onClose={() => setAttOpen(false)} width="md"
         title="Attendance history"
@@ -1435,7 +1466,7 @@ export default function CohortReview() {
         </div>
       )}
 
-      {/* Mobile sticky action bar for cohort review */}
+      {/* Mobile sticky action bar for clan review */}
       <MobileReviewActionBar
         currentIndex={idx}
         totalCount={cohort.length}

@@ -60,7 +60,7 @@ export function CreateProgramDrawer({ onClose }: { onClose: () => void }) {
         <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between">
           <div>
             <h2 id="create-program-title" className="font-semibold text-slate-900">Create program</h2>
-            <p className="text-sm text-slate-500">Set up the program - then author its roadmaps.</p>
+            <p className="text-sm text-slate-500">Set up the program, then author its roadmaps.</p>
           </div>
           <button onClick={onClose} aria-label="Close" className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X className="w-5 h-5" /></button>
         </div>

@@ -76,7 +76,7 @@ export default function MenteeTasks() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-slate-900 mb-2">My Tasks</h1>
+        <h1 className="text-slate-900 mb-2">My tasks</h1>
         <p className="text-slate-600">Track your learning progress and submit your work</p>
       </div>
 

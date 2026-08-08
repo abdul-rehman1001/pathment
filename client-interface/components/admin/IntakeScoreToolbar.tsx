@@ -339,7 +339,7 @@ export function IntakeScoreToolbar({
               </div>
             )}
             <div className="px-5 py-4 border-t border-slate-100 flex justify-end">
-              <button onClick={() => setRejectResult(null)} className="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700">Done</button>
+              <button onClick={() => setRejectResult(null)} className="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700">Close</button>
             </div>
           </div>
         </div>
@@ -367,7 +367,7 @@ export function IntakeScoreToolbar({
               </div>
             )}
             <div className="px-5 py-4 border-t border-slate-200 flex justify-end">
-              <button onClick={() => setInviteResult(null)} className="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700">Done</button>
+              <button onClick={() => setInviteResult(null)} className="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700">Close</button>
             </div>
           </div>
         </div>

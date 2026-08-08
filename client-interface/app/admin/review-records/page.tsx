@@ -252,7 +252,7 @@ function GroupTable({ title, rows }: { title: string; rows: GroupRow[] }) {
     <div className="bg-card rounded-2xl border border-slate-200 overflow-hidden">
       <div className="px-5 py-3 border-b border-slate-100"><h3 className="text-sm font-semibold text-slate-900">{title}</h3></div>
       {rows.length === 0 ? (
-        <p className="px-5 py-6 text-sm text-slate-400">No data.</p>
+        <p className="px-5 py-6 text-sm text-slate-400">No records for this filter yet.</p>
       ) : (
         <table className="w-full text-sm">
           <thead>

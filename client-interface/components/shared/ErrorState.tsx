@@ -31,7 +31,7 @@ export function ErrorState({
           <AlertCircle className="h-6 w-6 text-destructive" />
         </div>
         <div className="space-y-1">
-          <p className="text-sm font-semibold text-foreground">Failed to load</p>
+          <p className="text-sm font-semibold text-foreground">Something went wrong</p>
           <p className="text-sm text-muted-foreground max-w-sm">{message}</p>
         </div>
         {onRetry && (

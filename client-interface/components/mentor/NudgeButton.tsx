@@ -8,7 +8,7 @@ import { extractApiErrorMessage } from '@/lib/utils/api-error';
 
 /**
  * One nudge action, reused on every per-mentee surface (at-risk, My Mentees,
- * mentee detail, cohort review). Variants: `outline` (default), `subtle`
+ * mentee detail, clan review). Variants: `outline` (default), `subtle`
  * (brand-tinted), `icon` (compact). Pass `stopPropagation` when it sits inside a
  * clickable card/row so the nudge doesn't also trigger navigation.
  */

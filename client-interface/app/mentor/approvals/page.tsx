@@ -307,9 +307,16 @@ export default function MentorApprovals() {
         className="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
       />
 
-      <div className="w-9 h-9 bg-brand-100 rounded-full flex items-center justify-center shrink-0">
-        <span className="text-brand-700 text-xs font-medium">{item.mentee?.avatar}</span>
-      </div>
+      {/* Photo → the mentee's profile. The row's own action (Review) stays on the
+          button, so the two destinations never fight for the same click. */}
+      <Avatar
+        name={item.mentee?.name}
+        src={item.mentee?.profilePictureUrl}
+        initials={item.mentee?.avatar}
+        size="md"
+        href={item.mentee?.id ? `/mentor/mentees/${item.mentee.id}` : undefined}
+        title={item.mentee?.name ? `View ${item.mentee.name}'s profile` : undefined}
+      />
 
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-slate-900 truncate">{item.title}</p>
@@ -474,7 +481,7 @@ export default function MentorApprovals() {
           {reviewItems.length === 0 ? (
             <div className="bg-card rounded-2xl border border-slate-200 py-16 text-center">
               <CheckCircle2 className="w-12 h-12 text-brand-300 mx-auto mb-3" />
-              <p className="text-slate-600">All caught up - nothing waiting on you.</p>
+              <p className="text-slate-600">All caught up. Nothing is waiting on you.</p>
             </div>
           ) : filteredReview.length === 0 ? (
             <div className="bg-card rounded-2xl border border-slate-200 py-16 text-center">
@@ -579,9 +586,16 @@ export default function MentorApprovals() {
                 const isRejected = item.decision === 'rejected';
                 return (
                 <div key={item.taskId} className="flex items-start gap-4 px-5 py-4">
-                  <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${isRejected ? 'bg-red-100' : 'bg-orange-100'}`}>
-                    <span className={`text-xs font-medium ${isRejected ? 'text-red-700' : 'text-orange-700'}`}>{item.mentee?.avatar}</span>
-                  </div>
+                  {/* The rejected/changes tint moves to a ring so the photo still shows. */}
+                  <Avatar
+                    name={item.mentee?.name}
+                    src={item.mentee?.profilePictureUrl}
+                    initials={item.mentee?.avatar}
+                    size="md"
+                    href={item.mentee?.id ? `/mentor/mentees/${item.mentee.id}` : undefined}
+                    title={item.mentee?.name ? `View ${item.mentee.name}'s profile` : undefined}
+                    className={isRejected ? 'ring-2 ring-red-200' : 'ring-2 ring-orange-200'}
+                  />
 
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -695,6 +709,7 @@ export default function MentorApprovals() {
                         initials={item.mentee?.avatar}
                         size="md"
                         href={item.mentee?.id ? `/mentor/mentees/${item.mentee.id}` : undefined}
+                        title={item.mentee?.name ? `View ${item.mentee.name}'s profile` : undefined}
                       />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -760,9 +775,15 @@ export default function MentorApprovals() {
               const busy = extBusy === item.submissionId;
               return (
                 <div key={item.submissionId} className="flex items-start gap-4 px-5 py-4">
-                  <div className="w-9 h-9 bg-amber-100 rounded-full flex items-center justify-center shrink-0">
-                    <span className="text-amber-700 text-xs font-medium">{item.mentee?.avatar}</span>
-                  </div>
+                  <Avatar
+                    name={item.mentee?.name}
+                    src={item.mentee?.profilePictureUrl}
+                    initials={item.mentee?.avatar}
+                    size="md"
+                    href={item.mentee?.id ? `/mentor/mentees/${item.mentee.id}` : undefined}
+                    title={item.mentee?.name ? `View ${item.mentee.name}'s profile` : undefined}
+                    className="ring-2 ring-amber-200"
+                  />
 
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">

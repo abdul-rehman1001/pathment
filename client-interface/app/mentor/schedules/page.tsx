@@ -52,7 +52,7 @@ function TemplatesTab() {
         <>
           <section>
             <h3 className="text-slate-900 font-medium mb-3">My schedules</h3>
-            {local.length === 0 ? <p className="text-sm text-slate-500">No schedules yet - create one to assign to your mentees.</p> : (
+            {local.length === 0 ? <p className="text-sm text-slate-500">No schedules yet. Create one to assign to your mentees.</p> : (
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {local.map((t) => (
                   <div key={t.id} className="bg-card rounded-2xl border border-slate-200 p-4">
@@ -384,7 +384,7 @@ function FillTab() {
               <button key={m.id} onClick={() => { setMenteeId(m.id); setQ(''); }} className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm text-slate-800">{m.name}</button>
             ))}
           </div>
-          <p className="mt-2 text-xs text-slate-400">Tip: configure one mentee, then use <span className="font-medium">Apply to all</span> on a slot to push it to everyone - then tweak individuals.</p>
+          <p className="mt-2 text-xs text-slate-400">Tip: configure one mentee, then use <span className="font-medium">Apply to all</span> on a slot to push it to everyone, then tweak individuals.</p>
         </div>
       ) : (
         <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
@@ -395,7 +395,7 @@ function FillTab() {
 
       {!menteeId ? null
         : loading ? <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-brand-600" /></div>
-        : slots.length === 0 ? <p className="text-sm text-slate-500">No schedule assigned yet - assign a template first.</p>
+        : slots.length === 0 ? <p className="text-sm text-slate-500">No schedule assigned yet. Assign a template first.</p>
         : (
           <div className="space-y-3">
             {slots.map((s) => (
@@ -639,7 +639,7 @@ function AvailabilityTab() {
                   <div className="w-9 h-9 bg-brand-100 rounded-full flex items-center justify-center shrink-0"><span className="text-brand-700 text-xs font-medium">{m.mentee?.firstName?.[0]}{m.mentee?.lastName?.[0]}</span></div>
                   <div className="min-w-0 flex-1"><p className="text-sm font-medium text-slate-900">{m.mentee?.firstName} {m.mentee?.lastName}</p><div className="flex items-center gap-2 text-xs text-slate-500"><Clock className="w-3 h-3" />{formatMeeting(m.startsAt, m.day, m.time)} · {m.durationMins}m</div>{m.agenda && <p className="text-xs text-slate-500 mt-0.5 truncate">{m.agenda}</p>}</div>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <button onClick={() => markDone(m.id)} disabled={busyId === m.id} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-medium hover:bg-emerald-100 disabled:opacity-50"><Check className="w-3.5 h-3.5" />Done</button>
+                    <button onClick={() => markDone(m.id)} disabled={busyId === m.id} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-medium hover:bg-emerald-100 disabled:opacity-50"><Check className="w-3.5 h-3.5" />Mark done</button>
                     <button onClick={() => { setCancelReason(''); setCancelFor({ id: m.id, who: `${m.mentee?.firstName ?? ''} ${m.mentee?.lastName ?? ''}`.trim() || 'your mentee' }); }} disabled={busyId === m.id} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 text-xs font-medium hover:border-red-300 hover:text-red-600 disabled:opacity-50"><X className="w-3.5 h-3.5" />Cancel</button>
                   </div>
                 </div>

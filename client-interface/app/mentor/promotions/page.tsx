@@ -128,7 +128,7 @@ function InterviewModal({ candidate, onClose, onSaved }: { candidate: PromotionC
             <span className="inline-flex items-center gap-1"><TrendingUp className="w-3.5 h-3.5" />{candidate.absoluteProgress}% progress</span>
             <span className="inline-flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{candidate.onTimeRate}% on-time</span>
             {candidate.lastActive && <span className="inline-flex items-center gap-1"><Activity className="w-3.5 h-3.5" />active {candidate.lastActive}</span>}
-            {(candidate.openBlockers ?? 0) > 0 && <span className="inline-flex items-center gap-1 text-amber-600"><AlertTriangle className="w-3.5 h-3.5" />{candidate.openBlockers} blocker{candidate.openBlockers === 1 ? '' : 's'}</span>}
+            {(candidate.openBlockers ?? 0) > 0 && <span className="inline-flex items-center gap-1 text-amber-600"><AlertTriangle className="w-3.5 h-3.5" />{candidate.openBlockers} roadblock{candidate.openBlockers === 1 ? '' : 's'}</span>}
           </div>
           {driverChips.length > 0 && (
             <p className="text-[11px] text-slate-400">Why they&apos;re a candidate: {driverChips.join(' · ')}</p>
@@ -240,7 +240,7 @@ export default function MentorPromotions() {
       ) : candidates.length === 0 ? (
         <div className="bg-card rounded-2xl border border-slate-200 py-16 text-center">
           <TrendingUp className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-          <p className="text-slate-600">No candidates yet - nominate a mentee who&apos;s ready to give back.</p>
+          <p className="text-slate-600">No candidates yet. Nominate a mentee who&apos;s ready to give back.</p>
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">

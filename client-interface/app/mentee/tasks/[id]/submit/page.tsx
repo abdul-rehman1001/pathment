@@ -112,7 +112,7 @@ export default function TaskSubmission({ params }: PageProps) {
       setShowSuccess(true);
       setTimeout(() => router.push('/mentee/tasks'), 2000);
     } catch (err: unknown) {
-      setError(extractApiErrorMessage(err, 'Failed to submit task'));
+      setError(extractApiErrorMessage(err, 'Could not submit task'));
     } finally {
       setIsSubmitting(false);
     }
@@ -142,7 +142,7 @@ export default function TaskSubmission({ params }: PageProps) {
       setShowSuccess(true);
       setTimeout(() => router.push('/mentee/tasks'), 2000);
     } catch (err: unknown) {
-      setError(extractApiErrorMessage(err, 'Failed to request extension'));
+      setError(extractApiErrorMessage(err, 'Could not request extension'));
     } finally {
       setIsSubmitting(false);
     }
@@ -274,7 +274,7 @@ export default function TaskSubmission({ params }: PageProps) {
           return (
             <div className="mt-6">
               <h3 className="text-sm font-medium text-slate-900 mb-1 flex items-center gap-1.5"><ShieldCheck className="w-4 h-4 text-brand-500" />What your mentor checks</h3>
-              <p className="text-xs text-slate-500 mb-3">Required items must be met to pass - the rest make your work stronger.</p>
+              <p className="text-xs text-slate-500 mb-3">Required items must be met to pass. The rest make your work stronger.</p>
               <ul className="space-y-2">
                 {required.map((criterion: string, index: number) => (
                   <li key={`r-${index}`} className="flex items-start gap-2 text-slate-700">
@@ -375,7 +375,7 @@ export default function TaskSubmission({ params }: PageProps) {
               <div className="mb-6">
                 <label className="block text-sm text-slate-700 mb-2">
                   Time spent on this task
-                  <span className="ml-1.5 text-slate-400 font-normal">(optional - helps your mentor understand your effort)</span>
+                  <span className="ml-1.5 text-slate-400 font-normal">Optional, but it helps your mentor understand your effort.</span>
                 </label>
                 <div className="flex items-center gap-2">
                   <div className="relative w-40">

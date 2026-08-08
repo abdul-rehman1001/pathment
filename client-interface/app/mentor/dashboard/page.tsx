@@ -98,7 +98,7 @@ export default function MentorCockpit() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
         <StatsCard icon={ClipboardCheck} label="Awaiting review" value={totals?.pendingApprovals ?? '…'} colorClass="text-brand-600 bg-brand-50" />
         <StatsCard icon={AlertTriangle} label="Need attention" value={totals?.atRisk ?? '…'} colorClass="text-red-600 bg-red-50" />
-        <StatsCard icon={Flag} label="Open blockers" value={totals?.openBlockers ?? '…'} colorClass="text-amber-600 bg-amber-50" />
+        <StatsCard icon={Flag} label="Open roadblocks" value={totals?.openBlockers ?? '…'} colorClass="text-amber-600 bg-amber-50" />
         <StatsCard icon={Users} label="Cohort on-time" value={totals ? `${totals.onTimeRate}%` : '…'} colorClass="text-emerald-600 bg-emerald-50" />
       </div>
 

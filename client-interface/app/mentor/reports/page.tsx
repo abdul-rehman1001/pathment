@@ -126,7 +126,7 @@ export default function MentorReports() {
     const actions: string[] = [];
     if (pending > 0) actions.push(`Clear ${pending} pending review${pending > 1 ? 's' : ''} in your approvals queue.`);
     if (high.length) actions.push(`Prioritise ${high.map((m) => firstName(m.name)).join(', ')} - flagged at risk.`);
-    if (openBlockers > 0) actions.push(`Help unblock ${openBlockers} open blocker${openBlockers > 1 ? 's' : ''} across the cohort.`);
+    if (openBlockers > 0) actions.push(`Help unblock ${openBlockers} open roadblock${openBlockers > 1 ? 's' : ''} across the cohort.`);
     if (slipping > 0) actions.push(`Re-engage ${slipping} mentee${slipping > 1 ? 's' : ''} whose momentum is slipping.`);
     if (!actions.length) actions.push('Cohort is healthy - keep the steady cadence and celebrate the wins.');
 
@@ -159,7 +159,7 @@ export default function MentorReports() {
       `Health score: ${report.health}/100 (${report.band.label})`,
       `Avg progress: ${report.avgProgress}%   On-time: ${report.avgOnTime}%${report.avgRating ? `   Quality: ${report.avgRating}★` : ''}`,
       `Momentum: ${report.rising} rising · ${report.steady} steady · ${report.slipping} slipping`,
-      `Open work: ${report.pending} pending review${report.pending === 1 ? '' : 's'}, ${report.openBlockers} blocker${report.openBlockers === 1 ? '' : 's'}`,
+      `Open work: ${report.pending} pending review${report.pending === 1 ? '' : 's'}, ${report.openBlockers} roadblock${report.openBlockers === 1 ? '' : 's'}`,
       '',
       'TOP PERFORMERS',
       ...report.highlights.map((m) => `  • ${m.name} - ${pct(m.absoluteProgress)} progress, ${pct(m.onTimeRate)} on time${m.avgRating > 0 ? `, ${m.avgRating}★` : ''}`),
@@ -208,7 +208,7 @@ export default function MentorReports() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-slate-900 mb-1">Cohort report</h1>
-          <p className="text-slate-600">A ready-to-share read of how your mentees are doing - drop it into your update.</p>
+          <p className="text-slate-600">A ready-to-share read of how your mentees are doing. Drop it straight into your update.</p>
         </div>
         <div className="no-print flex flex-wrap items-center gap-2 shrink-0">
           <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl">
@@ -416,7 +416,7 @@ export default function MentorReports() {
                 <Link href="/mentor/dashboard" className="flex items-center gap-3 group">
                   <div className="w-9 h-9 rounded-xl bg-orange-50 flex items-center justify-center shrink-0"><Flag className="w-4 h-4 text-orange-600" /></div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-slate-700">Open blockers</p>
+                    <p className="text-sm text-slate-700">Open roadblocks</p>
                     <p className="text-xs text-slate-400">slowing mentees down</p>
                   </div>
                   <span className="text-lg font-semibold text-slate-900 tabular-nums">{report.openBlockers}</span>
@@ -475,7 +475,7 @@ export default function MentorReports() {
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[11px] text-slate-400">
                         <span>{pct(m.absoluteProgress)} progress</span>
                         {m.pendingApprovals > 0 && <span className="text-brand-600">{m.pendingApprovals} to review</span>}
-                        {m.openBlockers > 0 && <span className="text-orange-600">{m.openBlockers} blocker{m.openBlockers > 1 ? 's' : ''}</span>}
+                        {m.openBlockers > 0 && <span className="text-orange-600">{m.openBlockers} roadblock{m.openBlockers > 1 ? 's' : ''}</span>}
                         <span>last active {m.lastActive}</span>
                       </div>
                     </div>

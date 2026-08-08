@@ -526,7 +526,7 @@ export default function CommunityHub() {
               </div>
             </div>
             {hub.leaderboard.length === 0 ? (
-              <p className="text-sm text-slate-500">No contributions yet - give kudos or answer a question to get on the board.</p>
+              <p className="text-sm text-slate-500">No contributions yet. Give kudos or answer a question to get on the board.</p>
             ) : (
               <div className="space-y-1">
                 {hub.leaderboard.map((r) => (

@@ -118,7 +118,7 @@ export default function MentorLeaderboard() {
           <p className="text-xs text-slate-500 leading-relaxed">
             <span className="font-medium text-slate-700">Score = </span>
             <span className="font-medium text-slate-600">35% points earned</span> (harder tasks score more) ·{' '}
-            <span className="font-medium text-slate-600">20% relative progress</span> (credits approved blockers &amp; delays) ·{' '}
+            <span className="font-medium text-slate-600">20% relative progress</span> (credits approved roadblocks &amp; delays) ·{' '}
             <span className="font-medium text-slate-600">20% tasks completed</span> · <span className="font-medium text-slate-600">15% on-time rate</span> ·{' '}
             <span className="font-medium text-slate-600">10% overall progress</span>.
             A single easy task can&apos;t top the board.

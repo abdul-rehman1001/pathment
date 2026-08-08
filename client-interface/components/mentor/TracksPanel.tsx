@@ -49,7 +49,7 @@ export function TracksPanel({ menteeId }: { menteeId: string }) {
       ) : (
         <div className="space-y-2">
           {tracks.length === 0 && !creating && (
-            <p className="text-sm text-slate-500">No tracks yet - add a lane below to organize this mentee&apos;s work.</p>
+            <p className="text-sm text-slate-500">No tracks yet. Add a lane below to organize this mentee&apos;s work.</p>
           )}
           {tracks.map((track) => (
             <TrackRow

@@ -56,7 +56,7 @@ export default function MentorRewards() {
     <div className="space-y-6">
       <div>
         <h1 className="text-slate-900 mb-2">Rewards</h1>
-        <p className="text-slate-600">Redeem points a mentee has earned for real things - recognise the work. The catalog is managed by your admin.</p>
+        <p className="text-slate-600">Turn the points a mentee has earned into something real. Your admin manages the catalog.</p>
       </div>
 
       {loading ? (

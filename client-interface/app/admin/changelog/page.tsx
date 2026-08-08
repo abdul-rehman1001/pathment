@@ -66,7 +66,7 @@ export default function AdminChangelogPage() {
       setEntries(res.updates);
       setTotal(res.total);
     } catch {
-      toast.error('Failed to load updates');
+      toast.error('Could not load updates');
     } finally {
       setLoading(false);
     }

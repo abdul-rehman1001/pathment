@@ -62,7 +62,7 @@ export function TwoFactorCodeInput({
       toast.success('Two-factor authentication verified!');
       setCode('');
     } catch (err: any) {
-      const errorMsg = extractApiErrorMessage(err, 'Failed to verify code. Please try again.');
+      const errorMsg = extractApiErrorMessage(err, 'Could not verify code. Please try again.');
       setError(errorMsg);
       toast.error('Verification failed');
       setCode('');

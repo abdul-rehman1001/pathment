@@ -25,7 +25,7 @@ const DIFF_CLS: Record<string, string> = {
 
 /**
  * In-context detail + management for ONE mentee's assigned task, opened from the
- * Cohort Review "Assigned work" list. Shows the full (override-merged) content,
+ * Clan Review "Assigned work" list. Shows the full (override-merged) content,
  * the mentor note, and lets the mentor edit-for-this-mentee, reassign a
  * cancelled task, or unassign — without leaving the review flow.
  */

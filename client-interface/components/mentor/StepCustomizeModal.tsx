@@ -143,7 +143,7 @@ export function StepCustomizeModal({
                   ))}</ul>
                 </div>
               )}
-              {!editable && <p className="text-xs text-slate-400 pt-1">To tailor this step for a specific mentee, assign it from <span className="font-medium">Cohort Review → Assign task</span>, or edit it after assigning.</p>}
+              {!editable && <p className="text-xs text-slate-400 pt-1">To tailor this step for a specific mentee, assign it from <span className="font-medium">Clan Review → Assign task</span>, or edit it after assigning.</p>}
             </div>
           ) : (
             <div className="space-y-4">

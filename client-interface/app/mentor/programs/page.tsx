@@ -12,7 +12,7 @@ export default function MentorProgramsPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-slate-900 mb-2">My Programs</h1>
+        <h1 className="text-slate-900 mb-2">My programs</h1>
         <p className="text-slate-600">Programs you are mentoring in</p>
       </div>
 

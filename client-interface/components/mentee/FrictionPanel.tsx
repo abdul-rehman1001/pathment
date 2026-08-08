@@ -6,7 +6,7 @@ import { Flag, Clock, CalendarPlus, Loader2, Check } from 'lucide-react';
 import { frictionApi } from '@/lib/services/friction-api';
 import { submissionService } from '@/lib/services/submissionService';
 
-type Panel = 'blocker' | 'delay' | 'extension' | null;
+type Panel = 'roadblock' | 'delay' | 'extension' | null;
 
 const BLOCKER_CATEGORIES = ['technical', 'knowledge', 'access', 'personal'];
 const SEVERITIES = ['low', 'medium', 'high'];
@@ -38,13 +38,13 @@ export function FrictionPanel({ taskId }: { taskId: string }) {
   const toggle = (p: Panel) => { setOpen((cur) => (cur === p ? null : p)); setDone(null); };
 
   const logBlocker = async () => {
-    if (!bTitle.trim()) { toast.error('Describe the blocker'); return; }
+    if (!bTitle.trim()) { toast.error('Describe the roadblock'); return; }
     try {
       setSaving(true);
       await frictionApi.createBlocker({ assignedTaskId: taskId, title: bTitle.trim(), category: bCat, severity: bSev });
-      toast.success('Blocker logged - your mentor can see it now');
-      setBTitle(''); setDone('blocker'); setOpen(null);
-    } catch { toast.error('Could not log the blocker'); }
+      toast.success('Roadblock logged - your mentor can see it now');
+      setBTitle(''); setDone('roadblock'); setOpen(null);
+    } catch { toast.error('Could not log the roadblock'); }
     finally { setSaving(false); }
   };
 
@@ -92,12 +92,12 @@ export function FrictionPanel({ taskId }: { taskId: string }) {
       </p>
 
       <div className="flex flex-wrap gap-2 mt-4">
-        <Pill p="blocker" icon={Flag} label="Log a blocker" />
+        <Pill p="roadblock" icon={Flag} label="Log a roadblock" />
         <Pill p="delay" icon={Clock} label="Log a delay" />
         <Pill p="extension" icon={CalendarPlus} label="Request more time" />
       </div>
 
-      {open === 'blocker' && (
+      {open === 'roadblock' && (
         <div className="mt-4 rounded-xl border border-slate-200 p-4 space-y-3">
           <input value={bTitle} onChange={(e) => setBTitle(e.target.value)} placeholder="What's blocking you?" className={field} />
           <div className="flex gap-2">
@@ -110,7 +110,7 @@ export function FrictionPanel({ taskId }: { taskId: string }) {
           </div>
           <div className="flex justify-end">
             <button onClick={logBlocker} disabled={saving} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm inline-flex items-center gap-2 disabled:opacity-50">
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}Log blocker
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}Log roadblock
             </button>
           </div>
         </div>

@@ -1145,7 +1145,7 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
             {cohort && (
               <select
                 value={cohort.status}
-                onChange={(e) => cohortApi.update(id, { status: e.target.value }).then(refetch).catch(() => toast.error('Failed to update status'))}
+                onChange={(e) => cohortApi.update(id, { status: e.target.value }).then(refetch).catch(() => toast.error('Could not update status'))}
                 className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
               >
                 <option value="planning">Planning</option>
