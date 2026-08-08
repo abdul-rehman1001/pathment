@@ -87,14 +87,14 @@ export default function MenteeProgress() {
     <div className="space-y-6 max-w-4xl">
       <div>
         <h1 className="text-slate-900 mb-2">My progress</h1>
-        <p className="text-slate-600">Where you are - measured fairly, with your real constraints counted.</p>
+        <p className="text-slate-600">Where you are, measured fairly with your real constraints counted.</p>
       </div>
 
       {/* Metrics */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <MetricChip label="On-time" value={`${progress.onTimeRate}%`} />
         <MetricChip label="Awaiting review" value={progress.pendingApprovals} />
-        <MetricChip label="Open blockers" value={openBlockers.length} />
+        <MetricChip label="Open roadblocks" value={openBlockers.length} />
         <MetricChip label="Week" value={`${progress.week}/${progress.totalWeeks || '-'}`} />
       </div>
 
@@ -125,7 +125,7 @@ export default function MenteeProgress() {
       <div className="grid lg:grid-cols-2 gap-6">
         <div className="bg-card rounded-2xl border border-slate-200">
           <div className="px-6 py-5 border-b border-slate-200 flex items-center gap-2">
-            <Flag className="w-4 h-4 text-red-500" /><h2 className="text-slate-900">Your blockers</h2>
+            <Flag className="w-4 h-4 text-red-500" /><h2 className="text-slate-900">Your roadblocks</h2>
           </div>
           <div className="p-6">
             {openBlockers.length === 0 ? (

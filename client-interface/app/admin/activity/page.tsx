@@ -17,7 +17,7 @@ function fmt(minutes: number): string {
 }
 
 function MiniBar({ sessions }: { sessions: { date: string; activeMinutes: number }[] }) {
-  if (!sessions.length) return <span className="text-slate-300 text-xs">No data</span>;
+  if (!sessions.length) return <span className="text-slate-300 text-xs">No activity</span>;
   const max = Math.max(...sessions.map((s) => s.activeMinutes || 0), 1);
   return (
     <div className="flex items-end gap-0.5 h-6">
@@ -56,7 +56,7 @@ export default function AdminActivityPage() {
       {/* Page header */}
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-slate-900 font-semibold mb-1">Activity Overview</h1>
+          <h1 className="text-slate-900 font-semibold mb-1">Activity</h1>
           <p className="text-slate-500 text-sm">Track daily hours, sessions, and engagement across all mentees</p>
         </div>
         <div className="flex gap-1">

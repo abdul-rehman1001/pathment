@@ -107,7 +107,7 @@ export function EditProgramDrawer({ program, onClose, onSaved }: EditProgramDraw
       onSaved();
       onClose();
     } catch (err: unknown) {
-      toast.error(extractApiErrorMessage(err, 'Failed to update program'));
+      toast.error(extractApiErrorMessage(err, 'Could not update program'));
     } finally {
       setLoading(false);
     }

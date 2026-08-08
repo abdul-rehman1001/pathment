@@ -73,7 +73,7 @@ export function NotificationPreferencesTab({ role }: { role: AppRole }) {
           <Mail className="w-5 h-5 text-brand-600" />
           <div>
             <div className="text-slate-900 font-medium">Email notifications</div>
-            <div className="text-sm text-slate-600">Master switch - turn all of the below on or off.</div>
+            <div className="text-sm text-slate-600">Master switch. Turns everything below on or off.</div>
           </div>
         </div>
         <Toggle checked={masterOn} onChange={(v) => set('enabled', v)} />

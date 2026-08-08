@@ -148,7 +148,7 @@ export function SkillsTab({ heading = 'Your skills', blurb = 'Type to add skills
 
       {/* Selected skills */}
       {picked.length === 0 ? (
-        <p className="text-sm text-slate-400">No skills yet - search above or tap a suggestion.</p>
+        <p className="text-sm text-slate-400">No skills yet. Search above, or tap a suggestion.</p>
       ) : (
         <div className="flex flex-wrap gap-2">
           {picked.map((p) => {

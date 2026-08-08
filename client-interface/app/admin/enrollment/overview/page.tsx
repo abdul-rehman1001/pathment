@@ -287,7 +287,7 @@ export default function EnrollmentOverviewPage() {
       toast.success(`Successfully exported ${allEnrollments.length} enrollment(s) with 24 data columns`);
     } catch (err: any) {
       console.error('Export error:', err);
-      toast.error(extractApiErrorMessage(err, 'Failed to export CSV'));
+      toast.error(extractApiErrorMessage(err, 'Could not export CSV'));
     } finally {
       setExportLoading(false);
     }
@@ -307,7 +307,7 @@ export default function EnrollmentOverviewPage() {
       }
       refetch();
     } catch (err: any) {
-      toast.error(extractApiErrorMessage(err, 'Failed to approve completion'));
+      toast.error(extractApiErrorMessage(err, 'Could not approve completion'));
     } finally {
       setActionLoading(null);
     }
@@ -320,7 +320,7 @@ export default function EnrollmentOverviewPage() {
       toast.success((res as any)?.data?.message || (res as any)?.message || 'Mentee promoted to next level!');
       refetch();
     } catch (err: any) {
-      toast.error(extractApiErrorMessage(err, 'Failed to promote to next level'));
+      toast.error(extractApiErrorMessage(err, 'Could not promote to next level'));
     } finally {
       setActionLoading(null);
     }
@@ -333,7 +333,7 @@ export default function EnrollmentOverviewPage() {
       toast.success(`${menteeName} has been removed from the program.`);
       refetch();
     } catch (err: any) {
-      toast.error(extractApiErrorMessage(err, 'Failed to remove enrollment'));
+      toast.error(extractApiErrorMessage(err, 'Could not remove enrollment'));
     } finally {
       setActionLoading(null);
     }

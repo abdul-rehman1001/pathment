@@ -45,7 +45,7 @@ export default function AdminInsights() {
             {kpis.clansRed > 0 ? <> · {redClans.slice(0, 3).join(', ')}{redClans.length > 3 ? ` +${redClans.length - 3}` : ''} need attention</> : <> · none in the red</>}.
             {' '}Org relative progress runs{' '}
             <strong className="text-brand-700 tabular-nums">{gap >= 0 ? `${gap} pts above` : `${Math.abs(gap)} pts below`}</strong>{' '}
-            absolute - friction is being logged, not papered over.
+            absolute, so mentors are logging real constraints rather than hiding them.
           </p>
         </div>
       </div>
@@ -55,7 +55,7 @@ export default function AdminInsights() {
         {[
           { label: 'Avg completion', value: `${kpis.avgCompletion}%`, accent: 'bg-sky-500' },
           { label: 'Extensions granted', value: String(kpis.totalExtensions), accent: 'bg-amber-500' },
-          { label: 'Open blockers', value: String(kpis.totalOpenBlockers), accent: 'bg-red-500' },
+          { label: 'Open roadblocks', value: String(kpis.totalOpenBlockers), accent: 'bg-red-500' },
           { label: 'Clans in red', value: String(kpis.clansRed), accent: 'bg-red-500' },
         ].map((s) => (
           <div key={s.label} className="relative overflow-hidden rounded-2xl bg-card border border-slate-200 p-5">
@@ -79,7 +79,7 @@ export default function AdminInsights() {
             <table className="w-full min-w-[720px] text-sm">
               <thead>
                 <tr className="border-b border-slate-100">
-                  {['Clan', 'Members', 'Completion', 'On-time', 'Fair', 'Extensions', 'Blockers', 'At-risk'].map((h, i) => (
+                  {['Clan', 'Members', 'Completion', 'On-time', 'Fair', 'Extensions', 'Roadblocks', 'At-risk'].map((h, i) => (
                     <th key={h} className={`px-4 py-2.5 text-[11px] font-medium uppercase tracking-wide text-slate-400 ${i === 0 ? 'text-left' : 'text-right'}`}>{h}</th>
                   ))}
                 </tr>
@@ -128,12 +128,12 @@ export default function AdminInsights() {
           </div>
           <p className="mt-4 text-xs leading-relaxed text-slate-500">
             The cohort runs <strong className="text-brand-700 tabular-nums">{Math.abs(gap)} pts</strong> {gap >= 0 ? 'higher' : 'lower'} on
-            relative progress - the friction layer is doing visible work.
+            relative progress, so logged delays and roadblocks are shifting the picture.
           </p>
         </div>
 
         <div className="bg-card rounded-2xl border border-slate-200 p-6 lg:col-span-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-400 mb-3">By mentee - widest fairness gap first</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-400 mb-3">By mentee, widest fairness gap first</p>
           {distribution.length === 0 ? (
             <p className="text-sm text-slate-400">No mentees to show.</p>
           ) : (
@@ -169,7 +169,7 @@ export default function AdminInsights() {
           <p className="mt-1 text-xs text-slate-400">Accepted delays across all clans.</p>
         </div>
         <div className="bg-card rounded-2xl border border-slate-200 p-5">
-          <div className="flex items-center gap-2"><Flag className="w-4 h-4 text-red-500" /><span className="text-xs text-slate-500">Open blockers</span></div>
+          <div className="flex items-center gap-2"><Flag className="w-4 h-4 text-red-500" /><span className="text-xs text-slate-500">Open roadblocks</span></div>
           <div className="mt-2 text-2xl font-semibold text-slate-900 tabular-nums">{kpis.totalOpenBlockers}</div>
           <p className="mt-1 text-xs text-slate-400">{clans.length ? `Densest in ${[...clans].sort((a, b) => b.openBlockers - a.openBlockers)[0].name}.` : '-'}</p>
         </div>

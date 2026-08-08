@@ -400,7 +400,7 @@ export default function TaskDetailsPage({ params }: PageProps) {
         </div>
       )}
 
-      {/* What's getting in the way - log blocker / delay / request extension */}
+      {/* What's getting in the way - log roadblock / delay / request extension */}
       {!['completed', 'cancelled'].includes(task.status) && (
         <FrictionPanel taskId={task.id} />
       )}

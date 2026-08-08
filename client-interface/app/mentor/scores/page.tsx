@@ -93,7 +93,7 @@ export default function MentorScores() {
     <div className="space-y-6">
       <div>
         <h1 className="text-slate-900 mb-2">Progress scores</h1>
-        <p className="text-slate-600">One blended score per mentee - output, fairness, and reliability together.</p>
+        <p className="text-slate-600">One blended score per mentee, combining output, fairness, and reliability.</p>
       </div>
 
       {loading ? (

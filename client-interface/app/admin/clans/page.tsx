@@ -523,7 +523,7 @@ function AdminClansInner() {
               ) : (
                 <>
                   <Users2 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                  <p className="text-slate-600">No clans yet - create one to start grouping mentees under mentors.</p>
+                  <p className="text-slate-600">No clans yet. Create one to group mentees under mentors.</p>
                 </>
               )}
             </div>

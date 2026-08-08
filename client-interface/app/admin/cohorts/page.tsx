@@ -46,7 +46,7 @@ function CreateCohortDrawer({ onClose, onCreated }: { onClose: () => void; onCre
       onCreated();
       onClose();
     } catch (err) {
-      toast.error(extractApiErrorMessage(err, 'Failed to create cohort'));
+      toast.error(extractApiErrorMessage(err, 'Could not create cohort'));
     } finally {
       setSaving(false);
     }
@@ -139,7 +139,7 @@ export default function AdminCohortsPage() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-slate-900 mb-2">Intake</h1>
-          <p className="text-slate-600">Run registration in cohorts - import applicants, review, and accept into a program.</p>
+          <p className="text-slate-600">Run registration in cohorts. Import applicants, review them, and accept them into a program.</p>
         </div>
         <button onClick={() => setCreating(true)} className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-700 shrink-0">
           <Plus className="w-4 h-4" /> New cohort
@@ -156,7 +156,7 @@ export default function AdminCohortsPage() {
       ) : cohorts.length === 0 ? (
         <div className="bg-card rounded-2xl border border-slate-200 py-16 text-center">
           <CalendarRange className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-          <p className="text-slate-600">No cohorts yet - create one to open an intake for a program.</p>
+          <p className="text-slate-600">No cohorts yet. Create one to open an intake for a program.</p>
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">

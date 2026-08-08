@@ -10,7 +10,7 @@ import taskApi from '@/lib/services/task-api';
 
 /**
  * Loads a task by id and opens it in the shared MenteeTaskDrawer — the same
- * beautiful in-context drawer the Cohort Review uses. Lets any list (mentee
+ * beautiful in-context drawer the Clan Review uses. Lets any list (mentee
  * detail, approvals) open a task as a drawer instead of navigating to a page.
  */
 export function TaskDrawerById({ taskId, onClose, onChanged }: { taskId: string; onClose: () => void; onChanged: () => void }) {

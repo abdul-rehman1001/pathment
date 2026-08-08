@@ -161,7 +161,7 @@ export default function MentorAtRisk() {
         </div>
       ) : totalAtRisk === 0 ? (
         <div className="bg-card rounded-2xl border border-slate-200 py-16 text-center">
-          <p className="text-slate-600">Nobody&apos;s at risk right now - the whole cohort is on track.</p>
+          <p className="text-slate-600">Nobody&apos;s at risk right now. Everyone is on track.</p>
         </div>
       ) : (
         (['disengaged', 'struggling', 'watch'] as GroupKey[]).map((key) => {

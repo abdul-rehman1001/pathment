@@ -346,7 +346,7 @@ export default function MentorRoadmaps() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-slate-900 mb-2">Roadmaps</h1>
-          <p className="text-slate-600">Build a sequence of steps, then assign it - approving a step advances the mentee automatically.</p>
+          <p className="text-slate-600">Build a sequence of steps, then assign it. Approving a step advances the mentee automatically.</p>
         </div>
         <button onClick={() => setCreating(true)}
           className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-700 shrink-0">
@@ -368,7 +368,7 @@ export default function MentorRoadmaps() {
             <h2 className="text-slate-900 mb-4 flex items-center gap-2"><Route className="w-4 h-4 text-brand-500" />My roadmaps</h2>
             {local.length === 0 ? (
               <div className="bg-card rounded-2xl border border-slate-200 py-10 text-center">
-                <p className="text-slate-600 text-sm">No roadmaps yet - create one or import from your organization below.</p>
+                <p className="text-slate-600 text-sm">No roadmaps yet. Create one, or import from your organization below.</p>
               </div>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">

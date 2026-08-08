@@ -14,7 +14,7 @@ interface MobileReviewActionBarProps {
 }
 
 /**
- * Mobile-only sticky bottom bar for quick cohort review navigation.
+ * Mobile-only sticky bottom bar for quick clan review navigation.
  * Renders only on screens < lg breakpoint (<1024px).
  */
 export function MobileReviewActionBar({

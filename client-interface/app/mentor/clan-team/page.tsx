@@ -60,7 +60,7 @@ export default function ClanTeamPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-slate-900 mb-2 inline-flex items-center gap-2"><Users2 className="w-6 h-6 text-brand-600" /> Clan Team</h1>
-        <p className="text-slate-600">Manage your clan - add or remove mentees, co-mentors, and core-team members.</p>
+        <p className="text-slate-600">Add or remove mentees, co-mentors, and core-team members.</p>
       </div>
 
       {/* Requests waiting on YOU come before the clans themselves — an incoming
@@ -559,7 +559,7 @@ function AddMenteesDrawer({ clanId, clanName, onClose, onChanged }: { clanId: st
 
   return (
     <Drawer open onClose={onClose} title="Add mentees" subtitle={`Bring people into ${clanName}`}
-      footer={<div className="flex justify-end"><button onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm">Done</button></div>}>
+      footer={<div className="flex justify-end"><button onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm">Close</button></div>}>
       <div className="space-y-5">
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">Invite someone new</label>

@@ -130,7 +130,7 @@ export default function LoginPage() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo-tile.png" alt="Pathment" className="inline-block w-16 h-16 rounded-2xl shadow-sm mb-4" />
         <h1 className="text-brand-900 mb-2">Welcome back to Pathment</h1>
-        <p className="text-slate-600">Sign in to continue your journey</p>
+        <p className="text-slate-600">Sign in to pick up where you left off.</p>
       </div>
 
       {/* Login Form */}

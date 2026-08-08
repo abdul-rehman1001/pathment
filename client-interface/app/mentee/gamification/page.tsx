@@ -64,7 +64,7 @@ export default function MenteeGamificationPage() {
       } catch (e: unknown) {
         if (!mounted) return;
 
-        setError(extractApiErrorMessage(e, 'Failed to load gamification data'));
+        setError(extractApiErrorMessage(e, 'Could not load gamification data'));
       } finally {
         if (mounted) setLoading(false);
       }
@@ -121,8 +121,8 @@ export default function MenteeGamificationPage() {
       <div className="rounded-2xl border border-brand-200 bg-linear-to-r from-brand-50 dark:from-brand-500/10 to-cyan-50 dark:to-transparent p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h1 className="text-slate-900 mb-2">Your Progress Arena</h1>
-            <p className="text-slate-600">Track points, climb levels, and unlock badges.</p>
+            <h1 className="text-slate-900 mb-2">Points and badges</h1>
+            <p className="text-slate-600">What you have earned so far, and what is next.</p>
           </div>
           <div className="flex gap-3">
             <div className="rounded-xl bg-card px-4 py-3 border border-brand-200 min-w-[110px]">
@@ -130,7 +130,7 @@ export default function MenteeGamificationPage() {
               <div className="text-2xl font-semibold text-brand-700">
                 {stats.leaderboardRank ? `#${stats.leaderboardRank}` : 'Unranked'}
               </div>
-              <div className="text-[11px] text-slate-400">your XP journey</div>
+              <div className="text-[11px] text-slate-400">from completed work</div>
             </div>
             <div className="rounded-xl bg-card px-4 py-3 border border-brand-200 min-w-[120px]">
               <div className="text-xs text-slate-500">Community standing</div>
@@ -224,7 +224,7 @@ export default function MenteeGamificationPage() {
           <div className="space-y-3">
             {badges.length === 0 && (
               <div className="rounded-xl border border-dashed border-slate-300 p-5 text-center text-slate-500 text-sm">
-                No badges yet. Complete tasks to unlock achievements.
+                No badges yet. Finish a task to earn your first one.
               </div>
             )}
 

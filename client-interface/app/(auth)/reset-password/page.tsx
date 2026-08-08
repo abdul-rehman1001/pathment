@@ -42,7 +42,7 @@ export default function ResetPasswordPage() {
       setError(
         err?.response?.data?.message ||
         err?.message ||
-        'Failed to send reset email. Please try again.'
+        'Could not send reset email. Please try again.'
       );
     } finally {
       setLoading(false);
@@ -69,7 +69,7 @@ export default function ResetPasswordPage() {
       setError(
         err?.response?.data?.message ||
         err?.message ||
-        'Failed to reset password. The link may have expired.'
+        'Could not reset password. The link may have expired.'
       );
     } finally {
       setLoading(false);

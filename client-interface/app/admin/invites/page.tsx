@@ -201,7 +201,7 @@ export default function AdminInvitesPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2">
-        <h1 className="text-slate-900 font-semibold">Registration Invites</h1>
+        <h1 className="text-slate-900 font-semibold">Invites</h1>
         <p className="text-slate-600">Mentor and mentee signup is invite-only. Create one-time invites below.</p>
       </div>
 

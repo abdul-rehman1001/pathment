@@ -14,7 +14,7 @@ interface Meeting { sessionId: string; domain: string; room: string; url: string
 const fmtTalk = (s: number) => (s < 60 ? `${s}s` : `${Math.round(s / 60)}m`);
 
 /**
- * Host (mentor) side of the live cohort review: starts the room, shows the live
+ * Host (mentor) side of the live clan review: starts the room, shows the live
  * roster, and offers "End & score".
  *
  * The call itself is NOT owned here any more — CallProvider owns it, above the
@@ -238,7 +238,7 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
     return comingSoon ? (
       <ComingSoon
         title="Live review calls"
-        description="Run your cohort review over live video — right inside Pathment. No links to juggle, and everyone joins as themselves."
+        description="Run your clan review over live video — right inside Pathment. No links to juggle, and everyone joins as themselves."
         icon={<Video className="h-5 w-5" />}
         cta="Start meeting"
         features={[

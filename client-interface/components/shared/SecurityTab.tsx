@@ -92,7 +92,7 @@ function PasswordChangeForm({ onClose, onSubmit }: PasswordChangeFormProps) {
       await onSubmit(currentPassword, newPassword, confirmPassword);
       onClose();
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Failed to change password'));
+      setError(getApiErrorMessage(err, 'Could not change password'));
     } finally {
       setLoading(false);
     }
@@ -221,7 +221,7 @@ function Setup2FAForm({ onClose, onSetupComplete }: Setup2FAFormProps) {
         setQrCode(result.qrCode);
         setManualKey(result.manualEntryKey);
       } catch (err) {
-        setError('Failed to setup 2FA');
+        setError('Could not start two-factor setup. Try again.');
       } finally {
         setLoading(false);
       }

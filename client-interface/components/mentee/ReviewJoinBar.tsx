@@ -99,7 +99,7 @@ export function ReviewJoinBar() {
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-slate-900">Live review in {active.clanName}</p>
-            <p className="text-xs text-slate-500">Your mentor started the cohort review — hop in.</p>
+            <p className="text-xs text-slate-500">Your mentor started the clan review — hop in.</p>
           </div>
           <button onClick={() => join(active)} className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-brand-700">
             <Video className="h-4 w-4" /> Join review
@@ -114,7 +114,7 @@ export function ReviewJoinBar() {
         // a stray click on the page behind used to end it.
         <div className="mb-4 overflow-hidden rounded-2xl border border-slate-200 bg-card shadow-sm">
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-200">
-            <p className="text-sm font-medium text-slate-900">Cohort review · {active.clanName}</p>
+            <p className="text-sm font-medium text-slate-900">Clan review · {active.clanName}</p>
             <div className="flex items-center gap-2">
               {active.externalUrl && (
                 <a href={active.externalUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-brand-700">

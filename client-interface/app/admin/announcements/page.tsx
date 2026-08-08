@@ -47,7 +47,7 @@ export default function AdminAnnouncements() {
     <div className="space-y-6 max-w-3xl">
       <div>
         <h1 className="text-slate-900 mb-2 flex items-center gap-2"><Megaphone className="w-5 h-5 text-brand-600" /> Announcements</h1>
-        <p className="text-slate-600">Broadcast to everyone, a role, a program, or a clan - one source of truth.</p>
+        <p className="text-slate-600">Broadcast to everyone, a role, a program, or a clan.</p>
       </div>
 
       {/* Composer */}

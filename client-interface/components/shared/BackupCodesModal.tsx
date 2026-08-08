@@ -33,7 +33,7 @@ export function BackupCodesModal({
         // For now, we'll show a placeholder and let user regenerate
         setCodes([]);
       } catch (err) {
-        toast.error('Failed to fetch backup codes');
+        toast.error('Could not fetch backup codes');
       } finally {
         setLoading(false);
       }
@@ -51,7 +51,7 @@ export function BackupCodesModal({
       }
       toast.success(response.message);
     } catch (err: any) {
-      toast.error(extractApiErrorMessage(err, 'Failed to regenerate backup codes'));
+      toast.error(extractApiErrorMessage(err, 'Could not regenerate backup codes'));
     } finally {
       setRegenerating(false);
     }

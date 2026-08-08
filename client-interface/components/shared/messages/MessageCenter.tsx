@@ -139,7 +139,7 @@ export default function MessageCenter({ role }: MessageCenterProps) {
         )
       );
     } catch (error: unknown) {
-      toast.error(getErrorMessage(error, 'Failed to load messages'));
+      toast.error(getErrorMessage(error, 'Could not load messages'));
     } finally {
       setIsMessagesLoading(false);
     }
@@ -169,7 +169,7 @@ export default function MessageCenter({ role }: MessageCenterProps) {
         }
 
       } catch (error: unknown) {
-        toast.error(getErrorMessage(error, 'Failed to initialize messaging'));
+        toast.error(getErrorMessage(error, 'Could not open messages'));
       } finally {
         setIsBootstrapping(false);
       }
@@ -346,7 +346,7 @@ export default function MessageCenter({ role }: MessageCenterProps) {
         )
       );
     } catch (error: unknown) {
-      toast.error(getErrorMessage(error, 'Failed to send message'));
+      toast.error(getErrorMessage(error, 'Could not send message'));
     } finally {
       setIsSending(false);
     }

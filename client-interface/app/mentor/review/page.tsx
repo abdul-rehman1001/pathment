@@ -78,7 +78,7 @@ export default function CohortReview() {
   const { queue, refetch: refetchQueue } = useMentorApprovals();
   const confirm = useConfirm();
 
-  // Cohort review is CLAN-scoped: a session belongs to a clan, shared by its
+  // Clan review is CLAN-scoped: a session belongs to a clan, shared by its
   // lead + co-mentors. "All clans" can't map to one dated session, so for a
   // multi-clan mentor we pin to a concrete clan (keeps the cohort list and the
   // session on the same clan). Single-clan mentors never see the picker and the
@@ -341,7 +341,7 @@ export default function CohortReview() {
 
       toast.success(`Attendance updated for ${changes.length} mentee${changes.length === 1 ? '' : 's'}`);
     } catch {
-      toast.error('Failed to save some attendance records');
+      toast.error('Some attendance marks didn\'t save. Try again.');
     } finally {
       setIsSavingAttendance(false);
     }
@@ -646,7 +646,7 @@ export default function CohortReview() {
     const first = next.name.split(' ')[0];
     setPinged((p) => new Set(p).add(next.id)); // optimistic
     try {
-      await mentorApi.nudge(next.id, `Heads up ${first} — you're up next in today's cohort review. Please be ready 🙌`);
+      await mentorApi.nudge(next.id, `Heads up ${first} — you're up next in today's clan review. Please be ready 🙌`);
       toast.success(`${first} was told they're up next`);
     } catch {
       setPinged((p) => { const n = new Set(p); n.delete(next.id); return n; });
@@ -677,12 +677,12 @@ export default function CohortReview() {
   const addBlocker = async () => {
     if (!bTitle.trim() || !mentee) return;
     try {
-      setBusy('add-blocker');
+      setBusy('add-roadblock');
       const r: any = await frictionApi.createBlocker({ menteeId: mentee.id, title: bTitle.trim(), category: bCat, severity: bSev }); // eslint-disable-line @typescript-eslint/no-explicit-any
       if (r?.data?.blocker) setBlockers((b) => [r.data.blocker, ...b]);
       setBTitle(''); setBCat('technical'); setBSev('medium'); setShowAddBlocker(false);
-      toast.success('Blocker logged');
-    } catch { toast.error('Could not add blocker'); } finally { setBusy(null); }
+      toast.success('Roadblock logged');
+    } catch { toast.error('Could not add roadblock'); } finally { setBusy(null); }
   };
 
   // Keyboard shortcuts.
@@ -743,7 +743,7 @@ export default function CohortReview() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-slate-900 text-xl sm:text-2xl font-bold">Cohort review</h1>
+            <h1 className="text-slate-900 text-xl sm:text-2xl font-bold">Clan review</h1>
             {sessionDateLabel && (
               <span className="inline-flex items-center gap-1 text-xs text-slate-500 bg-slate-100 rounded-full px-2.5 py-0.5"><CalendarDays className="w-3 h-3" />{sessionDateLabel}</span>
             )}
@@ -1078,7 +1078,7 @@ export default function CohortReview() {
             </div>
             <div className="p-4">
               {pending.length === 0 ? (
-                <p className="text-sm text-slate-500 flex items-center gap-2 px-1 py-2"><CheckCircle2 className="w-4 h-4 text-emerald-400" />Nothing waiting - all clear.</p>
+                <p className="text-sm text-slate-500 flex items-center gap-2 px-1 py-2"><CheckCircle2 className="w-4 h-4 text-emerald-400" />Nothing waiting. All clear.</p>
               ) : (
                 <div className="space-y-2">
                   {pending.map((item, i) => (
@@ -1151,8 +1151,8 @@ export default function CohortReview() {
           {/* Blockers */}
           <div className="bg-card rounded-2xl border border-slate-200 p-5">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-slate-900 flex items-center gap-2"><Flag className="w-4 h-4 text-red-500" />Open blockers</h3>
-              <button onClick={() => setShowAddBlocker(true)} title="Log a blocker" className="p-1 rounded-lg text-slate-400 hover:text-brand-600 hover:bg-slate-100"><Plus className="w-4 h-4" /></button>
+              <h3 className="font-semibold text-slate-900 flex items-center gap-2"><Flag className="w-4 h-4 text-red-500" />Open roadblocks</h3>
+              <button onClick={() => setShowAddBlocker(true)} title="Log a roadblock" className="p-1 rounded-lg text-slate-400 hover:text-brand-600 hover:bg-slate-100"><Plus className="w-4 h-4" /></button>
             </div>
             {blockers.length === 0 ? (
               <p className="text-sm text-slate-500">None open.</p>
@@ -1205,13 +1205,13 @@ export default function CohortReview() {
       <Drawer
         open={showAddBlocker}
         onClose={() => setShowAddBlocker(false)}
-        title="Log a blocker"
+        title="Log a roadblock"
         subtitle={mentee ? `Capture what's slowing ${mentee.name.split(' ')[0]} down.` : undefined}
         footer={
           <>
             <button onClick={() => setShowAddBlocker(false)} className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm hover:bg-slate-50">Cancel</button>
-            <button onClick={addBlocker} disabled={busy === 'add-blocker' || !bTitle.trim()} className="px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium inline-flex items-center gap-2 disabled:opacity-50">
-              {busy === 'add-blocker' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}Log blocker
+            <button onClick={addBlocker} disabled={busy === 'add-roadblock' || !bTitle.trim()} className="px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium inline-flex items-center gap-2 disabled:opacity-50">
+              {busy === 'add-roadblock' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}Log roadblock
             </button>
           </>
         }
@@ -1321,7 +1321,7 @@ export default function CohortReview() {
       />
 
       {/* Cohort-review history: browse & open past dated sessions to view or edit. */}
-      <Drawer open={historyOpen} onClose={() => setHistoryOpen(false)} width="md" title="Cohort review history" subtitle="Open a past session to view or edit it">
+      <Drawer open={historyOpen} onClose={() => setHistoryOpen(false)} width="md" title="Clan review history" subtitle="Open a past session to view or edit it">
         {/* Deletion lock: org-enforced for audit integrity. Mentor can request access. */}
         {deletionBlocked && (
           <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-500/10 dark:border-amber-500/30 px-4 py-3">
@@ -1411,7 +1411,7 @@ export default function CohortReview() {
         </div>
       </Drawer>
 
-      {/* Per-mentee attendance history — every cohort review they were marked on,
+      {/* Per-mentee attendance history — every clan review they were marked on,
           newest first. A late-joiner simply has no entries before they joined. */}
       <Drawer open={attOpen} onClose={() => setAttOpen(false)} width="md"
         title="Attendance history"
@@ -1466,7 +1466,7 @@ export default function CohortReview() {
         </div>
       )}
 
-      {/* Mobile sticky action bar for cohort review */}
+      {/* Mobile sticky action bar for clan review */}
       <MobileReviewActionBar
         currentIndex={idx}
         totalCount={cohort.length}

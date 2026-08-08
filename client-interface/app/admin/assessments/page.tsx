@@ -54,7 +54,7 @@ export default function AdminAssessmentsPage() {
       ) : assessments.length === 0 ? (
         <div className="bg-card rounded-2xl border border-slate-200 py-16 text-center">
           <ClipboardCheck className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-          <p className="text-slate-600 mb-3">No assessments yet - create one to add to an intake.</p>
+          <p className="text-slate-600 mb-3">No assessments yet. Create one to add to an intake.</p>
           <button onClick={openNew} className="text-brand-600 hover:text-brand-700 text-sm font-medium">+ New assessment</button>
         </div>
       ) : (

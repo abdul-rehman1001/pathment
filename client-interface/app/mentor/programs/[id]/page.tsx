@@ -78,7 +78,7 @@ function ClanCard({ clan }: { clan: ProgramClanDetail }) {
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-2">Mentees</p>
           {clan.mentees.length === 0 ? (
-            <p className="text-sm text-slate-500 py-2">No mentees placed in this clan yet - they'll appear here once enrolled.</p>
+            <p className="text-sm text-slate-500 py-2">No mentees in this clan yet. They appear here once they are enrolled.</p>
           ) : (
             <div className="grid sm:grid-cols-2 gap-2">
               {clan.mentees.map((m) => <PersonRow key={m.id} person={m} />)}
@@ -91,7 +91,7 @@ function ClanCard({ clan }: { clan: ProgramClanDetail }) {
 }
 
 const QUICK_ACTIONS = [
-  { href: '/mentor/review', icon: ClipboardCheck, label: 'Cohort review', hint: 'Review submissions & attendance' },
+  { href: '/mentor/review', icon: ClipboardCheck, label: 'Clan review', hint: 'Review submissions & attendance' },
   { href: '/mentor/roadmaps', icon: Route, label: 'Roadmaps', hint: 'Assign learning paths' },
   { href: '/mentor/schedules', icon: CalendarClock, label: 'Schedules', hint: 'Set recurring rituals' },
 ];

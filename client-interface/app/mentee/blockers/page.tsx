@@ -61,7 +61,7 @@ function BlockerRow({ b, onResolve, onDelete, busy, deleting }: { b: Blocker; on
           </button>
         )}
         {canDelete && (
-          <button onClick={onDelete} disabled={deleting} title="Delete this blocker (within 6h of logging)" aria-label="Delete blocker" className="grid h-7 w-7 place-items-center rounded-lg border border-slate-200 text-slate-400 hover:border-red-200 hover:text-red-600 disabled:opacity-50">
+          <button onClick={onDelete} disabled={deleting} title="Delete this roadblock (within 6h of logging)" aria-label="Delete roadblock" className="grid h-7 w-7 place-items-center rounded-lg border border-slate-200 text-slate-400 hover:border-red-200 hover:text-red-600 disabled:opacity-50">
             {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
           </button>
         )}
@@ -85,7 +85,7 @@ export default function MenteeBlockers() {
       setLoading(true);
       const res: any = await frictionApi.listBlockers();
       setBlockers(res?.data?.blockers ?? []);
-    } catch { toast.error('Failed to load blockers'); } finally { setLoading(false); }
+    } catch { toast.error('Could not load roadblocks'); } finally { setLoading(false); }
   }, []);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
@@ -104,14 +104,14 @@ export default function MenteeBlockers() {
 
   const remove = async (b: Blocker) => {
     const ok = await confirm({
-      title: 'Delete this blocker?',
+      title: 'Delete this roadblock?',
       description: `"${b.title}" will be removed for good. This can't be undone.`,
       confirmLabel: 'Delete',
       variant: 'danger',
     });
     if (!ok) return;
     try { setDeleting(b.id); await frictionApi.deleteBlocker(b.id); await fetchAll(); toast.success('Blocker deleted'); }
-    catch { toast.error('Could not delete the blocker'); } finally { setDeleting(null); }
+    catch { toast.error('Could not delete the roadblock'); } finally { setDeleting(null); }
   };
 
   const open = blockers.filter((b) => b.status === 'open');
@@ -121,11 +121,11 @@ export default function MenteeBlockers() {
     <div className="space-y-6 max-w-3xl">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-slate-900 mb-1 flex items-center gap-2"><Flag className="w-5 h-5 text-brand-600" /> Blockers</h1>
-          <p className="text-slate-600">What&apos;s slowing you down - your mentor can see these and help you clear them.</p>
+          <h1 className="text-slate-900 mb-1 flex items-center gap-2"><Flag className="w-5 h-5 text-brand-600" /> Roadblocks</h1>
+          <p className="text-slate-600">What&apos;s slowing you down. Your mentor can see these and help you clear them.</p>
         </div>
         <button onClick={() => setAddOpen(true)} className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-700 shrink-0">
-          <Plus className="w-4 h-4" /> Add blocker
+          <Plus className="w-4 h-4" /> Add roadblock
         </button>
       </div>
 
@@ -134,7 +134,7 @@ export default function MenteeBlockers() {
       ) : blockers.length === 0 ? (
         <div className="bg-card rounded-2xl border border-slate-200 py-14 text-center">
           <span className="grid h-11 w-11 place-items-center rounded-xl border border-emerald-200 text-emerald-600 mx-auto mb-3"><CheckCircle2 className="w-6 h-6" /></span>
-          <p className="text-slate-700 font-medium">No blockers right now - clear runway.</p>
+          <p className="text-slate-700 font-medium">No roadblocks right now. Clear runway.</p>
           <p className="text-slate-500 text-sm mt-1 max-w-sm mx-auto">If anything starts to slow you down, log it here. Flagging early helps your mentor support you.</p>
         </div>
       ) : (
@@ -176,9 +176,9 @@ function AddBlockerModal({ tasks, onClose, onAdded }: { tasks: TaskOpt[]; onClos
     try {
       setSaving(true);
       await frictionApi.createBlocker({ title: title.trim(), category, severity, assignedTaskId: taskId || undefined });
-      toast.success('Blocker logged');
+      toast.success('Roadblock logged');
       onAdded();
-    } catch { toast.error('Could not log blocker'); } finally { setSaving(false); }
+    } catch { toast.error('Could not log roadblock'); } finally { setSaving(false); }
   };
 
   const seg = (active: boolean) => `px-3 py-1.5 rounded-lg border text-sm font-medium capitalize ${active ? 'border-brand-400 bg-brand-50 text-brand-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`;
@@ -187,13 +187,13 @@ function AddBlockerModal({ tasks, onClose, onAdded }: { tasks: TaskOpt[]; onClos
     <Drawer
       open
       onClose={onClose}
-      title="Log a blocker"
+      title="Log a roadblock"
       subtitle="What's slowing you down - your mentor can see this and help."
       footer={
         <>
           <button onClick={onClose} className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm hover:bg-slate-50">Cancel</button>
           <button onClick={submit} disabled={saving} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50">
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}Log blocker
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}Log roadblock
           </button>
         </>
       }

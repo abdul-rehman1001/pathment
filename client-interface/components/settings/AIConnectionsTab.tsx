@@ -59,7 +59,7 @@ export default function AIConnectionsTab() {
         {connections.length === 0 ? (
           <div className="bg-slate-50 rounded-2xl border border-dashed border-slate-200 p-10 text-center">
             <KeyRound className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-            <p className="text-slate-600">No AI connections yet - add a provider key to power AI features.</p>
+            <p className="text-slate-600">No AI connections yet. Add a provider key to turn on AI features.</p>
           </div>
         ) : (
           <div className="space-y-2">

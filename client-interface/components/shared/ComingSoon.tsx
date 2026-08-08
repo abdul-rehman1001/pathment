@@ -13,7 +13,7 @@ import { Sparkles } from 'lucide-react';
  *
  *   <ComingSoon
  *     title="Live review calls"
- *     description="Run your cohort review over live video, right inside Pathment."
+ *     description="Run your clan review over live video, right inside Pathment."
  *     features={[{ icon: <Radio/>, label: 'One-click start' }, ...]}
  *     cta="Start meeting"
  *   />

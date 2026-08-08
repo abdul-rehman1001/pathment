@@ -74,7 +74,7 @@ export default function MenteeOnboardingPage() {
       if (updateUser) updateUser({ ...user, onboardingStep: 1 });
       router.push('/onboarding/skills');
     } catch (error: unknown) {
-      toast.error(extractApiErrorMessage(error, 'Failed to complete profile'));
+      toast.error(extractApiErrorMessage(error, 'Could not save your profile'));
     } finally {
       setLoading(false);
     }
@@ -88,7 +88,7 @@ export default function MenteeOnboardingPage() {
           <div className="inline-flex items-center justify-center w-16 h-16 bg-brand-600 rounded-2xl mb-4">
             <GraduationCap className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-brand-900 mb-2">Complete Your Mentee Profile</h1>
+          <h1 className="text-3xl font-bold text-brand-900 mb-2">Tell us about yourself</h1>
           <p className="text-slate-600">Help us match you with the perfect mentor</p>
           <div className="flex items-center justify-center gap-2 mt-4">
             <div className="w-8 h-2 bg-brand-600 rounded-full"></div>

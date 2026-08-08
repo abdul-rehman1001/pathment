@@ -24,7 +24,7 @@ export default function AdminSchedulesPage() {
 
   const fetchAll = useCallback(async () => {
     try { setLoading(true); const r: any = await scheduleApi.listOrgTemplates(); setTemplates(r?.data?.templates ?? []); }
-    catch { toast.error('Failed to load templates'); } finally { setLoading(false); }
+    catch { toast.error('Could not load templates'); } finally { setLoading(false); }
   }, []);
   useEffect(() => { fetchAll(); }, [fetchAll]);
 

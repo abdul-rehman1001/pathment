@@ -545,7 +545,7 @@ export function AssignTaskDrawer({
                   <button type="button" onClick={() => setCriteria((c) => [...c, ''])} className="text-xs font-medium text-brand-600 hover:text-brand-700 inline-flex items-center gap-1"><Plus className="w-3 h-3" /> Add check</button>
                 </div>
                 <div className="space-y-2">
-                  {criteria.length === 0 && <p className="text-xs text-slate-400">No criteria yet - add checks the mentee must meet.</p>}
+                  {criteria.length === 0 && <p className="text-xs text-slate-400">No criteria yet. Add checks the mentee must meet.</p>}
                   {criteria.map((c, i) => (
                     <div key={i} className="flex items-center gap-2">
                       <input
@@ -589,7 +589,7 @@ export function AssignTaskDrawer({
                     {roadmapsLoading ? (
                       <div className="flex items-center gap-2 text-sm text-slate-400 py-2"><Loader2 className="w-4 h-4 animate-spin" />Loading your roadmaps…</div>
                     ) : localRoadmaps.length === 0 ? (
-                      <p className="text-sm text-slate-500 rounded-lg border border-dashed border-slate-200 p-3">No roadmaps yet - create or import one on the Roadmaps page, then assign it here.</p>
+                      <p className="text-sm text-slate-500 rounded-lg border border-dashed border-slate-200 p-3">No roadmaps yet. Create or import one on the Roadmaps page, then assign it here.</p>
                     ) : (
                       <div className="space-y-2">
                         {localRoadmaps.map((r) => (
