@@ -7,6 +7,7 @@ import {
   ChevronLeft, ChevronRight, SkipForward, Check, Loader2,
   TrendingUp, TrendingDown, Minus, Flag, Clock, ClipboardCheck, Keyboard, CheckCircle2, ArrowUpRight, Send, Plus, ListTodo, CalendarClock,
   Trash2, X, History, RotateCcw, CalendarDays, AlertTriangle, StickyNote, Search, Lock, Unlock, PauseCircle, Sparkles,
+  ChevronDown,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useMentorCohort, useMentorApprovals, type CohortMentee, type CohortMomentum, type CohortRisk, type ApprovalItem } from '@/lib/hooks/mentor';
@@ -65,6 +66,8 @@ const TASK_STATUS_META: Record<string, { label: string; cls: string }> = {
   cancelled: { label: 'Cancelled', cls: 'bg-slate-100 text-slate-400' },
 };
 const TASK_STATUS_ORDER = ['revision_needed', 'submitted', 'in_progress', 'assigned', 'not_started', 'completed', 'cancelled'];
+// Groups that are history rather than live work — shown collapsed until asked for.
+const COLLAPSED_TASK_GROUPS = ['completed', 'cancelled'];
 
 export default function CohortReview() {
   const router = useRouter();
@@ -349,6 +352,7 @@ export default function CohortReview() {
   useEffect(() => {
     if (!mentee) return;
     setFocus(0); setNote(''); setNoteSent(false); setBlockers([]); setTasks([]); setProfile(null); setAttHistory([]);
+    setOpenTaskGroups({}); // finished work re-collapses for each mentee you land on
     frictionApi.listBlockers(mentee.id, 'open').then((r: any) => setBlockers(r?.data?.blockers ?? [])).catch(() => {}); // eslint-disable-line @typescript-eslint/no-explicit-any
     mentorApi.getMenteeProfile(mentee.id).then((r: any) => setProfile(r?.data?.profile ?? r?.data ?? null)).catch(() => setProfile(null)); // eslint-disable-line @typescript-eslint/no-explicit-any
     mentorApi.getMenteeAttendanceHistory(mentee.id).then((r) => setAttHistory((r?.data?.history ?? []) as typeof attHistory)).catch(() => setAttHistory([]));
@@ -400,6 +404,16 @@ export default function CohortReview() {
     dayTasks.forEach((t) => { const k = t.status || 'assigned'; (by[k] = by[k] || []).push(t); });
     return TASK_STATUS_ORDER.filter((s) => by[s]?.length).map((s) => ({ status: s, items: by[s] }));
   }, [dayTasks]);
+
+  // Finished work collapses by default. A mentee a few months in has far more
+  // completed tasks than live ones, and leaving them all expanded pushed the
+  // "To review" queue — the reason you're on this screen — below the fold.
+  // The count stays on the header, so nothing looks missing when it's shut.
+  const [openTaskGroups, setOpenTaskGroups] = useState<Record<string, boolean>>({});
+  const isTaskGroupOpen = (status: string) =>
+    openTaskGroups[status] ?? !COLLAPSED_TASK_GROUPS.includes(status);
+  const toggleTaskGroup = (status: string) =>
+    setOpenTaskGroups((s) => ({ ...s, [status]: !isTaskGroupOpen(status) }));
 
   // Latest mentor note + rating for a task, surfaced on reviewed/changes rows.
   const reviewOf = (t: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -956,13 +970,29 @@ export default function CohortReview() {
                 <div className="space-y-4">
                   {taskGroups.map((g) => {
                     const meta = TASK_STATUS_META[g.status] ?? TASK_STATUS_META.assigned;
+                    const collapsible = COLLAPSED_TASK_GROUPS.includes(g.status);
+                    const open = isTaskGroupOpen(g.status);
                     return (
                       <div key={g.status}>
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{meta.label}</span>
-                          <span className="text-xs text-slate-400">{g.items.length}</span>
-                        </div>
-                        <div className="space-y-1.5">
+                        {collapsible ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleTaskGroup(g.status)}
+                            aria-expanded={open}
+                            aria-controls={`task-group-${g.status}`}
+                            className="w-full flex items-center gap-2 mb-1.5 text-left rounded-lg -mx-1 px-1 py-0.5 hover:bg-slate-50"
+                          >
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{meta.label}</span>
+                            <span className="text-xs text-slate-400">{g.items.length}</span>
+                            <ChevronDown className={`w-3.5 h-3.5 text-slate-400 ml-auto transition-transform ${open ? 'rotate-180' : ''}`} />
+                          </button>
+                        ) : (
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{meta.label}</span>
+                            <span className="text-xs text-slate-400">{g.items.length}</span>
+                          </div>
+                        )}
+                        <div id={`task-group-${g.status}`} className={`space-y-1.5 ${collapsible && !open ? 'hidden' : ''}`}>
                           {g.items.map((t: any) => { /* eslint-disable-line @typescript-eslint/no-explicit-any */
                             const due = t.dueDate ? new Date(t.dueDate) : null;
                             const overdue = due && t.status !== 'completed' && due.getTime() < Date.now();
