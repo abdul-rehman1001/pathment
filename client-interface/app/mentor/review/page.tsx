@@ -1174,27 +1174,28 @@ export default function CohortReview() {
           </div>
 
           {/* Progress / finish */}
-          <div className="bg-[#0f172a] rounded-2xl p-5 text-white">
-            <div className="text-sm space-y-1">
-              <div className="flex justify-between"><span className="text-slate-300">Reviewed</span><span>{seen.size}/{cohort.length}</span></div>
-              <div className="flex justify-between"><span className="text-slate-300">Present</span><span>{Object.values(attendance).filter((v) => v === 'present').length}</span></div>
-              <div className="flex justify-between"><span className="text-slate-300">Absent</span><span>{Object.values(attendance).filter((v) => v === 'absent').length}</span></div>
-              <div className="flex justify-between"><span className="text-slate-300">Excused</span><span>{Object.values(attendance).filter((v) => v === 'excused').length}</span></div>
-              <div className="flex justify-between"><span className="text-amber-300">Deferred</span><span className="text-amber-300">{deferred.size}</span></div>
+          <div className="bg-card rounded-2xl border border-slate-200 p-5">
+            <h3 className="font-semibold text-slate-900 mb-3">Session progress</h3>
+            <div className="text-sm space-y-1.5">
+              <div className="flex justify-between"><span className="text-slate-500">Reviewed</span><span className="font-medium text-slate-900">{seen.size}/{cohort.length}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Present</span><span className="font-medium text-slate-900">{Object.values(attendance).filter((v) => v === 'present').length}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Absent</span><span className="font-medium text-slate-900">{Object.values(attendance).filter((v) => v === 'absent').length}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Excused</span><span className="font-medium text-slate-900">{Object.values(attendance).filter((v) => v === 'excused').length}</span></div>
+              <div className="flex justify-between"><span className="text-amber-600">Deferred</span><span className="font-medium text-amber-600">{deferred.size}</span></div>
             </div>
             {deferred.size > 0 && editable && (
-              <div className="mt-3 rounded-lg bg-amber-500/15 border border-amber-500/30 px-3 py-2 text-xs text-amber-200">
+              <div className="mt-3 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
                 {deferred.size} deferred — jump to them from the dots above before finishing.
               </div>
             )}
             <button onClick={finishOrReopen}
-              className={`mt-4 w-full px-3 py-2 rounded-xl text-sm font-medium inline-flex items-center justify-center gap-1.5 ${session?.status === 'finished' ? 'bg-card/10 text-white hover:bg-card/20' : allSeen ? 'bg-card text-slate-900 hover:bg-slate-100' : 'bg-card/10 text-white/80 hover:bg-card/20'}`}>
+              className={`mt-4 w-full px-3 py-2 rounded-xl text-sm font-medium inline-flex items-center justify-center gap-1.5 ${session?.status === 'finished' || !allSeen ? 'bg-slate-100 text-slate-700 hover:bg-slate-200' : 'bg-brand-600 text-white hover:bg-brand-700'}`}>
               {session?.status === 'finished'
                 ? (<><RotateCcw className="w-4 h-4" />Reopen to edit</>)
                 : allSeen ? 'Finish review' : `Finish (${pendingCount} not reviewed)`}
             </button>
             {session?.status === 'finished' && session?.finishedAt && (
-              <p className="mt-2 text-[11px] text-slate-400 text-center">Finished {new Date(session.finishedAt).toLocaleString()}</p>
+              <p className="mt-2 text-[11px] text-slate-500 text-center">Finished {new Date(session.finishedAt).toLocaleString()}</p>
             )}
           </div>
         </div>
