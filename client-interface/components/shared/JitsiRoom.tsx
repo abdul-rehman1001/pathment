@@ -356,7 +356,7 @@ export function JitsiRoom({
 
   if (superseded) {
     return (
-      <div className="w-full h-full min-h-[420px] rounded-xl bg-slate-900 flex flex-col items-center justify-center gap-3 px-6 text-center">
+      <div className="w-full h-full rounded-xl bg-slate-900 flex flex-col items-center justify-center gap-3 px-4 text-center">
         <p className="text-sm text-slate-200">You opened this call in another tab.</p>
         <p className="text-xs text-slate-400">Only one tab can be in the call, otherwise you appear twice to everyone else.</p>
         <button onClick={rejoin} className="rounded-lg bg-white/10 px-4 py-2 text-sm font-medium text-white hover:bg-white/20">
@@ -366,5 +366,7 @@ export function JitsiRoom({
     );
   }
 
-  return <div ref={containerRef} className="w-full h-full min-h-[420px] rounded-xl overflow-hidden bg-slate-900" />;
+  // Sizing is the container's business — this fills whatever it is given. (It
+  // used to force min-h-[420px], which blows out the floating call window.)
+  return <div ref={containerRef} className="w-full h-full rounded-xl overflow-hidden bg-slate-900" />;
 }

@@ -4,26 +4,25 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Video, VideoOff, Loader2, Check, Circle, Trophy, RotateCw, Users, Radio } from 'lucide-react';
 import { mentorApi } from '@/lib/services/mentor-api';
-import { JitsiRoom, type JitsiParticipant } from '@/components/shared/JitsiRoom';
 import { ComingSoon } from '@/components/shared/ComingSoon';
+import { useCall } from '@/lib/context/CallContext';
 
 interface RosterRow { menteeId: string; name: string; attendance: string | null; autoPresent: boolean; talkSeconds: number; contributionPoints: number }
-interface ScoreRow { menteeId: string; name: string; talkSeconds: number; proposed: boolean; alreadyAwarded: boolean }
 interface Meeting { sessionId: string; domain: string; room: string; url: string; displayName: string | null; avatarUrl: string | null; externalUrl: string | null; startedAt: string | null; endedAt: string | null; pollsEnabled?: boolean }
 
 // Talk time: seconds under a minute (the contribution bar is 20s), minutes above.
 const fmtTalk = (s: number) => (s < 60 ? `${s}s` : `${Math.round(s / 60)}m`);
 
-// Max seconds credited per continuous "dominant speaker" span. Jitsi keeps the
-// last speaker "dominant" through silence, so an uncapped span counts that
-// silence — cap it so a brief utterance can't read as minutes.
-const SPEAK_SPAN_CAP = 15;
-
 /**
- * Host (mentor) side of the live cohort review. Starts the Jitsi room, embeds
- * it, shows a live roster, tracks dominant-speaker time as a contribution
- * signal, and on "End & score" awards the contribution point to the confirmed
- * speakers. The mentor's page is the source of truth for attendance + talk time.
+ * Host (mentor) side of the live cohort review: starts the room, shows the live
+ * roster, and offers "End & score".
+ *
+ * The call itself is NOT owned here any more — CallProvider owns it, above the
+ * router, so opening a mentee's profile mid-review no longer hangs the mentor up
+ * (see the note in CallContext). This panel just registers a placeholder for the
+ * call to dock into, and drives it through the context. Talk-time tracking and
+ * the contribution modal moved to the provider for the same reason: they have to
+ * outlive this page.
  */
 export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttendanceSync, onEnded }: {
   sessionId: string;
@@ -58,18 +57,15 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
   const [disabled, setDisabled] = useState(false);
   const [comingSoon, setComingSoon] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [scoring, setScoring] = useState<ScoreRow[] | null>(null);
   // Once scored, the session is done — don't invite the mentor to reopen it.
   const [scored, setScored] = useState(false);
-  // Bumping this remounts the Jitsi iframe — a clean way to clear meet.jit.si's
-  // promo overlay without reloading the whole review page.
-  const [videoKey, setVideoKey] = useState(0);
 
-  // Talk-time tracking (host-observed). id → seconds, id → displayName.
-  const talkById = useRef<Map<string, number>>(new Map());
-  const nameById = useRef<Map<string, string>>(new Map());
-  const speakingId = useRef<string | null>(null);
-  const speakingSince = useRef<number>(0);
+  const { startCall, updateCall, reloadCall, endHostCall, registerDock, provideRoster, isLive, endedNonce } = useCall();
+  // The placeholder the persistent call docks over while this page is open.
+  const dockRef = useRef<HTMLDivElement | null>(null);
+  // A call for THIS session is up (started here, or still running after the
+  // mentor navigated away and came back).
+  const callUp = isLive(liveSessionId);
 
   const refresh = useCallback(async () => {
     try {
@@ -123,34 +119,33 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
     if (marked.length) onAttendanceSync(marked);
   }, [roster, onAttendanceSync]);
 
-  // Map a Jitsi participant name → a roster menteeId (best-effort, by name).
-  const menteeIdForName = useCallback((name?: string) => {
-    if (!name) return null;
-    const n = name.trim().toLowerCase();
-    return roster.find((r) => r.name.trim().toLowerCase() === n)?.menteeId ?? null;
-  }, [roster]);
-
-  const flushTalk = useCallback(async () => {
-    // Report closed spans + the OPEN span (capped) without closing it, so the
-    // per-span cap isn't defeated by the periodic flush re-opening the span.
-    const items: { menteeId: string; seconds: number }[] = [];
-    for (const [id, secs] of talkById.current.entries()) {
-      let total = secs;
-      if (speakingId.current === id && speakingSince.current) {
-        total += Math.min(SPEAK_SPAN_CAP, (Date.now() - speakingSince.current) / 1000);
-      }
-      const menteeId = menteeIdForName(nameById.current.get(id));
-      if (menteeId) items.push({ menteeId, seconds: Math.round(total) });
-    }
-    if (items.length) { try { await mentorApi.recordReviewTalkTime(liveSessionId, items); } catch { /* retry next flush */ } }
-  }, [liveSessionId, menteeIdForName]);
-
-  // Periodically flush talk time while live.
+  // The provider maps Jitsi display names → menteeIds when it flushes talk time,
+  // and it can't fetch the roster itself, so hand it over while we're mounted.
+  // Names don't change mid-call, so the last one it received stays usable after
+  // the mentor navigates away.
   useEffect(() => {
-    if (!live) return;
-    const t = setInterval(flushTalk, 20_000);
-    return () => clearInterval(t);
-  }, [live, flushTalk]);
+    if (roster.length) provideRoster(roster.map((r) => ({ menteeId: r.menteeId, name: r.name })));
+  }, [roster, provideRoster]);
+
+  // Dock the persistent call over our placeholder. A ref callback rather than an
+  // effect, so it can't race the placeholder's mount: React calls it with the
+  // node when it appears and with null when this page goes away — and null is
+  // what floats the call rather than ending it.
+  const dockCb = useCallback((el: HTMLDivElement | null) => {
+    dockRef.current = el;
+    registerDock(el);
+  }, [registerDock]);
+
+  // The provider ends the call (its floating window has an End button too), so
+  // pick up the resulting state change here.
+  const endedSeen = useRef(endedNonce);
+  useEffect(() => {
+    if (endedNonce === endedSeen.current) return;
+    endedSeen.current = endedNonce;
+    setScored(true);
+    refresh();
+    onEnded?.();
+  }, [endedNonce, refresh, onEnded]);
 
   // Start works from a blank page: if today's session doesn't exist yet we
   // create it first, so the mentor never has to "mark someone" to unlock video.
@@ -165,56 +160,71 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
         setLiveSessionId(id);
       }
       if (!id) throw new Error('no session');
-      await mentorApi.startReviewMeeting(id);
+      // The start endpoint returns the join config itself (not wrapped in
+      // `meeting`) — see reviewMeetingService.startMeeting → _joinConfig.
+      const res = await mentorApi.startReviewMeeting(id) as { data?: Meeting };
       setScored(false);
-      endingRef.current = false; // fresh call — allow it to be ended/scored again
+      const m = res?.data;
+      // Hand the room to the provider — from here it belongs to the app, not the page.
+      startCall({
+        sessionId: id,
+        domain: m?.domain || meeting?.domain || '',
+        room: m?.room || meeting?.room || '',
+        displayName: m?.displayName ?? meeting?.displayName ?? null,
+        avatarUrl: m?.avatarUrl ?? meeting?.avatarUrl ?? null,
+        role: 'host',
+        title: 'Live review',
+        returnHref: '/mentor/review',
+        privateChat: false,
+        polls,
+      });
       await refresh();
       toast.success('Meeting started — mentees can join now');
     } catch { toast.error('Could not start the meeting'); }
     finally { setBusy(false); }
   };
 
-  // Guard so ending is idempotent — the Jitsi hangup ("end for all") and the
-  // panel's own "End & score" button can both fire; only the first should run.
-  const endingRef = useRef(false);
-  const endAndScore = useCallback(async () => {
-    if (endingRef.current) return;
-    endingRef.current = true;
-    setBusy(true);
-    try {
-      await flushTalk();
-      await mentorApi.endReviewMeeting(liveSessionId); // also finishes the session server-side
-      const res = await mentorApi.proposeReviewContribution(liveSessionId) as { data?: { proposed: ScoreRow[] } };
-      setLive(false);
-      setScoring(res?.data?.proposed ?? []);
-      await refresh();
-      onEnded?.(); // let the page reload → header shows "Finished"
-    } catch { toast.error('Could not end the meeting'); endingRef.current = false; }
-    finally { setBusy(false); }
-  }, [flushTalk, liveSessionId, refresh, onEnded]);
-
-  const onDominant = (id: string) => {
-    // Close the previous span (capped) and open the new one.
-    if (speakingId.current && speakingId.current !== id && speakingSince.current) {
-      const add = Math.min(SPEAK_SPAN_CAP, (Date.now() - speakingSince.current) / 1000);
-      talkById.current.set(speakingId.current, (talkById.current.get(speakingId.current) || 0) + Math.max(0, add));
-    }
-    if (!talkById.current.has(id)) talkById.current.set(id, 0);
-    speakingId.current = id;
-    speakingSince.current = Date.now();
-  };
-  const onParticipant = (p: JitsiParticipant) => { if (p.displayName) nameById.current.set(p.id, p.displayName); };
-
   const toggleAttendance = async () => {
     const next = !attendanceTracking;
     setAttendanceTracking(next); // optimistic
     try { await mentorApi.setReviewAttendanceTracking(liveSessionId, next); } catch { setAttendanceTracking(!next); toast.error('Could not update attendance tracking'); }
   };
+  // Both of these rebuild the Jitsi room (it can't toggle them live), so they go
+  // through the provider — which owns the room now.
   const togglePolls = async () => {
     const next = !polls;
-    setPolls(next); // optimistic (remounts Jitsi with polls on/off for everyone)
-    try { await mentorApi.setReviewPolls(liveSessionId, next); } catch { setPolls(!next); toast.error('Could not update polls'); }
+    setPolls(next); // optimistic
+    updateCall({ polls: next });
+    try { await mentorApi.setReviewPolls(liveSessionId, next); } catch { setPolls(!next); updateCall({ polls: !next }); toast.error('Could not update polls'); }
   };
+  const togglePrivateChat = () => {
+    const next = !privateChat;
+    setPrivateChat(next);
+    updateCall({ privateChat: next });
+  };
+
+  // A full browser reload takes the provider down with everything else, but the
+  // meeting is still live server-side. Re-adopt it so the mentor lands back in
+  // their call instead of staring at an empty box. (`scored` / `endedAt` guard
+  // the window right after ending, before the server refresh reports it.)
+  const readoptedRef = useRef(false);
+  useEffect(() => {
+    if (!live || !meeting || callUp || scored || meeting.endedAt) return;
+    if (readoptedRef.current) return;
+    readoptedRef.current = true;
+    startCall({
+      sessionId: liveSessionId,
+      domain: meeting.domain,
+      room: meeting.room,
+      displayName: meeting.displayName,
+      avatarUrl: meeting.avatarUrl,
+      role: 'host',
+      title: 'Live review',
+      returnHref: '/mentor/review',
+      privateChat,
+      polls,
+    });
+  }, [live, meeting, callUp, scored, liveSessionId, privateChat, polls, startCall]);
 
   const togglePresent = async (r: RosterRow) => {
     const present = r.attendance !== 'present';
@@ -263,10 +273,10 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
           )
         ) : (
           <div className="flex items-center gap-2">
-            <button onClick={() => setVideoKey((k) => k + 1)} title="Reload the call (clears the meet.jit.si promo)" className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:border-brand-300 hover:text-brand-700">
+            <button onClick={reloadCall} title="Rebuild the call if the video is stuck" className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:border-brand-300 hover:text-brand-700">
               <RotateCw className="w-3.5 h-3.5" /> Reload video
             </button>
-            <button onClick={endAndScore} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50">
+            <button onClick={endHostCall} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50">
               {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <VideoOff className="w-3.5 h-3.5" />} End &amp; score
             </button>
           </div>
@@ -275,16 +285,10 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
 
       {live && meeting && (
         <div className="grid gap-3 lg:grid-cols-[1fr_240px]">
-          <div className="h-[68vh] min-h-[520px]">
-            <JitsiRoom
-              key={videoKey}
-              domain={meeting.domain} room={meeting.room} displayName={meeting.displayName} avatarUrl={meeting.avatarUrl}
-              role="host" privateChat={privateChat} polls={polls}
-              onParticipantJoined={onParticipant} onDominantSpeaker={onDominant}
-              onReadyToClose={endAndScore}
-              onError={(m) => toast.error(m)}
-            />
-          </div>
+          {/* Placeholder only — the call itself is rendered by CallProvider and
+              positioned over this box. That's what lets it keep running when you
+              open a mentee's profile: there is no iframe here to unmount. */}
+          <div ref={dockCb} className="h-[68vh] min-h-[520px] rounded-xl bg-slate-900" />
           <div className="min-w-0">
             <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5">
               <span className="text-xs font-medium text-slate-700" title="When on, mentees who join are marked present. Off = a general call.">Track attendance</span>
@@ -297,7 +301,7 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
                 mentor flips it on when they want to message privately. */}
             <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5">
               <span className="text-xs font-medium text-slate-700" title="Off = no private 1:1 messages. On lets you privately message a participant.">Private chat</span>
-              <button type="button" role="switch" aria-checked={privateChat} onClick={() => setPrivateChat((v) => !v)}
+              <button type="button" role="switch" aria-checked={privateChat} onClick={togglePrivateChat}
                 className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${privateChat ? 'bg-brand-600' : 'bg-slate-300'}`}>
                 <span className={`absolute left-0 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${privateChat ? 'translate-x-4' : 'translate-x-0.5'}`} />
               </button>
@@ -343,59 +347,6 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
         <p className="text-xs text-slate-500">Start the call and your mentees get a “Join review” banner. Flip on “Track attendance” once you’re live to auto-mark joiners present.</p>
       )}
 
-      {scoring && <ContributionModal proposed={scoring} sessionId={liveSessionId} onClose={() => { setScoring(null); setScored(true); }} onDone={() => { setScoring(null); setScored(true); refresh(); }} />}
-    </div>
-  );
-}
-
-// ── contribution scoring modal ───────────────────────────────────────────────
-function ContributionModal({ proposed, sessionId, onClose, onDone }: {
-  proposed: ScoreRow[];
-  sessionId: string; onClose: () => void; onDone: () => void;
-}) {
-  // Pre-check the speakers; the mentor can add anyone else who contributed.
-  const [picked, setPicked] = useState<Set<string>>(new Set(proposed.filter((p) => p.proposed && !p.alreadyAwarded).map((p) => p.menteeId)));
-  const [busy, setBusy] = useState(false);
-
-  const award = async () => {
-    setBusy(true);
-    try {
-      const res = await mentorApi.finalizeReviewContribution(sessionId, [...picked]) as { data?: { awarded: number } };
-      toast.success(`Awarded a contribution point to ${res?.data?.awarded ?? 0} mentee(s)`);
-      onDone();
-    } catch { toast.error('Could not award points'); }
-    finally { setBusy(false); }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !busy && onClose()}>
-      <div className="w-full max-w-md rounded-2xl bg-card p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <h3 className="font-semibold text-slate-900 flex items-center gap-1.5"><Trophy className="w-5 h-5 text-amber-500" /> Contribution points</h3>
-        <p className="mt-1 text-sm text-slate-500">Award a point to whoever contributed. Speakers are pre-checked — tick anyone who helped in chat too.</p>
-        <div className="mt-3 space-y-1 max-h-64 overflow-y-auto">
-          {proposed.length === 0 && <p className="text-sm text-slate-400">Nobody attended this session.</p>}
-          {proposed.map((p) => (
-            <label key={p.menteeId} className={`flex items-center gap-2 rounded-lg px-2 py-1.5 ${p.alreadyAwarded ? 'opacity-50' : 'hover:bg-slate-50 cursor-pointer'}`}>
-              <input
-                type="checkbox"
-                disabled={p.alreadyAwarded}
-                checked={p.alreadyAwarded || picked.has(p.menteeId)}
-                onChange={(e) => setPicked((s) => { const n = new Set(s); e.target.checked ? n.add(p.menteeId) : n.delete(p.menteeId); return n; })}
-              />
-              <span className="text-sm text-slate-700 flex-1">{p.name}</span>
-              <span className="text-[11px] text-slate-400 tabular-nums">
-                {p.alreadyAwarded ? 'already awarded' : p.talkSeconds > 0 ? `spoke ${fmtTalk(p.talkSeconds)}` : 'no speaking time'}
-              </span>
-            </label>
-          ))}
-        </div>
-        <div className="mt-4 flex justify-end gap-2">
-          <button onClick={onClose} disabled={busy} className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-700">Skip</button>
-          <button onClick={award} disabled={busy || picked.size === 0} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 disabled:opacity-50">
-            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trophy className="w-4 h-4" />} Award {picked.size}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

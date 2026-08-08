@@ -5,6 +5,7 @@ import { AuthProvider } from '@/lib/context/AuthContext';
 import { ThemeProvider } from '@/lib/context/ThemeContext';
 import { ClanProvider } from '@/lib/context/ClanContext';
 import { ConfirmProvider } from '@/lib/context/ConfirmContext';
+import { CallProvider } from '@/lib/context/CallContext';
 import { Toaster } from '@/components/ui/sonner';
 
 const jakarta = Plus_Jakarta_Sans({ subsets: ['latin'], variable: '--font-jakarta', display: 'swap' });
@@ -41,7 +42,10 @@ export default function RootLayout({
           <AuthProvider>
             <ClanProvider>
               <ConfirmProvider>
-                {children}
+                {/* Above the router: a live review call must survive navigation. */}
+                <CallProvider>
+                  {children}
+                </CallProvider>
                 <Toaster />
               </ConfirmProvider>
             </ClanProvider>
