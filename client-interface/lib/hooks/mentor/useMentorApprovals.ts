@@ -34,7 +34,7 @@ export interface ApprovalItem {
   deliverable: string | null;
   criteria: string[];
   maxPoints: number;
-  mentee: { id: string; name: string; avatar: string } | null;
+  mentee: { id: string; name: string; avatar: string; profilePictureUrl: string | null } | null;
   isExtensionRequest: boolean;
   extensionReason: string | null;
   extensionDays: number | null;
@@ -57,7 +57,7 @@ export interface ChangesRequestedItem {
   requestedAt: string;
   dueDate: string | null;
   isLate: boolean;
-  mentee: { id: string; name: string; avatar: string } | null;
+  mentee: { id: string; name: string; avatar: string; profilePictureUrl: string | null } | null;
 }
 
 /** A task the mentor has already approved — the "Reviewed" history. */

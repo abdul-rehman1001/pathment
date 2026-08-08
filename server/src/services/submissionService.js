@@ -1055,7 +1055,8 @@ class SubmissionService {
         mentee: m ? {
           id: m.id,
           name: `${m.firstName} ${m.lastName}`.trim(),
-          avatar: `${(m.firstName || '').charAt(0)}${(m.lastName || '').charAt(0)}`.toUpperCase()
+          avatar: `${(m.firstName || '').charAt(0)}${(m.lastName || '').charAt(0)}`.toUpperCase(),
+          profilePictureUrl: m.profilePictureUrl || null
         } : null
       };
     });
@@ -1117,6 +1118,7 @@ class SubmissionService {
           id: m.id,
           name: `${m.firstName} ${m.lastName}`.trim(),
           avatar: `${(m.firstName || '').charAt(0)}${(m.lastName || '').charAt(0)}`.toUpperCase(),
+          profilePictureUrl: m.profilePictureUrl || null,
         } : null,
       };
     });
