@@ -139,6 +139,20 @@ exports.getNotifications = catchAsync(async (req, res) => {
   }));
 });
 
+/**
+ * Just the badge number.
+ *
+ * The bell polls this constantly. Without it the only way to learn the count was
+ * GET /notifications, which returns thirty full notification objects — every
+ * poll paid for a page of data to read one integer off it. On a phone that was
+ * the most expensive request in the app, and the least useful.
+ */
+exports.getUnreadNotificationCount = catchAsync(async (req, res) => {
+  const unreadCount = await messagingService.getUnreadNotificationCount(req.user.id);
+
+  res.status(200).json(successResponse('Unread count fetched successfully', { unreadCount }));
+});
+
 exports.markNotificationRead = catchAsync(async (req, res) => {
   const notification = await messagingService.markNotificationRead(req.user.id, req.params.notificationId);
   const unreadCount = await messagingService.getUnreadNotificationCount(req.user.id);
