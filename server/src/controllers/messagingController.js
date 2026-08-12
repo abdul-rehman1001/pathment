@@ -50,16 +50,15 @@ exports.createDirectConversation = catchAsync(async (req, res) => {
 exports.sendMessage = catchAsync(async (req, res) => {
   const result = await messagingService.sendMessage(req.user.id, req.body);
 
-  emitToConversation(result.conversationId, 'message:new', {
-    conversationId: result.conversationId,
-    message: result.message
-  });
+  const msgPayload = { conversationId: result.conversationId, message: result.message };
+  emitToConversation(result.conversationId, 'message:new', msgPayload);
 
   result.recipientIds.forEach((recipientId) => {
+    // Direct delivery via user room — guaranteed even if recipient hasn't joined the conversation room yet
+    emitToUser(recipientId, 'message:new', msgPayload);
+
     const notification = result.notifications?.find((item) => item.userId === recipientId);
-    if (!notification) {
-      return;
-    }
+    if (!notification) return;
 
     emitToUser(recipientId, 'notification:new', {
       id: notification.id,
@@ -81,6 +80,7 @@ exports.sendMessage = catchAsync(async (req, res) => {
     message: result.message
   }, 201));
 });
+
 
 exports.markConversationRead = catchAsync(async (req, res) => {
   const { conversationId } = req.params;
@@ -225,10 +225,17 @@ exports.approveDraft = catchAsync(async (req, res) => {
   // Step 4: Message sent successfully — now mark draft approved and emit.
   await RagFacade.markDraftApproved(draftId, req.user.id);
 
-  emitToConversation(result.conversationId, 'message:new', {
-    conversationId: result.conversationId,
-    message: result.message
+  const msgPayload = { conversationId: result.conversationId, message: result.message };
+  emitToConversation(result.conversationId, 'message:new', msgPayload);
+
+  // Direct delivery to each recipient's user room — mentee gets it even if
+  // their socket hasn't joined the conversation room yet.
+  result.recipientIds.forEach((recipientId) => {
+    emitToUser(recipientId, 'message:new', msgPayload);
   });
+
+  // Let all mentor sessions remove this draft from their panel in real time.
+  emitToUser(req.user.id, 'ai_draft:approved', { draftId, conversationId: result.conversationId });
 
   res.status(200).json(successResponse('Draft approved and message sent', { message: result.message }));
 });

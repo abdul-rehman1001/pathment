@@ -6,7 +6,7 @@ import { Bot, Check, Wand2, Loader2, ChevronRight, ChevronLeft } from 'lucide-re
 import { toast } from 'sonner';
 
 import { messagingApi } from '@/lib/services/messaging-api';
-import { connectSocket, disconnectSocket, getSocket } from '@/lib/services/socket-client';
+import { connectSocket, getSocket } from '@/lib/services/socket-client';
 import { getToken } from '@/lib/services/token-store';
 import { useAuth } from '@/lib/context/AuthContext';
 import { useClan, ALL_CLANS } from '@/lib/context/ClanContext';
@@ -46,6 +46,7 @@ export default function MessageCenter({ role }: MessageCenterProps) {
   const [isApprovingDraft, setIsApprovingDraft] = useState(false);
   const [isRejectingDraft, setIsRejectingDraft] = useState(false);
   const [isDraftsExpanded, setIsDraftsExpanded] = useState(true);
+  const [generatingConversationIds, setGeneratingConversationIds] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<'all' | 'unread' | 'archived'>('all');
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -53,6 +54,9 @@ export default function MessageCenter({ role }: MessageCenterProps) {
   // Cache messages by conversation ID for 0ms conversation switching
   const messageCacheRef = useRef<Record<string, ChatMessage[]>>({});
   const pendingConversationPromisesRef = useRef<Record<string, Promise<any>>>({});
+  // Stable ref so socket handlers always see the latest selected conversation
+  // without needing to be re-registered on every conversation switch.
+  const selectedConversationIdRef = useRef<string | null>(null);
 
   // Mobile layout state: 'list' or 'chat'
   const [activeMobilePane, setActiveMobilePane] = useState<'list' | 'chat'>('list');
@@ -242,10 +246,11 @@ export default function MessageCenter({ role }: MessageCenterProps) {
     }
   }, [isBootstrapping, selectedConversationId]);
 
-  // Socket connection and global event listeners
+  // Socket: connect ONCE per login. Use a ref inside handlers so they always
+  // read the latest selectedConversationId without being re-registered.
   useEffect(() => {
     const token = getToken();
-    if (!token) return;
+    if (!token || !user?.id) return;
 
     const socket = connectSocket(token);
 
@@ -254,30 +259,28 @@ export default function MessageCenter({ role }: MessageCenterProps) {
       const incomingMessage = payload?.message;
       if (!incomingConversationId || !incomingMessage) return;
 
-      if (incomingConversationId === selectedConversationId) {
+      if (incomingConversationId === selectedConversationIdRef.current) {
         mergeIncomingMessage(incomingMessage);
-
         if (incomingMessage.senderId !== user?.id) {
           messagingApi.markConversationRead(incomingConversationId).catch(() => {});
         }
       }
 
       setConversations((prev) => {
-        const target = prev.find((conversation) => conversation.id === incomingConversationId);
+        const target = prev.find((c) => c.id === incomingConversationId);
         if (!target) return prev;
-
         return prev
-          .map((conversation) => {
-            if (conversation.id !== incomingConversationId) return conversation;
+          .map((c) => {
+            if (c.id !== incomingConversationId) return c;
             const unreadIncrement = incomingMessage.senderId === user?.id ? 0 : 1;
             return {
-              ...conversation,
+              ...c,
               lastMessage: incomingMessage,
               lastMessageAt: incomingMessage.createdAt,
               unreadCount:
-                incomingConversationId === selectedConversationId
+                incomingConversationId === selectedConversationIdRef.current
                   ? 0
-                  : (conversation.unreadCount || 0) + unreadIncrement,
+                  : (c.unreadCount || 0) + unreadIncrement,
             };
           })
           .sort((a, b) => {
@@ -291,25 +294,21 @@ export default function MessageCenter({ role }: MessageCenterProps) {
     const onDelivered = (payload: { messageIds?: string[] }) => {
       const ids = new Set(payload?.messageIds || []);
       if (ids.size === 0) return;
-
       setMessages((prev) =>
-        prev.map((message) =>
-          ids.has(message.id) && !message.deliveredAt
-            ? { ...message, deliveredAt: new Date().toISOString() }
-            : message
+        prev.map((m) =>
+          ids.has(m.id) && !m.deliveredAt ? { ...m, deliveredAt: new Date().toISOString() } : m
         )
       );
     };
 
     const onConversationRead = (payload: { conversationId?: string; userId?: string }) => {
-      if (!payload?.conversationId || payload.conversationId !== selectedConversationId) return;
+      if (!payload?.conversationId || payload.conversationId !== selectedConversationIdRef.current) return;
       if (payload.userId === user?.id) return;
-
       setMessages((prev) =>
-        prev.map((message) =>
-          message.senderId === user?.id && !message.isRead
-            ? { ...message, isRead: true, readAt: message.readAt || new Date().toISOString() }
-            : message
+        prev.map((m) =>
+          m.senderId === user?.id && !m.isRead
+            ? { ...m, isRead: true, readAt: m.readAt || new Date().toISOString() }
+            : m
         )
       );
     };
@@ -317,15 +316,17 @@ export default function MessageCenter({ role }: MessageCenterProps) {
     const onReaction = (payload: { messageId?: string; reactions?: MessageReaction[] }) => {
       if (!payload?.messageId) return;
       setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === payload.messageId
-            ? { ...msg, reactions: payload.reactions }
-            : msg
-        )
+        prev.map((m) => (m.id === payload.messageId ? { ...m, reactions: payload.reactions } : m))
       );
     };
 
-    const onAiDraftNew = (payload: { draft: any; conversationId: string }) => {
+    const onAiDraftNew = (payload: { draft: any }) => {
+      // Draft arrived — clear the generating loader for this conversation
+      setGeneratingConversationIds((prev) => {
+        const next = new Set(prev);
+        next.delete(payload.draft?.originalMessage?.threadId);
+        return next;
+      });
       setPendingDrafts((prev) => {
         if (prev.some((d) => d.id === payload.draft.id)) return prev;
         return [...prev, payload.draft];
@@ -333,24 +334,68 @@ export default function MessageCenter({ role }: MessageCenterProps) {
       toast.success('New AI Draft received', { icon: <Bot className="w-4 h-4 text-brand-600" /> });
     };
 
+    const onAiDraftGenerating = (payload: { conversationId: string }) => {
+      if (!payload?.conversationId) return;
+      setGeneratingConversationIds((prev) => new Set([...prev, payload.conversationId]));
+    };
+
+    const onAiDraftApproved = (payload: { draftId: string }) => {
+      if (!payload?.draftId) return;
+      setPendingDrafts((prev) => prev.filter((d) => d.id !== payload.draftId));
+    };
+
+    const onAiDraftDone = (payload: { conversationId: string }) => {
+      if (!payload?.conversationId) return;
+      setGeneratingConversationIds((prev) => {
+        const next = new Set(prev);
+        next.delete(payload.conversationId);
+        return next;
+      });
+    };
+
+    // On every (re)connect, rejoin the current conversation room.
+    // This solves the race condition where the socket connects AFTER the
+    // conversation:join useEffect has already fired with a null socket.
+    const onConnect = () => {
+      const convId = selectedConversationIdRef.current;
+      if (convId) {
+        socket.emit('conversation:join', { conversationId: convId });
+      }
+    };
+
+    socket.on('connect', onConnect);
     socket.on('message:new', onMessage);
-    socket.on('ai_draft:new', onAiDraftNew);
     socket.on('message:delivered', onDelivered);
     socket.on('conversation:read', onConversationRead);
     socket.on('message:reaction', onReaction);
+    socket.on('ai_draft:new', onAiDraftNew);
+    socket.on('ai_draft:generating', onAiDraftGenerating);
+    socket.on('ai_draft:approved', onAiDraftApproved);
+    socket.on('ai_draft:done', onAiDraftDone);
+
+    // If already connected (socket was created on a prior render), join immediately
+    if (socket.connected) onConnect();
 
     return () => {
+      socket.off('connect', onConnect);
       socket.off('message:new', onMessage);
-      socket.off('ai_draft:new', onAiDraftNew);
       socket.off('message:delivered', onDelivered);
       socket.off('conversation:read', onConversationRead);
       socket.off('message:reaction', onReaction);
-      const currentSocket = getSocket();
-      if (currentSocket?.connected) {
-        disconnectSocket();
-      }
+      socket.off('ai_draft:new', onAiDraftNew);
+      socket.off('ai_draft:generating', onAiDraftGenerating);
+      socket.off('ai_draft:approved', onAiDraftApproved);
+      socket.off('ai_draft:done', onAiDraftDone);
+      // Do NOT disconnect here — the socket stays alive for the whole session.
+      // It is only disconnected on unmount of the top-level layout.
     };
-  }, [selectedConversationId, user?.id]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  // Keep ref in sync — handlers read this ref to avoid stale closures
+  useEffect(() => {
+    selectedConversationIdRef.current = selectedConversationId;
+  }, [selectedConversationId]);
 
   // Join/leave conversation socket rooms
   useEffect(() => {
@@ -689,9 +734,13 @@ export default function MessageCenter({ role }: MessageCenterProps) {
             activeMobilePane === 'chat' ? 'block' : 'hidden xl:block'
           }`}
         >
-          {/* Pending Drafts Panel (Floating Widget) */}
-          {role === 'mentor' && pendingDrafts.filter(d => d.originalMessage?.threadId === selectedConversationId).length > 0 && (
-            isDraftsExpanded ? (
+          {/* AI Drafts Panel — always visible for mentors when a real conversation is selected */}
+          {role === 'mentor' && selectedConversationId && !selectedConversationId.startsWith('temp-') && (() => {
+            const conversationDrafts = pendingDrafts.filter(d => d.originalMessage?.threadId === selectedConversationId);
+            const isGenerating = generatingConversationIds.has(selectedConversationId);
+            const draftCount = conversationDrafts.length;
+
+            return isDraftsExpanded ? (
               <div className="absolute bottom-20 right-6 z-20 w-[420px] bg-white/80 backdrop-blur-xl border border-brand-200 shadow-2xl rounded-2xl p-4 overflow-y-auto max-h-[50vh] transition-all animate-in slide-in-from-right-4">
                 <div className="flex items-center justify-between mb-3 px-1">
                   <div className="flex items-center gap-2">
@@ -699,98 +748,112 @@ export default function MessageCenter({ role }: MessageCenterProps) {
                       <Wand2 className="w-4 h-4 text-brand-600" />
                     </div>
                     <h3 className="text-sm font-bold text-slate-800">AI Drafts</h3>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-brand-100 text-brand-700 font-semibold">
+                      {draftCount}
+                    </span>
                   </div>
                   <button onClick={() => setIsDraftsExpanded(false)} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors">
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
                 <div className="space-y-3">
-                  {pendingDrafts.filter(d => d.originalMessage?.threadId === selectedConversationId).map(draft => {
+                  {draftCount === 0 && !isGenerating && (
+                    <p className="text-xs text-center text-slate-400 py-3">No pending drafts for this conversation.</p>
+                  )}
+                  {conversationDrafts.map(draft => {
                     const isEditing = editingDraftId === draft.id;
                     const confidenceColor = draft.confidenceScore >= 0.8 ? 'text-emerald-700 bg-emerald-100/50' : 'text-amber-700 bg-amber-100/50';
-
                     return (
-                    <div key={draft.id} className="bg-white border border-brand-200 rounded-xl p-3 shadow-sm">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-medium text-slate-500">
-                          Replying to: <span className="text-slate-700 italic">"{draft.originalMessage?.messageText}"</span>
-                        </span>
-                        <div className="flex gap-2 items-center">
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${confidenceColor}`}>
-                            {Math.round(draft.confidenceScore * 100)}% Confidence
+                      <div key={draft.id} className="bg-white border border-brand-200 rounded-xl p-3 shadow-sm">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-medium text-slate-500">
+                            Replying to: <span className="text-slate-700 italic">"{draft.originalMessage?.messageText}"</span>
                           </span>
-                          {draft.groundingScore !== undefined && (
-                            <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-indigo-100 text-indigo-700">
-                              {Math.round(draft.groundingScore * 100)}% Grounded
+                          <div className="flex gap-2 items-center">
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${confidenceColor}`}>
+                              {Math.round(draft.confidenceScore * 100)}% Confidence
                             </span>
-                          )}
+                            {draft.groundingScore !== undefined && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-indigo-100 text-indigo-700">
+                                {Math.round(draft.groundingScore * 100)}% Grounded
+                              </span>
+                            )}
+                          </div>
                         </div>
+                        {isEditing ? (
+                          <div className="mt-2">
+                            <textarea
+                              value={draftEditorText}
+                              onChange={(e) => setDraftEditorText(e.target.value)}
+                              className="w-full text-sm resize-none border border-brand-300 rounded-lg p-2 focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                              rows={3}
+                            />
+                            <div className="flex items-center gap-2 mt-2 justify-end">
+                              <button
+                                onClick={() => { setEditingDraftId(null); setDraftEditorText(''); }}
+                                className="text-xs px-3 py-1.5 text-slate-600 hover:bg-slate-100 rounded-md font-medium"
+                                disabled={isApprovingDraft}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={() => handleApproveDraft(draft.id)}
+                                disabled={!draftEditorText.trim() || isApprovingDraft}
+                                className="text-xs px-3 py-1.5 bg-brand-600 text-white hover:bg-brand-700 rounded-md font-medium inline-flex items-center gap-1.5"
+                              >
+                                {isApprovingDraft ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                                Approve & Send
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-1">
+                            <p className="text-sm text-slate-800 whitespace-pre-wrap">{draft.draftContent}</p>
+                            <div className="flex justify-end gap-2 mt-2">
+                              <button
+                                onClick={() => handleRejectDraft(draft.id)}
+                                disabled={isRejectingDraft}
+                                className="text-xs font-medium text-slate-500 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded-md transition-colors"
+                              >
+                                Reject
+                              </button>
+                              <button
+                                onClick={() => { setEditingDraftId(draft.id); setDraftEditorText(draft.draftContent); }}
+                                className="text-xs font-medium text-brand-600 hover:text-brand-700 hover:bg-brand-50 px-2 py-1 rounded-md transition-colors"
+                              >
+                                Review & Edit
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      
-                      {isEditing ? (
-                        <div className="mt-2">
-                          <textarea
-                            value={draftEditorText}
-                            onChange={(e) => setDraftEditorText(e.target.value)}
-                            className="w-full text-sm resize-none border border-brand-300 rounded-lg p-2 focus:ring-2 focus:ring-brand-500 focus:outline-none"
-                            rows={3}
-                          />
-                          <div className="flex items-center gap-2 mt-2 justify-end">
-                            <button
-                              onClick={() => { setEditingDraftId(null); setDraftEditorText(''); }}
-                              className="text-xs px-3 py-1.5 text-slate-600 hover:bg-slate-100 rounded-md font-medium"
-                              disabled={isApprovingDraft}
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              onClick={() => handleApproveDraft(draft.id)}
-                              disabled={!draftEditorText.trim() || isApprovingDraft}
-                              className="text-xs px-3 py-1.5 bg-brand-600 text-white hover:bg-brand-700 rounded-md font-medium inline-flex items-center gap-1.5"
-                            >
-                              {isApprovingDraft ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-                              Approve & Send
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="mt-1">
-                          <p className="text-sm text-slate-800 whitespace-pre-wrap">{draft.draftContent}</p>
-                          <div className="flex justify-end gap-2 mt-2">
-                            <button
-                              onClick={() => handleRejectDraft(draft.id)}
-                              disabled={isRejectingDraft}
-                              className="text-xs font-medium text-slate-500 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded-md transition-colors"
-                            >
-                              Reject
-                            </button>
-                            <button
-                              onClick={() => { setEditingDraftId(draft.id); setDraftEditorText(draft.draftContent); }}
-                              className="text-xs font-medium text-brand-600 hover:text-brand-700 hover:bg-brand-50 px-2 py-1 rounded-md transition-colors"
-                            >
-                              Review & Edit
-                            </button>
-                          </div>
-                        </div>
-                      )}
+                    );
+                  })}
+                  {/* Generating loader row — appears while RAG pipeline is running */}
+                  {isGenerating && (
+                    <div className="flex items-center gap-2.5 bg-brand-50 border border-brand-200 rounded-xl px-3 py-2.5">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-500 shrink-0" />
+                      <span className="text-xs text-brand-700 font-medium">Generating new draft…</span>
                     </div>
-                  );
-                })}
+                  )}
+                </div>
               </div>
-            </div>
             ) : (
-              <button 
+              <button
                 onClick={() => setIsDraftsExpanded(true)}
                 className="absolute bottom-20 right-6 z-20 flex items-center gap-2 bg-brand-600 text-white px-3 py-2 rounded-xl shadow-xl hover:bg-brand-700 transition-all animate-in fade-in zoom-in-95"
               >
                 <ChevronLeft className="w-4 h-4" />
                 <span className="text-xs font-semibold">
-                  {pendingDrafts.filter(d => d.originalMessage?.threadId === selectedConversationId).length} Draft(s)
+                  {draftCount} Draft{draftCount !== 1 ? 's' : ''}
                 </span>
-                <Wand2 className="w-4 h-4" />
+                {isGenerating
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <Wand2 className="w-4 h-4" />
+                }
               </button>
-            )
-          )}
+            );
+          })()}
           <ChatWindow
             selectedConversation={selectedConversation}
             selectedTitle={selectedTitle}
