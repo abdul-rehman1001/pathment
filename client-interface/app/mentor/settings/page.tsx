@@ -1,6 +1,6 @@
 'use client';
 
-import { Loader2, Save, User, Users, Bell, Shield, KeyRound, Sparkles, Palette } from 'lucide-react';
+import { Loader2, Save, User, Users, Bell, Shield, KeyRound, Sparkles, Palette, BookOpen } from 'lucide-react';
 import { useMentorSettings } from '@/lib/hooks/mentor';
 import { PageHeader, TabBar } from '@/components/admin/ui';
 import SecurityTab from '@/components/shared/SecurityTab';
@@ -10,6 +10,7 @@ import { SkillsTab } from '@/components/settings/SkillsTab';
 import { ProfilePhotoField } from '@/components/settings/ProfilePhotoField';
 import { AppearanceTab } from '@/components/settings/AppearanceTab';
 import { NotificationPreferencesTab } from '@/components/settings/NotificationPreferencesTab';
+import { DocumentsTab } from '@/components/settings/DocumentsTab';
 import type { Tab } from '@/components/admin/ui';
 import { PhoneField } from '@/components/shared/PhoneField';
 
@@ -28,6 +29,7 @@ export default function MentorSettings() {
     handleProfileUpdate,
     handleMentorProfileUpdate,
     handleAvailabilityUpdate,
+    handleAutoReplyUpdate,
   } = useMentorSettings();
 
   if (loading) {
@@ -44,6 +46,7 @@ export default function MentorSettings() {
     { id: 'appearance', label: 'Appearance', icon: Palette },
     { id: 'availability', label: 'Availability', icon: Users },
     { id: 'notifications', label: 'Notifications', icon: Bell },
+    { id: 'knowledge', label: 'Knowledge Base', icon: BookOpen },
     { id: 'ai', label: 'AI Connections', icon: KeyRound },
     { id: 'security', label: 'Security', icon: Shield },
   ];
@@ -324,9 +327,16 @@ export default function MentorSettings() {
           {/* Notifications Tab */}
           {activeTab === 'notifications' && <NotificationPreferencesTab role="mentor" />}
 
-          {/* Security Tab */}
+          {/* Knowledge Base Tab */}
+          {activeTab === 'knowledge' && <DocumentsTab />}
+
+          {/* AI Connections Tab */}
           {activeTab === 'ai' && (
-            <AIConnectionsTab />
+            <AIConnectionsTab
+              isMentor={true}
+              autoReplyEnabled={profileData.autoReplyEnabled}
+              onAutoReplyChange={handleAutoReplyUpdate}
+            />
           )}
 
           {activeTab === 'security' && (

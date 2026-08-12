@@ -6,6 +6,7 @@ const {
   ValidationError
 } = require('../utils/errors/errorTypes');
 const schedulingService = require('./schedulingService');
+const logger = require('../utils/logger');
 
 class MessagingService {
   /**
@@ -432,6 +433,16 @@ class MessagingService {
         ],
         transaction
       });
+
+      // [RAG Core] Fire Orchestrator asynchronously if sender is a mentee
+      // (Mentors don't auto-reply to themselves)
+      if (recipientRoleById[recipientIds[0]] === 'mentor') {
+        const { RagFacade } = require('../features/rag');
+        // Fire and forget (do not await)
+        RagFacade.handleNewMessage(hydratedMessage).catch(err => {
+          logger.error('[RAG] Background orchestrator failed', { error: err.message, stack: err.stack });
+        });
+      }
 
       return {
         message: hydratedMessage,

@@ -1,4 +1,5 @@
 const messagingService = require('../services/messagingService');
+const { RagFacade } = require('../features/rag');
 const { successResponse } = require('../utils/responses');
 const { catchAsync } = require('../middlewares/errorHandler');
 const { emitToConversation, emitToUser } = require('../socket');
@@ -157,6 +158,109 @@ exports.searchUsers = catchAsync(async (req, res) => {
   });
 
   res.status(200).json(successResponse('Users fetched successfully', { users }));
+});
+
+// ---------------------------------------------------------------------------
+// RAG & Draft Controllers
+// ---------------------------------------------------------------------------
+
+exports.listPendingDrafts = catchAsync(async (req, res) => {
+  if (req.user.role !== 'mentor') {
+    return res.status(403).json({ success: false, message: 'Only mentors can access drafts' });
+  }
+  const drafts = await RagFacade.listPendingDrafts(req.user.id);
+  res.status(200).json(successResponse('Drafts fetched successfully', { drafts }));
+});
+
+exports.approveDraft = catchAsync(async (req, res) => {
+  const { draftId, finalText } = req.body;
+  if (req.user.role !== 'mentor') {
+    return res.status(403).json({ success: false, message: 'Only mentors can approve drafts' });
+  }
+
+  if (!draftId) {
+    return res.status(400).json({ success: false, message: 'draftId is required' });
+  }
+
+  const text = (finalText || '').trim();
+  if (!text) {
+    return res.status(400).json({ success: false, message: 'Message text cannot be empty' });
+  }
+
+  // Step 1: Prepare approval — creates the learning history record.
+  // Does NOT mark the draft approved yet; that happens after send succeeds.
+  const { originalMessage } = await RagFacade.approveDraft(draftId, req.user.id, text);
+
+  // Step 2: Resolve the conversation from the original message.
+  const conversationId = originalMessage?.threadId;
+  if (!conversationId) {
+    return res.status(422).json({ success: false, message: 'Could not determine conversation for this draft' });
+  }
+
+  // Step 3: Send the message. If this throws, the draft stays 'pending'
+  // and can be retried — no inconsistent approved-but-unsent state.
+  const result = await messagingService.sendMessage(req.user.id, {
+    conversationId,
+    messageText: text,
+  });
+
+  // Step 4: Message sent successfully — now mark draft approved and emit.
+  await RagFacade.markDraftApproved(draftId, req.user.id);
+
+  emitToConversation(result.conversationId, 'message:new', {
+    conversationId: result.conversationId,
+    message: result.message
+  });
+
+  res.status(200).json(successResponse('Draft approved and message sent', { message: result.message }));
+});
+
+exports.rejectDraft = catchAsync(async (req, res) => {
+  if (req.user.role !== 'mentor') {
+    return res.status(403).json({ success: false, message: 'Only mentors can reject drafts' });
+  }
+  const { draftId } = req.params;
+  await RagFacade.rejectDraft(draftId, req.user.id);
+  res.status(200).json(successResponse('Draft rejected', {}));
+});
+
+exports.getMentorDocuments = catchAsync(async (req, res) => {
+  if (req.user.role !== 'mentor') {
+    return res.status(403).json({ success: false, message: 'Only mentors can manage documents' });
+  }
+  const documents = await RagFacade.getMentorDocuments(req.user.id);
+  res.status(200).json(successResponse('Documents fetched successfully', { documents }));
+});
+
+exports.uploadMentorDocument = catchAsync(async (req, res) => {
+  if (req.user.role !== 'mentor') {
+    return res.status(403).json({ success: false, message: 'Only mentors can upload documents' });
+  }
+  if (!req.file) {
+    return res.status(400).json({ success: false, message: 'No file uploaded' });
+  }
+  if (req.file.mimetype !== 'application/pdf') {
+    return res.status(400).json({ success: false, message: 'Only PDF files are supported' });
+  }
+
+  // visibility is validated and sanitised inside ragService.ingestDocument()
+  const job = await RagFacade.ingestDocument(
+    req.user.id,
+    req.file.buffer,
+    req.file.originalname,
+    req.body.visibility
+  );
+
+  res.status(201).json(successResponse('Document queued for ingestion', { document: job }, 201));
+});
+
+exports.deleteMentorDocument = catchAsync(async (req, res) => {
+  if (req.user.role !== 'mentor') {
+    return res.status(403).json({ success: false, message: 'Only mentors can manage documents' });
+  }
+  const { documentId } = req.params;
+  await RagFacade.deleteMentorDocument(documentId, req.user.id);
+  res.status(200).json(successResponse('Document deleted', {}));
 });
 
 module.exports = exports;

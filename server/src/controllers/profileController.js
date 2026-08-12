@@ -42,6 +42,11 @@ class ProfileController {
           // UI reads them to render the toggles. Omitting them made saved prefs
           // load as empty → every toggle showed ON again after a refresh.
           attributes: ['timezone', 'language', 'theme', 'colorTheme', 'preferences', 'emailNotifications', 'pushNotifications']
+        },
+        {
+          model: models.MentorStyleProfile,
+          as: 'styleProfile',
+          required: false
         }
       ]
     });
@@ -60,6 +65,12 @@ class ProfileController {
         const ids = await cohortService.resolveMenteeIds(userId);
         out.mentorProfile.currentMenteeCount = ids.length;
       } catch { /* fall back to the stored value */ }
+    }
+
+    if (out.styleProfile) {
+      out.autoReplyEnabled = out.styleProfile.autoReplyEnabled;
+    } else {
+      out.autoReplyEnabled = false;
     }
 
     res.json(successResponse('Profile retrieved successfully', out));
@@ -470,6 +481,34 @@ await user.update({
         maxMentees: mentorProfile.maxMentees,
         currentMenteeCount: mentorProfile.currentMenteeCount
       }
+    ));
+  });
+  /**
+   * Update mentor auto-reply settings
+   * PATCH /api/profile/mentor/auto-reply
+   */
+  updateAutoReply = catchAsync(async (req, res) => {
+    const userId = req.user.id;
+    const { autoReplyEnabled } = req.body;
+
+    // Verify user is a mentor
+    const user = await models.User.findByPk(userId);
+    if (user.role !== 'mentor') {
+      throw new ForbiddenError('Only mentors can update auto-reply settings');
+    }
+
+    const [styleProfile] = await models.MentorStyleProfile.findOrCreate({ 
+      where: { mentorId: userId },
+      defaults: { mentorId: userId }
+    });
+
+    if (typeof autoReplyEnabled === 'boolean') {
+      await styleProfile.update({ autoReplyEnabled });
+    }
+
+    res.json(successResponse(
+      'Auto-reply settings updated successfully',
+      { autoReplyEnabled: styleProfile.autoReplyEnabled }
     ));
   });
 }

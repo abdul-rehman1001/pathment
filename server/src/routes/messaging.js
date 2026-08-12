@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
+const upload = multer({ storage: multer.memoryStorage() });
 
 const messagingController = require('../controllers/messagingController');
 const { authenticate, authorize } = require('../middlewares/auth');
@@ -22,5 +24,15 @@ router.get('/notifications', messagingController.getNotifications);
 router.post('/notifications/read-all', messagingController.markAllNotificationsRead);
 router.post('/notifications/:notificationId/read', validateParams(messagingSchemas.markNotificationReadParams), messagingController.markNotificationRead);
 router.delete('/notifications/:notificationId', validateParams(messagingSchemas.markNotificationReadParams), messagingController.deleteNotification);
+
+// RAG Drafts
+router.get('/drafts', messagingController.listPendingDrafts);
+router.post('/messages/approve', messagingController.approveDraft);
+router.post('/drafts/:draftId/reject', messagingController.rejectDraft);
+
+// RAG Documents
+router.get('/mentor/documents', messagingController.getMentorDocuments);
+router.post('/mentor/documents', upload.single('file'), messagingController.uploadMentorDocument);
+router.delete('/mentor/documents/:documentId', messagingController.deleteMentorDocument);
 
 module.exports = router;

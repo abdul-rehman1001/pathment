@@ -130,6 +130,10 @@ async function start() {
 
     // Start HTTP + Socket.IO server
     initSocket(server);
+    
+    // Initialize RAG subsystem (Workers & Event Listeners)
+    const { initializeRag } = require('./features/rag');
+    initializeRag();
     if (process.env.NOTIFICATION_SCHEDULER_DISABLED !== 'true') {
       notificationScheduler.start();
     }
