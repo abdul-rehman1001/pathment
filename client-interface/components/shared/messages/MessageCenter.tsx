@@ -46,7 +46,6 @@ export default function MessageCenter({ role }: MessageCenterProps) {
   const [isApprovingDraft, setIsApprovingDraft] = useState(false);
   const [isRejectingDraft, setIsRejectingDraft] = useState(false);
   const [isDraftsExpanded, setIsDraftsExpanded] = useState(true);
-
   const [activeTab, setActiveTab] = useState<'all' | 'unread' | 'archived'>('all');
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -184,23 +183,26 @@ export default function MessageCenter({ role }: MessageCenterProps) {
     const boot = async () => {
       setIsBootstrapping(true);
       try {
-        await loadConversations();
-        if (queryConversationId) {
-          setSelectedConversationId(queryConversationId);
-          await loadMessages(queryConversationId);
-        } else if (participantId) {
+        let list = await loadConversations();
+
+        if (participantId) {
           const conversation = await messagingApi.createDirectConversation(participantId);
-          await loadConversations();
+          list = await loadConversations();
           setSelectedConversationId(conversation?.id || null);
+
           if (conversation?.id) {
             await loadMessages(conversation.id);
             setActiveMobilePane('chat');
+            router.replace(`/${role}/messages?conversationId=${conversation.id}`);
           }
         } else {
-          const initialConversationId = conversations.length > 0 ? conversations[0].id : null;
+          const initialConversationId = queryConversationId || null;
           setSelectedConversationId(initialConversationId);
           if (initialConversationId) {
             await loadMessages(initialConversationId);
+            if (queryConversationId) {
+              setActiveMobilePane('chat');
+            }
           }
         }
         await loadPendingDrafts();
@@ -210,9 +212,9 @@ export default function MessageCenter({ role }: MessageCenterProps) {
         setIsBootstrapping(false);
       }
     };
+
     boot();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [participantId, queryConversationId, role, router]);
 
   const loadPendingDrafts = async () => {
     if (role !== 'mentor') return;
@@ -223,7 +225,6 @@ export default function MessageCenter({ role }: MessageCenterProps) {
       console.error('Failed to load pending drafts', error);
     }
   };
-
   // Load messages on conversation switch with cache fallback (0ms latency switch)
   useEffect(() => {
     if (!selectedConversationId || isBootstrapping) {
@@ -313,7 +314,8 @@ export default function MessageCenter({ role }: MessageCenterProps) {
       );
     };
 
-    const onReaction = (payload: { messageId: string; reactions: MessageReaction[] }) => {
+    const onReaction = (payload: { messageId?: string; reactions?: MessageReaction[] }) => {
+      if (!payload?.messageId) return;
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === payload.messageId
@@ -591,7 +593,6 @@ export default function MessageCenter({ role }: MessageCenterProps) {
       setIsRejectingDraft(false);
     }
   };
-
   const handleArchiveConversation = async (conversationId: string) => {
     const target = conversations.find((c) => c.id === conversationId);
     setConversations((prev) => prev.filter((c) => c.id !== conversationId));
@@ -680,6 +681,7 @@ export default function MessageCenter({ role }: MessageCenterProps) {
             isBootstrapping={isBootstrapping}
           />
         </div>
+
 
         {/* Chat Thread Pane */}
         <div
@@ -789,7 +791,6 @@ export default function MessageCenter({ role }: MessageCenterProps) {
               </button>
             )
           )}
-
           <ChatWindow
             selectedConversation={selectedConversation}
             selectedTitle={selectedTitle}
