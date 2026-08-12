@@ -98,6 +98,8 @@ router.patch('/mentor/availability', profileController.updateMentorAvailability)
  * @access  Private (Mentor only)
  */
 router.patch('/mentor/auto-reply', profileController.updateAutoReply);
+
+/**
  * @route   POST /api/profile/devices
  * @desc    Register this device's push token
  * @access  Private

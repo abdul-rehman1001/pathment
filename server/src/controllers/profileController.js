@@ -514,6 +514,7 @@ await user.update({
       'Auto-reply settings updated successfully',
       { autoReplyEnabled: styleProfile.autoReplyEnabled }
     ));
+  });
 
   /**
    * Register this device for push.
