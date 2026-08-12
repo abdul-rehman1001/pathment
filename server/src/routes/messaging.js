@@ -24,6 +24,9 @@ router.post('/messages', validateBody(messagingSchemas.sendMessage), messagingCo
 router.post('/messages/:messageId/reactions', messagingController.toggleReaction);
 
 router.get('/notifications', messagingController.getNotifications);
+// Must be declared BEFORE any '/notifications/:notificationId' route, or Express
+// would match 'unread-count' as an id.
+router.get('/notifications/unread-count', messagingController.getUnreadNotificationCount);
 router.post('/notifications/read-all', messagingController.markAllNotificationsRead);
 router.post('/notifications/:notificationId/read', validateParams(messagingSchemas.markNotificationReadParams), messagingController.markNotificationRead);
 router.delete('/notifications/:notificationId', validateParams(messagingSchemas.markNotificationReadParams), messagingController.deleteNotification);
