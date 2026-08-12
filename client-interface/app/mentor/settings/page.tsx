@@ -46,7 +46,7 @@ export default function MentorSettings() {
     { id: 'appearance', label: 'Appearance', icon: Palette },
     { id: 'availability', label: 'Availability', icon: Users },
     { id: 'notifications', label: 'Notifications', icon: Bell },
-    { id: 'knowledge', label: 'Knowledge Base', icon: BookOpen },
+    { id: 'replies', label: 'Auto Replies', icon: BookOpen },
     { id: 'ai', label: 'AI Connections', icon: KeyRound },
     { id: 'security', label: 'Security', icon: Shield },
   ];
@@ -71,7 +71,7 @@ export default function MentorSettings() {
             <div className="space-y-6">
               <ProfilePhotoField />
               <h2 className="text-slate-900">Personal Information</h2>
-              
+
               <div className="grid md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-slate-700 mb-2 text-sm font-medium">First Name</label>
@@ -250,17 +250,16 @@ export default function MentorSettings() {
                       {availabilitySettings.currentMenteeCount} of {availabilitySettings.maxMentees} mentees
                     </div>
                   </div>
-                  <div className={`px-4 py-2 rounded-lg font-medium ${
-                    availabilitySettings.isAcceptingMentees 
-                      ? 'bg-green-100 text-green-700' 
-                      : 'bg-red-100 text-red-700'
-                  }`}>
+                  <div className={`px-4 py-2 rounded-lg font-medium ${availabilitySettings.isAcceptingMentees
+                    ? 'bg-green-100 text-green-700'
+                    : 'bg-red-100 text-red-700'
+                    }`}>
                     {availabilitySettings.isAcceptingMentees ? 'Available' : 'Unavailable'}
                   </div>
                 </div>
-                
+
                 <div className="w-full bg-card rounded-full h-3 overflow-hidden">
-                  <div 
+                  <div
                     className="h-full bg-brand-600 transition-all duration-300"
                     style={{
                       width: `${Math.min(100, (availabilitySettings.currentMenteeCount / Math.max(1, availabilitySettings.maxMentees)) * 100)}%`
@@ -281,9 +280,9 @@ export default function MentorSettings() {
                   <input
                     type="checkbox"
                     checked={availabilitySettings.isAcceptingMentees}
-                    onChange={(e) => setAvailabilitySettings({ 
-                      ...availabilitySettings, 
-                      isAcceptingMentees: e.target.checked 
+                    onChange={(e) => setAvailabilitySettings({
+                      ...availabilitySettings,
+                      isAcceptingMentees: e.target.checked
                     })}
                     className="sr-only peer"
                   />
@@ -301,8 +300,8 @@ export default function MentorSettings() {
                   <input
                     type="number"
                     value={availabilitySettings.maxMentees}
-                    onChange={(e) => setAvailabilitySettings({ 
-                      ...availabilitySettings, 
+                    onChange={(e) => setAvailabilitySettings({
+                      ...availabilitySettings,
                       maxMentees: Math.max(1, parseInt(e.target.value) || 1)
                     })}
                     min="1"
@@ -327,16 +326,17 @@ export default function MentorSettings() {
           {/* Notifications Tab */}
           {activeTab === 'notifications' && <NotificationPreferencesTab role="mentor" />}
 
-          {/* Knowledge Base Tab */}
-          {activeTab === 'knowledge' && <DocumentsTab />}
-
-          {/* AI Connections Tab */}
-          {activeTab === 'ai' && (
-            <AIConnectionsTab
-              isMentor={true}
+          {/* replies Base Tab */}
+          {activeTab === 'replies' && (
+            <DocumentsTab
               autoReplyEnabled={profileData.autoReplyEnabled}
               onAutoReplyChange={handleAutoReplyUpdate}
             />
+          )}
+
+          {/* AI Connections Tab */}
+          {activeTab === 'ai' && (
+            <AIConnectionsTab isMentor={true} />
           )}
 
           {activeTab === 'security' && (

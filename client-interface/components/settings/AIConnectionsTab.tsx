@@ -29,7 +29,6 @@ const FEATURE_META: { key: AIFeature; label: string; hint: string }[] = [
   { key: 'rag_generation', label: 'RAG Reply Drafts', hint: 'Generate drafted mentor replies' },
   { key: 'rag_grounding', label: 'RAG Fact-Checking', hint: 'Verify drafted replies' },
   { key: 'rag_embedding', label: 'RAG Vectors (Gemini Only)', hint: 'Generate embeddings for documents' },
-  { key: 'auto_reply', label: 'Automatic Replies', hint: 'Draft check-ins and responses automatically using AI.' },
 ];
 
 const STATUS_META: Record<AIKeyStatus, { label: string; cls: string; Icon: typeof CheckCircle2 }> = {
@@ -42,11 +41,9 @@ const field = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus
 
 interface AIConnectionsTabProps {
   isMentor?: boolean;
-  autoReplyEnabled?: boolean;
-  onAutoReplyChange?: (enabled: boolean) => void;
 }
 
-export default function AIConnectionsTab({ isMentor, autoReplyEnabled, onAutoReplyChange }: AIConnectionsTabProps = {}) {
+export default function AIConnectionsTab({ isMentor }: AIConnectionsTabProps = {}) {
   const { connections, routing, quota, loading, busyId, addKey, removeKey, testKey, setRoute, setQuotaLimit } = useAIConnections();
   const [adding, setAdding] = useState(false);
   const [editingQuota, setEditingQuota] = useState(false);
@@ -171,26 +168,15 @@ export default function AIConnectionsTab({ isMentor, autoReplyEnabled, onAutoRep
                 <p className="text-sm font-medium text-slate-800">{f.label}</p>
                 <p className="text-xs text-slate-400">{f.hint}</p>
               </div>
-              {f.key === 'auto_reply' && isMentor ? (
-                <select
-                  value={autoReplyEnabled ? 'on' : 'off'}
-                  onChange={(e) => onAutoReplyChange?.(e.target.value === 'on')}
-                  className="border border-slate-300 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 w-[120px]"
-                >
-                  <option value="off">Off</option>
-                  <option value="on">On</option>
-                </select>
-              ) : (
-                <select
-                  value={routing[f.key as Exclude<AIFeature, 'auto_reply'>] ?? ''}
-                  onChange={(e) => setRoute(f.key as Exclude<AIFeature, 'auto_reply'>, e.target.value || null)}
-                  disabled={connections.length === 0}
-                  className="border border-slate-300 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 max-w-[160px] disabled:opacity-50"
-                >
-                  <option value="">Off</option>
-                  {connections.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-                </select>
-              )}
+              <select
+                value={routing[f.key as Exclude<AIFeature, 'auto_reply'>] ?? ''}
+                onChange={(e) => setRoute(f.key as Exclude<AIFeature, 'auto_reply'>, e.target.value || null)}
+                disabled={connections.length === 0}
+                className="border border-slate-300 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 max-w-[160px] disabled:opacity-50"
+              >
+                <option value="">Off</option>
+                {connections.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+              </select>
             </div>
           ))}
         </div>

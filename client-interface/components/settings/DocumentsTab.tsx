@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { UploadCloud, FileText, Trash2, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { UploadCloud, FileText, Trash2, Loader2, CheckCircle2, AlertCircle, Bot } from 'lucide-react';
 import { messagingApi } from '@/lib/services/messaging-api';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/admin/ui';
@@ -14,13 +14,29 @@ interface Document {
   createdAt: string;
 }
 
-export function DocumentsTab() {
+interface DocumentsTabProps {
+  autoReplyEnabled?: boolean;
+  onAutoReplyChange?: (enabled: boolean) => Promise<void> | void;
+}
+
+export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: DocumentsTabProps = {}) {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [deleteDocumentId, setDeleteDocumentId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [toggling, setToggling] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleToggleAutoReply = async () => {
+    if (!onAutoReplyChange) return;
+    setToggling(true);
+    try {
+      await onAutoReplyChange(!autoReplyEnabled);
+    } finally {
+      setToggling(false);
+    }
+  };
 
   const fetchDocuments = async () => {
     try {
@@ -105,6 +121,58 @@ export function DocumentsTab() {
         </p>
       </div>
 
+      {/* AI Auto-Reply Toggle Card */}
+      <div className="p-4 sm:p-5 rounded-xl border border-slate-200 bg-white">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex gap-3.5">
+            <div className={`p-2.5 rounded-xl shrink-0 ${
+              autoReplyEnabled ? 'bg-brand-50 text-brand-600' : 'bg-slate-100 text-slate-500'
+            }`}>
+              <Bot className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-medium text-sm sm:text-base text-slate-900">
+                  AI Automatic Replies
+                </h3>
+                <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${
+                  autoReplyEnabled 
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                    : 'bg-slate-100 text-slate-600 border border-slate-200'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${autoReplyEnabled ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                  {autoReplyEnabled ? 'On' : 'Off'}
+                </span>
+              </div>
+              <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+                {autoReplyEnabled 
+                  ? 'High-confidence AI drafts will automatically respond to mentee queries using your uploaded documents and context.' 
+                  : 'AI drafts will wait for your review in the draft panel before sending to mentees.'}
+              </p>
+            </div>
+          </div>
+
+          {/* Standard Toggle Switch */}
+          <button
+            type="button"
+            onClick={handleToggleAutoReply}
+            disabled={toggling}
+            aria-label="Toggle AI Automatic Replies"
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 disabled:opacity-50 ${
+              autoReplyEnabled ? 'bg-brand-600' : 'bg-slate-200'
+            }`}
+          >
+            <span
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out flex items-center justify-center ${
+                autoReplyEnabled ? 'translate-x-5' : 'translate-x-0'
+              }`}
+            >
+              {toggling && <Loader2 className="w-3 h-3 animate-spin text-slate-400" />}
+            </span>
+          </button>
+        </div>
+      </div>
+
       {/* Upload Dropzone */}
       <div
         onDragOver={(e) => e.preventDefault()}
@@ -146,34 +214,36 @@ export function DocumentsTab() {
         ) : (
           <div className="space-y-3">
             {documents.map((doc) => (
-              <div key={doc.id} className="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-xl">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 bg-brand-50 rounded-lg">
-                    <FileText className="w-6 h-6 text-brand-600" />
+              <div key={doc.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 sm:p-4 bg-white border border-slate-200 rounded-xl min-w-0">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="p-2.5 sm:p-3 bg-brand-50 rounded-lg shrink-0">
+                    <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-brand-600" />
                   </div>
-                  <div>
-                    <h4 className="text-slate-900 font-medium text-sm">{doc.fileName}</h4>
-                    <p className="text-slate-500 text-xs mt-1">
+                  <div className="min-w-0 flex-1">
+                    <h4 className="text-slate-900 font-medium text-sm truncate" title={doc.fileName}>
+                      {doc.fileName}
+                    </h4>
+                    <p className="text-slate-500 text-xs mt-0.5">
                       Uploaded on {new Date(doc.createdAt).toLocaleDateString()}
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-4">
+                <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
                   {doc.status === 'processing' && (
-                    <span className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-700 rounded-full text-xs font-medium">
+                    <span className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-700 rounded-full text-xs font-medium">
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       Processing
                     </span>
                   )}
                   {doc.status === 'completed' && (
-                    <span className="flex items-center gap-1.5 px-3 py-1 bg-green-50 text-green-700 rounded-full text-xs font-medium">
+                    <span className="flex items-center gap-1.5 px-2.5 py-1 bg-green-50 text-green-700 rounded-full text-xs font-medium">
                       <CheckCircle2 className="w-3.5 h-3.5" />
                       Ready
                     </span>
                   )}
                   {doc.status === 'failed' && (
-                    <span className="flex items-center gap-1.5 px-3 py-1 bg-red-50 text-red-700 rounded-full text-xs font-medium" title={doc.errorMessage}>
+                    <span className="flex items-center gap-1.5 px-2.5 py-1 bg-red-50 text-red-700 rounded-full text-xs font-medium" title={doc.errorMessage}>
                       <AlertCircle className="w-3.5 h-3.5" />
                       Failed
                     </span>
@@ -181,7 +251,8 @@ export function DocumentsTab() {
 
                   <button
                     onClick={() => setDeleteDocumentId(doc.id)}
-                    className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    className="p-1.5 sm:p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    title="Delete document"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
