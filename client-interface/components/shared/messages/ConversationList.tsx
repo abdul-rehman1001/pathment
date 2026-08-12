@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Image from 'next/image';
-import { Archive, ArchiveRestore, Filter, MessageSquare, MoreVertical, RefreshCw, Search, Trash2 } from 'lucide-react';
+import { Archive, ArchiveRestore, Filter, MessageSquare, MoreVertical, RefreshCw, Search, Trash2, Check, CheckCheck } from 'lucide-react';
 
 import type { ConversationSummary, SearchableUser } from '@/lib/types/messaging';
 import UserSearchCombobox from './UserSearchCombobox';
@@ -286,8 +286,31 @@ export default function ConversationList({
                     </div>
                   </div>
                   <div className="flex items-center justify-between gap-2">
-                    <p className={`text-xs truncate ${hasUnread ? 'font-medium text-slate-800 dark:text-slate-200' : 'text-slate-500 dark:text-slate-400'}`}>
-                      {conversation.lastMessage?.messageText || 'No messages yet'}
+                    <p className={`text-xs truncate flex items-center gap-1 ${hasUnread ? 'font-medium text-slate-800 dark:text-slate-200' : 'text-slate-500 dark:text-slate-400'}`}>
+                      {conversation.lastMessage?.senderId && conversation.lastMessage.senderId !== participant?.id && (() => {
+                        const isRead = Boolean(conversation.lastMessage.isRead || conversation.lastMessage.readAt);
+                        const isDelivered = Boolean(conversation.lastMessage.deliveredAt);
+                        if (isRead) {
+                          return (
+                            <span title="Seen" className="inline-flex shrink-0">
+                              <CheckCheck className="w-3.5 h-3.5 text-sky-500" />
+                            </span>
+                          );
+                        }
+                        if (isDelivered) {
+                          return (
+                            <span title="Delivered" className="inline-flex shrink-0">
+                              <CheckCheck className="w-3.5 h-3.5 text-slate-400" />
+                            </span>
+                          );
+                        }
+                        return (
+                          <span title="Sent" className="inline-flex shrink-0">
+                            <Check className="w-3.5 h-3.5 text-slate-400" />
+                          </span>
+                        );
+                      })()}
+                      <span className="truncate">{conversation.lastMessage?.messageText || 'No messages yet'}</span>
                     </p>
                     {hasUnread && (
                       <span className="min-w-4 h-4 px-1 rounded-full bg-brand-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0">

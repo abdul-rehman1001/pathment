@@ -138,17 +138,41 @@ export default function MessageItem({
               {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </span>
 
-            {isMine && (
-              <span className="inline-flex" title={message.id.startsWith('temp-') ? 'Sending...' : (read ? 'Seen' : 'Sent')}>
-                {message.id.startsWith('temp-') ? (
-                  <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin self-center" />
-                ) : read ? (
-                  <CheckCheck className="w-3.5 h-3.5 text-sky-300" aria-label="Seen" />
-                ) : (
+            {isMine && (() => {
+              const isTemp = message.id.startsWith('temp-');
+              const isRead = Boolean(message.isRead || message.readAt);
+              const isDelivered = Boolean(message.deliveredAt);
+
+              if (isTemp) {
+                return (
+                  <span className="inline-flex" title="Sending...">
+                    <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin self-center" />
+                  </span>
+                );
+              }
+
+              if (isRead) {
+                return (
+                  <span className="inline-flex" title="Seen">
+                    <CheckCheck className="w-3.5 h-3.5 text-sky-300" aria-label="Seen" />
+                  </span>
+                );
+              }
+
+              if (isDelivered) {
+                return (
+                  <span className="inline-flex" title="Delivered">
+                    <CheckCheck className="w-3.5 h-3.5 text-white/70" aria-label="Delivered" />
+                  </span>
+                );
+              }
+
+              return (
+                <span className="inline-flex" title="Sent">
                   <Check className="w-3.5 h-3.5 text-white/60" aria-label="Sent" />
-                )}
-              </span>
-            )}
+                </span>
+              );
+            })()}
           </div>
         </div>
 

@@ -102,4 +102,42 @@ export const messagingApi = {
     const response = await apiClient.get<any>(`/messaging/users/search?${params.toString()}`);
     return response.data?.users || [];
   },
+
+  async listPendingDrafts(): Promise<any[]> {
+    const response = await apiClient.get<any>('/messaging/drafts');
+    return response.data?.drafts || [];
+  },
+
+  async approveDraft(draftId: string, finalText: string): Promise<ChatMessage> {
+    const response = await apiClient.post<any>('/messaging/messages/approve', { draftId, finalText });
+    return response.data?.message;
+  },
+
+  async rejectDraft(draftId: string): Promise<void> {
+    await apiClient.post(`/messaging/drafts/${draftId}/reject`, {});
+  },
+
+  // Mentor RAG Documents
+  async getMentorDocuments(): Promise<any[]> {
+    const response = await apiClient.get<any>('/messaging/mentor/documents');
+    return response.data?.documents || [];
+  },
+
+  async uploadMentorDocument(file: File, programId?: string, visibility = 'mentor'): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (programId) formData.append('programId', programId);
+    formData.append('visibility', visibility);
+
+    const response = await apiClient.post<any>('/messaging/mentor/documents', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data?.document;
+  },
+
+  async deleteMentorDocument(documentId: string): Promise<void> {
+    await apiClient.delete(`/messaging/mentor/documents/${documentId}`);
+  },
 };
