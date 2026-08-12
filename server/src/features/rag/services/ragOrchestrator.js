@@ -21,6 +21,11 @@ async function handleNewMessage(message) {
       defaults: { tone: { brevity: 0.5, formality: 0.5 }, autoReplyEnabled: false }
     });
 
+    if (!styleProfile.autoReplyEnabled) {
+      logger.info('[RAG] Skipping — mentor has auto-replies disabled', { mentorId });
+      return;
+    }
+
     // ── 2. Strict BYOK key resolution ────────────────────────────────────
     const geminiKey = await resolveGeminiKey(mentorId);
     const groqConfig = await aiConnectionService.resolveActiveConfig('rag_generation', mentorId);
@@ -34,7 +39,7 @@ async function handleNewMessage(message) {
       return;
     }
 
-    // Keys verified — NOW safe to tell the mentor UI that generation is starting.
+    // Auto-reply enabled & keys verified — NOW safe to tell mentor UI that generation is starting.
     emitToUser(mentorId, 'ai_draft:generating', { conversationId, messageId });
 
     logger.info('[RAG] Starting pipeline', { mentorId, menteeId, query: query?.substring(0, 80) });
