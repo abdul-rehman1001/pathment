@@ -118,11 +118,18 @@ async function down() {
   console.log('✓ Rollback 091 complete');
 }
 
-const rollback = process.argv.includes('--rollback');
+// Guarded, because the runner requires this file to reach up(). Unguarded, the
+// require itself ran the migration and then exited the process, so every later
+// migration in the run was silently skipped.
+if (require.main === module) {
+  const rollback = process.argv.includes('--rollback');
 
-(rollback ? down() : up())
-  .then(() => process.exit(0))
-  .catch((error) => {
-    console.error('✗ Migration 091 failed:', error.message);
-    process.exit(1);
-  });
+  (rollback ? down() : up())
+    .then(() => process.exit(0))
+    .catch((error) => {
+      console.error('✗ Migration 091 failed:', error.message);
+      process.exit(1);
+    });
+}
+
+module.exports = { up, down };
