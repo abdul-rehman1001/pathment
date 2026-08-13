@@ -11,10 +11,6 @@
  *
  * On what is deliberately NOT in here:
  *
- *   - Estimated hours. Every roadmap task in the database is recorded as 10
- *     hours, so weighting by effort would be weighting by a constant: it would
- *     change no ranking and would only imply a precision that is not there.
- *     When real estimates start arriving, effort becomes a seventh dimension.
  *   - Impact, independence and learning value. There is nowhere to read them
  *     from. A dimension with no data is not a cautious zero, it is a fabricated
  *     number, and it would move real rankings.
@@ -25,32 +21,37 @@ const DIMENSIONS = Object.freeze({
   progress: {
     label: 'Progress',
     question: 'Are they where the programme expects them to be?',
-    weight: 25
+    weight: 22
   },
   output: {
     label: 'Output',
     question: 'How much, and how hard, was the work they finished?',
-    weight: 20
+    weight: 17
+  },
+  effort: {
+    label: 'Effort',
+    question: 'How much time-weighted work have they taken on?',
+    weight: 15
   },
   quality: {
     label: 'Quality',
     question: 'How well was it done, judged against their own mentor?',
-    weight: 20
+    weight: 18
   },
   reliability: {
     label: 'Reliability',
     question: 'Do they deliver by the date they agreed?',
-    weight: 15
+    weight: 13
   },
   attendance: {
     label: 'Attendance',
     question: 'Do they turn up to their clan reviews?',
-    weight: 10
+    weight: 8
   },
   consistency: {
     label: 'Consistency',
     question: 'Do they keep going week to week?',
-    weight: 10
+    weight: 7
   }
 });
 
@@ -65,6 +66,35 @@ const DIFFICULTY_WEIGHT = Object.freeze({
 });
 
 const DEFAULT_DIFFICULTY_WEIGHT = DIFFICULTY_WEIGHT.medium;
+
+/**
+ * How long a piece of work was expected to take.
+ *
+ * Two generations of roadmap authoring are in the database and they are
+ * mutually exclusive: older tasks carry `estimated_hours`, newer linear roadmap
+ * steps carry an `effort` t-shirt size, and nothing carries both or neither.
+ * Every assigned task has one of them, so effort is the best covered signal
+ * there is, but only if both are read onto the same scale.
+ *
+ * The sizes are mapped onto the hour values actually in use (1, 2, 4, 5, 8, 12)
+ * rather than an invented curve, so a size and an estimate mean the same thing.
+ */
+const EFFORT_HOURS = Object.freeze({
+  xs: 1,
+  s: 2,
+  m: 4,
+  l: 8,
+  xl: 12
+});
+
+/** Hours for a task, from whichever field it happens to carry. */
+function effortHours(task) {
+  const stated = Number(task?.estimatedHours ?? task?.estimated_hours);
+  if (Number.isFinite(stated) && stated > 0) return stated;
+
+  const size = String(task?.effort || '').toLowerCase();
+  return EFFORT_HOURS[size] ?? null;
+}
 
 /**
  * Nobody is ranked until they have done enough for a ranking to mean anything.
@@ -194,6 +224,8 @@ module.exports = {
   DIMENSIONS,
   DIMENSION_KEYS,
   DIFFICULTY_WEIGHT,
+  EFFORT_HOURS,
+  effortHours,
   ELIGIBILITY,
   difficultyWeight,
   resolveWeights,

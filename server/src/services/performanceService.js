@@ -4,6 +4,7 @@ const cohortService = require('./cohortService');
 const scoringSettingsService = require('./scoringSettingsService');
 const {
   DIFFICULTY_WEIGHT,
+  EFFORT_HOURS,
   ELIGIBILITY,
   attendanceScore,
   band,
@@ -124,6 +125,43 @@ class PerformanceService {
     return out;
   }
 
+  /**
+   * Expected hours of finished work per mentee, in one query.
+   *
+   * Two generations of roadmap authoring sit in this table and they are
+   * mutually exclusive: older tasks carry `estimated_hours`, newer linear
+   * roadmap steps carry an `effort` size. Every assigned task has one of them,
+   * so both are read onto the same hour scale here rather than one of them
+   * being silently worth nothing.
+   */
+  async effortHours(menteeIds) {
+    const out = {};
+    if (!menteeIds.length) return out;
+
+    const sizeCase = Object.entries(EFFORT_HOURS)
+      .map(([size, hours]) => `WHEN '${size}' THEN ${hours}`)
+      .join(' ');
+
+    const [rows] = await sequelize.query(
+      `SELECT a.mentee_id,
+              COALESCE(SUM(
+                COALESCE(
+                  rt.estimated_hours,
+                  CASE lower(rt.effort) ${sizeCase} ELSE NULL END
+                )
+              ), 0)::float AS hours
+         FROM assigned_tasks a
+         JOIN roadmap_tasks rt ON rt.id = a.roadmap_task_id
+        WHERE a.mentee_id IN (:ids)
+          AND a.status = 'completed'
+        GROUP BY a.mentee_id`,
+      { replacements: { ids: menteeIds } }
+    );
+
+    for (const row of rows) out[row.mentee_id] = Number(row.hours) || 0;
+    return out;
+  }
+
   /** Difficulty-weighted count of finished work. */
   weightedOutput(row) {
     return (
@@ -158,21 +196,30 @@ class PerformanceService {
     const ids = [...new Set(menteeIds)].filter(Boolean);
     if (!ids.length) return { weights: {}, disabled: [], mentees: [] };
 
-    const [{ weights, disabled, disabledBy }, preloads, attendance, activeWeeks, mentorAvgs, mentorOf] =
-      await Promise.all([
-        scoringSettingsService.effectiveWeights(clanId),
-        cohortService.preloadMenteeData(ids),
-        this.attendanceCounts(ids),
-        this.consistencyCounts(ids),
-        this.mentorAverages(ids),
-        this.gradingMentors(ids)
-      ]);
+    const [
+      { weights, disabled, disabledBy },
+      preloads,
+      attendance,
+      activeWeeks,
+      mentorAvgs,
+      mentorOf,
+      hoursDone
+    ] = await Promise.all([
+      scoringSettingsService.effectiveWeights(clanId),
+      cohortService.preloadMenteeData(ids),
+      this.attendanceCounts(ids),
+      this.consistencyCounts(ids),
+      this.mentorAverages(ids),
+      this.gradingMentors(ids),
+      this.effortHours(ids)
+    ]);
 
     const rows = (await Promise.all(ids.map((id) => cohortService.buildMenteeRow(id, preloads))))
       .filter(Boolean);
 
     // Peer context, computed once for the whole group.
     const outputs = rows.map((r) => this.weightedOutput(r));
+    const efforts = rows.map((r) => hoursDone[r.id] || 0);
     const ratings = rows.map((r) => Number(r.avgRating) || 0).filter((n) => n > 0);
     const peerAvgRating = ratings.length
       ? ratings.reduce((a, b) => a + b, 0) / ratings.length
@@ -190,6 +237,12 @@ class PerformanceService {
 
       // Output: how much finished work, weighted by difficulty, against peers.
       const output = this.percentile(this.weightedOutput(row), outputs);
+
+      // Effort: expected hours of finished work, against the clan. Deliberately
+      // the ESTIMATE rather than time anybody logged, so the dimension rewards
+      // taking on bigger work and never rewards being slow at small work.
+      const effortDone = hoursDone[row.id] ?? null;
+      const effort = effortDone === null ? null : this.percentile(effortDone, efforts);
 
       // Quality: their rating, divided by their own mentor's generosity.
       const raw = Number(row.avgRating) || 0;
@@ -214,7 +267,15 @@ class PerformanceService {
         100
       );
 
-      const scores = { progress, output, quality, reliability, attendance: attended, consistency };
+      const scores = {
+        progress,
+        output,
+        effort,
+        quality,
+        reliability,
+        attendance: attended,
+        consistency
+      };
       const { score, parts, covered } = combine(scores, weights);
 
       // Eligibility is about having enough evidence, not about being good.
@@ -248,6 +309,7 @@ class PerformanceService {
           avgRating: raw || null,
           mentorAvgRating: mentorAvg ? Math.round(mentorAvg * 100) / 100 : null,
           attendance: tally,
+          effortHours: Math.round((hoursDone[row.id] || 0) * 10) / 10,
           activeWeeks: activeWeeks[row.id] || 0,
           weeksEnrolled: weeksIn,
           risk: row.risk

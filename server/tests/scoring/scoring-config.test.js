@@ -8,12 +8,19 @@
  */
 
 const {
+  DIMENSIONS,
+  DIMENSION_KEYS,
   attendanceScore,
+  effortHours,
   band,
   combine,
   difficultyWeight,
   resolveWeights
 } = require('../../src/config/scoring');
+
+// Derived, never hardcoded: retuning a weight is a product decision and should
+// not break a test that is about the redistribution rule.
+const DEFAULT_TOTAL = DIMENSION_KEYS.reduce((sum, k) => sum + DIMENSIONS[k].weight, 0);
 
 describe('resolveWeights', () => {
   it('adds up to 100 by default', () => {
@@ -36,8 +43,10 @@ describe('resolveWeights', () => {
     const base = resolveWeights();
     const without = resolveWeights({}, ['attendance']);
 
-    // Progress was 25 of 100; with attendance's 10 removed it is 25 of 90.
-    expect(Math.round(without.progress)).toBe(Math.round((25 / 90) * 100));
+    const progress = DIMENSIONS.progress.weight;
+    const remaining = DEFAULT_TOTAL - DIMENSIONS.attendance.weight;
+
+    expect(Math.round(without.progress)).toBe(Math.round((progress / remaining) * 100));
     expect(without.progress).toBeGreaterThan(base.progress);
   });
 
@@ -56,14 +65,7 @@ describe('resolveWeights', () => {
   });
 
   it('returns nothing when everything is switched off, rather than dividing by zero', () => {
-    const w = resolveWeights({}, [
-      'progress',
-      'output',
-      'quality',
-      'reliability',
-      'attendance',
-      'consistency'
-    ]);
+    const w = resolveWeights({}, [...DIMENSION_KEYS]);
     expect(w).toEqual({});
   });
 });
@@ -98,7 +100,7 @@ describe('combine', () => {
 
   it('reports how much of the score it could actually cover', () => {
     const { covered } = combine({ progress: 80, output: 70 }, weights);
-    expect(covered).toBe(45); // progress 25 + output 20
+    expect(covered).toBe(DIMENSIONS.progress.weight + DIMENSIONS.output.weight);
   });
 
   it('explains itself: every part carries its share and what it contributed', () => {
@@ -168,5 +170,35 @@ describe('band', () => {
 
   it('says so plainly when there is not enough to judge', () => {
     expect(band(null)).toBe('Not enough yet');
+  });
+});
+
+describe('effortHours', () => {
+  it('prefers a stated estimate', () => {
+    expect(effortHours({ estimatedHours: 5 })).toBe(5);
+  });
+
+  it('reads the snake case column too, since queries return raw rows', () => {
+    expect(effortHours({ estimated_hours: 12 })).toBe(12);
+  });
+
+  it('falls back to the t-shirt size, which is what most tasks actually carry', () => {
+    // Production splits these: older tasks have hours, newer linear roadmap
+    // steps have a size, and nothing has both. Reading only one would make
+    // two thirds of all finished work count for nothing.
+    expect(effortHours({ effort: 's' })).toBe(2);
+    expect(effortHours({ effort: 'l' })).toBe(8);
+    expect(effortHours({ effort: 'XL' })).toBe(12);
+  });
+
+  it('rises with the size', () => {
+    const sizes = ['xs', 's', 'm', 'l', 'xl'].map((effort) => effortHours({ effort }));
+    expect(sizes).toEqual([...sizes].sort((a, b) => a - b));
+  });
+
+  it('is null when a task says nothing about its size, so the dimension drops out', () => {
+    expect(effortHours({})).toBeNull();
+    expect(effortHours({ effort: 'enormous' })).toBeNull();
+    expect(effortHours({ estimatedHours: 0 })).toBeNull();
   });
 });

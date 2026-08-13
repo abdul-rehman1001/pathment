@@ -3,6 +3,7 @@ export { useMentorDashboard } from './useMentorDashboard';
 export type { UseMentorDashboardReturn } from './useMentorDashboard';
 
 export { useMentorCohort } from './useMentorCohort';
+export { useClanPerformance } from './useClanPerformance';
 export type {
   UseMentorCohortReturn,
   CohortMentee,
