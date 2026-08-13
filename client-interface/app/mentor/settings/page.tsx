@@ -46,7 +46,7 @@ export default function MentorSettings() {
     { id: 'appearance', label: 'Appearance', icon: Palette },
     { id: 'availability', label: 'Availability', icon: Users },
     { id: 'notifications', label: 'Notifications', icon: Bell },
-    { id: 'replies', label: 'Auto Replies', icon: BookOpen },
+    { id: 'replies', label: 'Auto Replies', icon: BookOpen, isNew: true },
     { id: 'ai', label: 'AI Connections', icon: KeyRound },
     { id: 'security', label: 'Security', icon: Shield },
   ];

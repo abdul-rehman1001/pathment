@@ -4,6 +4,7 @@ export type { UseMentorDashboardReturn } from './useMentorDashboard';
 
 export { useMentorCohort } from './useMentorCohort';
 export { useClanPerformance } from './useClanPerformance';
+export { useAutoReply } from './useAutoReply';
 export type {
   UseMentorCohortReturn,
   CohortMentee,

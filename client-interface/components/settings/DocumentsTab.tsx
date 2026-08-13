@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { UploadCloud, FileText, Trash2, Loader2, CheckCircle2, AlertCircle, Bot, BookOpenCheck, HelpCircle, Lightbulb } from 'lucide-react';
+import { UploadCloud, FileText, Trash2, Loader2, CheckCircle2, AlertCircle, Bot, BookOpenCheck, HelpCircle, Lightbulb, Circle, KeyRound, Sparkles, Lock } from 'lucide-react';
+import { useAutoReply } from '@/lib/hooks/mentor';
 import { messagingApi } from '@/lib/services/messaging-api';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/admin/ui';
@@ -19,7 +20,21 @@ interface DocumentsTabProps {
   onAutoReplyChange?: (enabled: boolean) => Promise<void> | void;
 }
 
+/** The icon for each setup step, so the list reads at a glance. */
+const STEP_ICON: Record<string, typeof KeyRound> = {
+  key: KeyRound,
+  documents: FileText,
+  style: Sparkles,
+};
+
 export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: DocumentsTabProps = {}) {
+  // Readiness comes from the server, which also enforces it. The toggle is not
+  // a toggle until auto reply would actually work: switching it on early would
+  // leave a mentee answered out of an empty knowledge base, under a name they
+  // trust.
+  const { status, refetch: refetchStatus } = useAutoReply();
+  const canEnable = status?.canEnable ?? false;
+  const steps = status?.steps ?? [];
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -30,9 +45,18 @@ export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: Do
 
   const handleToggleAutoReply = async () => {
     if (!onAutoReplyChange) return;
+
+    // Turning it ON needs the prerequisites. Turning it OFF is always allowed:
+    // somebody must be able to stop it whatever state their setup is in.
+    if (!autoReplyEnabled && !canEnable) {
+      toast.error('Finish the setup below first');
+      return;
+    }
+
     setToggling(true);
     try {
       await onAutoReplyChange(!autoReplyEnabled);
+      await refetchStatus();
     } finally {
       setToggling(false);
     }
@@ -150,13 +174,16 @@ export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: Do
             </div>
           </div>
 
-          {/* Standard Toggle Switch */}
+          {/* The switch is locked until the setup below is done. */}
           <button
             type="button"
             onClick={handleToggleAutoReply}
-            disabled={toggling}
+            disabled={toggling || (!autoReplyEnabled && !canEnable)}
             aria-label="Toggle AI Automatic Replies"
-            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 disabled:opacity-50 ${autoReplyEnabled ? 'bg-brand-600' : 'bg-slate-200'
+            title={!autoReplyEnabled && !canEnable ? 'Finish the setup below first' : undefined}
+            className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 ${
+              !autoReplyEnabled && !canEnable ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+            } ${autoReplyEnabled ? 'bg-brand-600' : 'bg-slate-200'
               }`}
           >
             <span
@@ -168,6 +195,67 @@ export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: Do
           </button>
         </div>
       </div>
+
+
+      {/* What auto reply needs, in the order it has to happen. Shown while
+          anything is outstanding: a locked switch with no explanation is the
+          most frustrating thing a settings page can do. */}
+      {steps.length > 0 && !canEnable && (
+        <div className="p-4 sm:p-5 rounded-xl border border-amber-200 bg-amber-50/60">
+          <div className="flex items-start gap-3">
+            <Lock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div className="min-w-0 flex-1">
+              <h4 className="text-sm font-medium text-slate-900">Set this up first</h4>
+              <p className="text-xs text-slate-600 mt-0.5 mb-3">
+                Auto reply sends messages to your mentees under your name without you reading them
+                first. It stays off until it can do that properly.
+              </p>
+
+              <ol className="space-y-3">
+                {steps.map((step) => {
+                  const Icon = STEP_ICON[step.key] ?? Circle;
+                  return (
+                    <li key={step.key} className="flex items-start gap-2.5">
+                      {step.done ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                      ) : (
+                        <Icon className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                      )}
+                      <div className="min-w-0">
+                        <p className={`text-sm ${step.done ? 'text-slate-500 line-through' : 'text-slate-900 font-medium'}`}>
+                          {step.title}
+                          {!step.blocking && !step.done && (
+                            <span className="ml-2 text-[11px] font-normal text-slate-500">optional</span>
+                          )}
+                        </p>
+                        {!step.done && (
+                          <>
+                            <p className="text-xs text-slate-600 mt-0.5">{step.why}</p>
+                            {step.progress && (
+                              <div className="mt-1.5 flex items-center gap-2 max-w-xs">
+                                <div className="flex-1 h-1.5 bg-white rounded-full overflow-hidden border border-amber-200">
+                                  <div
+                                    className="h-full bg-amber-400 rounded-full"
+                                    style={{ width: `${Math.min(100, (step.progress.current / step.progress.needed) * 100)}%` }}
+                                  />
+                                </div>
+                                <span className="text-[11px] text-slate-500 tabular-nums">
+                                  {step.progress.current}/{step.progress.needed}
+                                </span>
+                              </div>
+                            )}
+                            <p className="text-[11px] text-slate-500 mt-1">{step.action}</p>
+                          </>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Upload Dropzone */}
       <div
