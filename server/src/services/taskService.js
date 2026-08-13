@@ -11,6 +11,14 @@ const { difficultyWeight } = require('../config/scoring');
 const interviewKitService = require('./interviewKitService');
 const quizKitService = require('./quizKitService');
 
+/**
+ * The statuses a mentee may set on their own task.
+ *
+ * Exactly one: picking it up. Submitting is done by sending work, and every
+ * state after that belongs to whoever reviews it.
+ */
+const MENTEE_SETTABLE_STATUSES = ['in_progress'];
+
 /** Guess a resource's kind from its URL (mirrors the roadmap step normalizer). */
 function inferResourceType(url) {
   const u = String(url || '').toLowerCase();
@@ -676,13 +684,28 @@ class TaskService {
     // or the assigning mentor). Keyed off capability, so a mentee-based co-mentor
     // is allowed and a co-mentor with the permission revoked is not.
     const isOwnerMentee = task.menteeId === userId;
-    if (!isOwnerMentee && !(await authzService.canActOnTask(userId, task, [PERMISSIONS.TASK_REVIEW, PERMISSIONS.TASK_ASSIGN]))) {
+    const canManage = await authzService.canActOnTask(userId, task, [PERMISSIONS.TASK_REVIEW, PERMISSIONS.TASK_ASSIGN]);
+
+    if (!isOwnerMentee && !canManage) {
       throw new ForbiddenError('Not authorized');
     }
 
     const validStatuses = ['not_started', 'assigned', 'in_progress', 'submitted', 'revision_needed', 'completed', 'cancelled'];
     if (!validStatuses.includes(status)) {
       throw new ValidationError('Invalid status');
+    }
+
+    // A mentee drives their own task forward. They do not grade it.
+    //
+    // Being the owner was the whole check, so a mentee could PATCH their own
+    // task straight to 'completed' and mark their own work approved: no
+    // submission, no review, no mentor. It counted towards their progress and
+    // towards the roadmap completion that makes an enrollment ready for
+    // sign-off. Starting is the one transition that is genuinely theirs, and
+    // everything after it is either decided by somebody else or reached by
+    // sending work.
+    if (!canManage && !MENTEE_SETTABLE_STATUSES.includes(status)) {
+      throw new ForbiddenError('Only your mentor can move a task to that state');
     }
 
     const updateData = { status };

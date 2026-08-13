@@ -99,16 +99,38 @@ class MessagingService {
       const existingConversations = await this.findDirectConversationsByKey(directKey, transaction);
       const existingConversation = this.selectCanonicalDirectConversation(existingConversations);
       if (existingConversation) {
+        // Rejoining is not the same as never having left. Whoever deleted this
+        // conversation gets a fresh joinedAt, which is the floor every read
+        // below is filtered by, so the history they removed stays removed. The
+        // person who never left keeps theirs: updating both rows in one call
+        // was silently wiping the other side's conversation the moment somebody
+        // re-opened one they had deleted.
         await models.ConversationParticipant.update({
           leftAt: null,
+          isArchived: false,
+          joinedAt: new Date(),
+          lastReadAt: new Date(),
+          lastReadMessageId: null
+        }, {
+          where: {
+            conversationId: existingConversation.id,
+            userId: { [Op.in]: [userId, participantId] },
+            leftAt: { [Op.ne]: null }
+          },
+          transaction
+        });
+
+        await models.ConversationParticipant.update({
           isArchived: false
         }, {
           where: {
             conversationId: existingConversation.id,
-            userId: { [Op.in]: [userId, participantId] }
+            userId: { [Op.in]: [userId, participantId] },
+            leftAt: null
           },
           transaction
         });
+
         return existingConversation;
       }
 
@@ -163,7 +185,7 @@ class MessagingService {
 
     // Step 1: fetch conversation IDs in stable order using a lightweight join.
     const membershipRows = await models.ConversationParticipant.findAll({
-      attributes: ['conversationId'],
+      attributes: ['conversationId', 'joinedAt'],
       where: {
         userId,
         leftAt: null,
@@ -189,6 +211,14 @@ class MessagingService {
     const orderedConversationIds = [...new Set(
       membershipRows.map((row) => row.conversationId).filter(Boolean)
     )];
+
+    // When this person joined each conversation. Everything they are shown
+    // about it - the preview line and the unread badge - is floored by this,
+    // so a conversation they deleted and re-opened does not come back carrying
+    // its old last message and a badge for messages they chose to remove.
+    const joinedAtByConversation = new Map(
+      membershipRows.map((row) => [row.conversationId, row.joinedAt ? new Date(row.joinedAt) : null])
+    );
 
     if (orderedConversationIds.length === 0) {
       return [];
@@ -238,7 +268,15 @@ class MessagingService {
         [fn('COUNT', col('id')), 'count']
       ],
       where: {
-        threadId: { [Op.in]: orderedConversationIds },
+        // One branch per conversation rather than a single IN, because each
+        // carries its own floor. The list is capped at a hundred and every
+        // branch is keyed on the indexed threadId.
+        [Op.or]: orderedConversationIds.map((conversationId) => {
+          const floor = joinedAtByConversation.get(conversationId);
+          return floor
+            ? { threadId: conversationId, createdAt: { [Op.gte]: floor } }
+            : { threadId: conversationId };
+        }),
         recipientId: userId,
         isRead: false
       },
@@ -295,6 +333,15 @@ class MessagingService {
         seenDirectKeys.add(directKey);
       }
 
+      // The preview follows the same floor as the thread itself. Without this
+      // a re-opened conversation shows a line the person deleted, which is the
+      // one place the inbox would contradict what opening it displays.
+      const floor = joinedAtByConversation.get(json.id);
+      const lastMessage = json.lastMessage
+        && (!floor || new Date(json.lastMessage.createdAt) >= floor)
+        ? json.lastMessage
+        : null;
+
       return [{
         id: json.id,
         type: json.type,
@@ -311,19 +358,29 @@ class MessagingService {
           role: p.user?.role
         })),
         clanIds: [...new Set(otherParticipants.flatMap((p) => [...(clanIdsByUser.get(p.userId) || [])]))],
-        lastMessage: json.lastMessage
+        lastMessage
       }];
     });
   }
 
   async listMessages(userId, conversationId, options = {}) {
-    await this.assertUserInConversation(userId, conversationId);
+    const participant = await this.assertUserInConversation(userId, conversationId);
 
     const limit = Math.min(Math.max(Number(options.limit || 50), 1), 100);
     const where = { threadId: conversationId };
 
-    if (options.before) {
+    // Nothing from before this person joined. For almost everybody joinedAt is
+    // the day the conversation started and this changes nothing; it matters for
+    // the one who deleted the conversation and later opened it again, who would
+    // otherwise be handed back every message they had removed.
+    const floor = participant.joinedAt ? new Date(participant.joinedAt) : null;
+
+    if (options.before && floor) {
+      where.createdAt = { [Op.lt]: new Date(options.before), [Op.gte]: floor };
+    } else if (options.before) {
       where.createdAt = { [Op.lt]: new Date(options.before) };
+    } else if (floor) {
+      where.createdAt = { [Op.gte]: floor };
     }
 
     const messages = await models.Message.findAll({
@@ -377,13 +434,22 @@ class MessagingService {
         throw new ForbiddenError('You are not a participant in this conversation');
       }
 
-      // If direct conversation, restore any participant who left
+      // If direct conversation, restore any participant who left. They have to
+      // come back or the message would be sent into a conversation they are not
+      // in and they would never see it. What they must not get back is the
+      // history they deleted, so they return on a fresh joinedAt, which is the
+      // floor every read of a conversation is filtered by. Without this, one
+      // reply undid somebody's delete and handed them the whole thread again.
       if (conversation.type === 'direct') {
         const leftParticipants = participantRows.filter((p) => p.leftAt !== null);
         if (leftParticipants.length > 0) {
+          const now = new Date();
           await models.ConversationParticipant.update({
             leftAt: null,
-            isArchived: false
+            isArchived: false,
+            joinedAt: now,
+            lastReadAt: now,
+            lastReadMessageId: null
           }, {
             where: { id: leftParticipants.map((p) => p.id) },
             transaction

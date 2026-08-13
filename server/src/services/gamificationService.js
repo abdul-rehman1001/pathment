@@ -2,6 +2,13 @@ const { models, Sequelize } = require('../db');
 const { NotFoundError, ValidationError } = require('../utils/errors/errorTypes');
 const notificationOrchestrator = require('./notificationOrchestrator');
 const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
+const { todayInZone } = require('../utils/timezone');
+const {
+  currentStreak,
+  longestStreak,
+  milestonesCrossed,
+  STREAK_BONUSES
+} = require('./streak');
 
 class GamificationService {
   async awardPoints(menteeId, pointsAmount, sourceType, sourceId = null, reason = null) {
@@ -339,60 +346,78 @@ class GamificationService {
     }
   }
 
+  /** Today's calendar date in this mentee's own zone, which is what a day is. */
+  async _todayFor(userId) {
+    const settings = await models.UserSettings.findOne({
+      where: { userId },
+      attributes: ['timezone']
+    });
+    return todayInZone(settings?.timezone || 'UTC');
+  }
+
+  /**
+   * The streak as the daily log says it is, without touching anything.
+   *
+   * Reads rather than counters. A stored counter can only be right if every
+   * event that should have moved it did, and this one was advanced from a
+   * single place - a mentor approving a submission - so it was wrong for every
+   * mentee who logged their days and was waiting on a review. Counting the log
+   * cannot drift, needs no repair for the rows that are already wrong, and
+   * gives the same answer as the phone because it is the same rule.
+   */
+  async readStreak(userId) {
+    const [entries, todayKey] = await Promise.all([
+      models.DailyLogEntry.findAll({
+        where: { menteeId: userId },
+        attributes: ['dateKey'],
+        raw: true
+      }),
+      this._todayFor(userId)
+    ]);
+
+    const dateKeys = entries.map((entry) => entry.dateKey);
+
+    return {
+      current: currentStreak(dateKeys, todayKey),
+      longest: longestStreak(dateKeys),
+      todayKey
+    };
+  }
+
+  /**
+   * Recount the streak, store it, and pay for any milestone just passed.
+   *
+   * Safe to call more than once a day and safe to call from anywhere: it
+   * derives the number instead of stepping it, so a second call the same
+   * afternoon changes nothing and awards nothing.
+   */
   async updateStreak(userId) {
     const menteeProfile = await models.MenteeProfile.findOne({ where: { userId } });
     if (!menteeProfile) return;
 
-    const today = new Date().toISOString().split('T')[0];
-    const lastActivityDate = menteeProfile.lastActivityDate
-      ? new Date(menteeProfile.lastActivityDate).toISOString().split('T')[0]
-      : null;
-
-    if (!lastActivityDate) {
-      await menteeProfile.update({
-        currentStreakDays: 1,
-        longestStreakDays: 1,
-        lastActivityDate: today
-      });
-      return;
-    }
-
-    if (lastActivityDate === today) {
-      return;
-    }
-
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayIso = yesterday.toISOString().split('T')[0];
-
-    if (lastActivityDate === yesterdayIso) {
-      const newStreak = Number(menteeProfile.currentStreakDays || 0) + 1;
-      const longest = Math.max(newStreak, Number(menteeProfile.longestStreakDays || 0));
-
-      await menteeProfile.update({
-        currentStreakDays: newStreak,
-        longestStreakDays: longest,
-        lastActivityDate: today
-      });
-
-      if ([7, 14, 30, 60, 100].includes(newStreak)) {
-        const bonusMap = { 7: 50, 14: 100, 30: 200, 60: 300, 100: 500 };
-        await this.awardPoints(
-          userId,
-          bonusMap[newStreak],
-          'streak_bonus',
-          null,
-          `${newStreak} day streak bonus`
-        );
-      }
-
-      return;
-    }
+    const { current, longest, todayKey } = await this.readStreak(userId);
+    const previous = Number(menteeProfile.currentStreakDays || 0);
 
     await menteeProfile.update({
-      currentStreakDays: 1,
-      lastActivityDate: today
+      currentStreakDays: current,
+      // Never lowered. Some of these were earned under the old counter, and
+      // taking back a longest streak somebody already saw would be worse than
+      // carrying a number the log cannot account for.
+      longestStreakDays: Math.max(longest, Number(menteeProfile.longestStreakDays || 0)),
+      lastActivityDate: todayKey
     });
+
+    for (const milestone of milestonesCrossed(previous, current)) {
+      await this.awardPoints(
+        userId,
+        STREAK_BONUSES[milestone],
+        'streak_bonus',
+        null,
+        `${milestone} day streak bonus`
+      );
+    }
+
+    await this.checkAndAwardBadges(userId);
   }
 
   /**
@@ -464,7 +489,6 @@ class GamificationService {
     const totalBadges = await models.UserBadge.count({ where: { userId } });
     const recentBadges = await this.getUserBadges(userId);
     const recentPoints = await this.getUserPointsHistory(userId, 10);
-    const latestPointsEntry = recentPoints.length > 0 ? recentPoints[0] : null;
 
     let userLeaderboardRank = await models.LeaderboardEntry.findOne({
       where: {
@@ -484,21 +508,21 @@ class GamificationService {
       userLeaderboardRank = { rank: higherRankedCount + 1 };
     }
 
-    const today = new Date().toISOString().split('T')[0];
-    const latestActivityDay = latestPointsEntry?.createdAt
-      ? new Date(latestPointsEntry.createdAt).toISOString().split('T')[0]
-      : null;
-
-    const derivedCurrentStreak =
-      Number(menteeProfile.currentStreakDays || 0) === 0 && latestActivityDay === today
-        ? 1
-        : Number(menteeProfile.currentStreakDays || 0);
+    // Counted from the daily log at the moment of asking, so this screen and
+    // the phone cannot disagree. The stored counter is still written, because
+    // badge criteria read it, but nothing displays it.
+    //
+    // What stood here was a patch over the bug rather than a fix: if the stored
+    // streak was zero but points had been earned today it reported 1. That made
+    // the number look alive on the day something was approved and hid the fact
+    // that it was counting the wrong thing the rest of the time.
+    const streak = await this.readStreak(userId);
 
     return {
       totalPoints: Number(menteeProfile.totalPoints || 0),
       currentLevel: Number(menteeProfile.currentLevel || 1),
-      currentStreak: derivedCurrentStreak,
-      longestStreak: Number(menteeProfile.longestStreakDays || 0),
+      currentStreak: streak.current,
+      longestStreak: Math.max(streak.longest, Number(menteeProfile.longestStreakDays || 0)),
       totalBadges,
       totalTasksCompleted: Number(menteeProfile.totalTasksCompleted || 0),
       totalProgramsCompleted: Number(menteeProfile.totalProgramsCompleted || 0),
