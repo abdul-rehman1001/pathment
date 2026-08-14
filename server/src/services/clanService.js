@@ -368,6 +368,29 @@ class ClanService {
       // active enrollment in the clan's program so the mentee dashboard reflects
       // it and tasks (which require an enrollment) can be assigned to them.
       if (role === 'mentee') {
+        // ...and a mentee profile, which is what points, badges and the
+        // leaderboard hang off. Registration only creates one for somebody who
+        // signed up AS a mentee, so a mentor placed in a clan as a learner had
+        // a membership, an enrollment and a capability but no profile row, and
+        // every /gamification/user/:id/* call answered 404 on their own You
+        // screen. Created here for the same reason the enrollment is: this IS
+        // the moment they become a mentee.
+        await models.MenteeProfile.findOrCreate({
+          where: { userId },
+          defaults: {
+            userId,
+            interests: [],
+            currentEducation: null,
+            currentOccupation: null,
+            priorExperience: null,
+            preferredLearningStyle: 'visual',
+            learningGoals: [],
+            currentLevel: 1,
+            totalPoints: 0
+          },
+          transaction
+        });
+
         let enrollment = await models.Enrollment.findOne({
           where: { menteeId: userId, programId: clan.programId },
           transaction
