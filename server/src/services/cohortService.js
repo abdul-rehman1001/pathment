@@ -316,7 +316,7 @@ class CohortService {
       tasks = await models.AssignedTask.findAll({
         where: taskWhere,
         attributes: ['id', 'status', 'isLate', 'completedAt', 'dueDate', 'enrollmentId', 'pointsAwarded'],
-        include: [{ model: models.RoadmapTask, as: 'roadmapTask', attributes: ['difficulty'], required: false }]
+        include: [{ model: models.RoadmapTask, as: 'roadmapTask', attributes: ['difficulty', 'type'], required: false }]
       });
 
       delays = await models.DelayEvent.findAll({
@@ -385,6 +385,7 @@ class CohortService {
       lastAttendance, // { status, date } | null — most recent review attendance
       taskCount: tasks.length, // total assigned tasks — 0 = never been given work
       tasksCompleted: tasks.filter((t) => t.status === 'completed').length, // real output, for effort-weighted leaderboard
+      completedTasks: tasks.filter((t) => t.status === 'completed'),
       pointsEarned: tasks.filter((t) => t.status === 'completed').reduce((s, t) => s + (t.pointsAwarded || 0), 0),
       // Per-difficulty counts on completed tasks — drives the leaderboard breakdown and AI report brief.
       tasksEasy:   tasks.filter((t) => t.status === 'completed' && (t.roadmapTask?.difficulty || '').toLowerCase() === 'easy').length,
@@ -787,7 +788,7 @@ class CohortService {
       models.AssignedTask.findAll({
         where: { menteeId: inIds },
         attributes: ['id', 'status', 'isLate', 'completedAt', 'dueDate', 'menteeId', 'enrollmentId', 'pointsAwarded'],
-        include: [{ model: models.RoadmapTask, as: 'roadmapTask', attributes: ['difficulty'], required: false }]
+        include: [{ model: models.RoadmapTask, as: 'roadmapTask', attributes: ['difficulty', 'type'], required: false }]
       }),
       models.DelayEvent.findAll({
         where: { menteeId: inIds },

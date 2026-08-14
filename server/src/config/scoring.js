@@ -68,6 +68,31 @@ const DIFFICULTY_WEIGHT = Object.freeze({
 const DEFAULT_DIFFICULTY_WEIGHT = DIFFICULTY_WEIGHT.medium;
 
 /**
+ * 2D Task Weight Matrix combining Task Type and Difficulty.
+ * Prevents task farming (e.g. 15 easy exercises outranking 1 hard project).
+ */
+const TASK_WEIGHT_MATRIX = Object.freeze({
+  exercise:   { easy: 0.2, medium: 1.0, hard: 2.5, expert: 4.0 },
+  assignment: { easy: 0.3, medium: 1.2, hard: 2.8, expert: 4.5 },
+  practical:  { easy: 0.5, medium: 1.5, hard: 3.0, expert: 5.0 },
+  project:    { easy: 2.0, medium: 4.0, hard: 6.0, expert: 8.0 },
+  assessment: { easy: 1.0, medium: 2.0, hard: 4.0, expert: 6.0 },
+  quiz:       { easy: 0.1, medium: 0.4, hard: 1.0, expert: 1.5 },
+  reading:    { easy: 0.1, medium: 0.3, hard: 0.6, expert: 1.0 },
+  video:      { easy: 0.1, medium: 0.3, hard: 0.6, expert: 1.0 },
+  discussion: { easy: 0.2, medium: 0.5, hard: 1.0, expert: 1.5 },
+  interview:  { easy: 1.0, medium: 2.5, hard: 5.0, expert: 7.5 },
+  custom:     { easy: 0.5, medium: 1.0, hard: 2.5, expert: 4.0 }
+});
+
+function taskOutputWeight(type, difficulty) {
+  const tKey = String(type || 'exercise').toLowerCase();
+  const dKey = String(difficulty || 'medium').toLowerCase();
+  const row = TASK_WEIGHT_MATRIX[tKey] || TASK_WEIGHT_MATRIX.exercise;
+  return row[dKey] ?? row.medium;
+}
+
+/**
  * How long a piece of work was expected to take.
  *
  * Two generations of roadmap authoring are in the database and they are
@@ -224,6 +249,8 @@ module.exports = {
   DIMENSIONS,
   DIMENSION_KEYS,
   DIFFICULTY_WEIGHT,
+  TASK_WEIGHT_MATRIX,
+  taskOutputWeight,
   EFFORT_HOURS,
   effortHours,
   ELIGIBILITY,

@@ -4,6 +4,7 @@ const cohortService = require('./cohortService');
 const scoringSettingsService = require('./scoringSettingsService');
 const {
   DIFFICULTY_WEIGHT,
+  taskOutputWeight,
   EFFORT_HOURS,
   ELIGIBILITY,
   attendanceScore,
@@ -162,8 +163,16 @@ class PerformanceService {
     return out;
   }
 
-  /** Difficulty-weighted count of finished work. */
+  /** Task Type x Difficulty-weighted count of finished work. */
   weightedOutput(row) {
+    if (Array.isArray(row.completedTasks)) {
+      return row.completedTasks.reduce((sum, task) => {
+        const type = task.type || task.roadmapTask?.type || 'custom';
+        const difficulty = task.difficulty || task.roadmapTask?.difficulty || 'medium';
+        return sum + taskOutputWeight(type, difficulty);
+      }, 0);
+    }
+
     return (
       (row.tasksEasy || 0) * DIFFICULTY_WEIGHT.easy +
       (row.tasksMedium || 0) * DIFFICULTY_WEIGHT.medium +
