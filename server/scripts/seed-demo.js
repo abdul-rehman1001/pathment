@@ -74,7 +74,34 @@ async function cleanupDemo() {
       const subIds = subs.map((s) => s.id);
       if (subIds.length && models.TaskSubmissionFile) await models.TaskSubmissionFile.destroy({ where: { submissionId: { [Op.in]: subIds } }, force: true });
       await models.TaskSubmission.destroy({ where: { assignedTaskId: { [Op.in]: taskIds } }, force: true });
+
+      // Assessable work hangs off the same tasks: answers, then the session
+      // that holds them, then the assignment that pins the kit to the task.
+      // Any other order hits a foreign key.
+      for (const [Answer, Session, Assignment, sessionKey] of [
+        [models.QuizAnswer, models.QuizSession, models.QuizAssignment, "quizAssignmentId"],
+        [models.InterviewAnswer, models.InterviewSession, models.InterviewAssignment, "interviewAssignmentId"],
+      ]) {
+        if (!Session) continue;
+        void sessionKey;
+        const sessions = await Session.findAll({ where: { assignedTaskId: { [Op.in]: taskIds } }, attributes: ["id"], paranoid: false });
+        const sessionIds = sessions.map((row) => row.id);
+        if (sessionIds.length && Answer) await Answer.destroy({ where: { sessionId: { [Op.in]: sessionIds } }, force: true });
+        await Session.destroy({ where: { assignedTaskId: { [Op.in]: taskIds } }, force: true });
+        if (Assignment) await Assignment.destroy({ where: { assignedTaskId: { [Op.in]: taskIds } }, force: true });
+      }
     }
+
+    // The one-off roadmap steps behind those custom tasks. They carry no
+    // roadmapId, so the by-program sweep further down cannot see them, and
+    // without this every re-run would leave another orphan pair behind.
+    const customStepIds = [...new Set(
+      (await models.AssignedTask.findAll({
+        where: { menteeId: { [Op.in]: userIds }, isCustomTask: true },
+        attributes: ["roadmapTaskId"],
+        paranoid: false,
+      })).map((t) => t.roadmapTaskId).filter(Boolean)
+    )];
     if (models.RoadmapProgress) await models.RoadmapProgress.destroy(byMentee);
     if (models.PromotionCandidate) await models.PromotionCandidate.destroy({ where: { [Op.or]: [{ menteeId: { [Op.in]: userIds } }, { nominatedBy: { [Op.in]: userIds } }] }, force: true });
     if (models.ClanMemberPermission) await models.ClanMemberPermission.destroy({ where: { userId: { [Op.in]: userIds } }, force: true });
@@ -84,6 +111,9 @@ async function cleanupDemo() {
     await models.Blocker.destroy(byMentee);
     await models.DelayEvent.destroy(byMentee);
     await models.AssignedTask.destroy(byMentee);
+    if (customStepIds.length) {
+      await models.RoadmapTask.destroy({ where: { id: { [Op.in]: customStepIds }, roadmapId: null }, force: true });
+    }
     await models.Enrollment.destroy(byMentee);
     await models.ClanMembership.destroy({ where: { userId: { [Op.in]: userIds } }, force: true });
     await models.Announcement.destroy({ where: { authorId: { [Op.in]: userIds } }, force: true });
@@ -130,6 +160,34 @@ async function cleanupDemo() {
     if (models.ProgramReview) await models.ProgramReview.destroy({ where: { [Op.or]: [{ reviewerId: userIn }, { mentorId: userIn }] }, force: true });
     if (models.FeedbackReport) await models.FeedbackReport.destroy({ where: { reporterId: userIn }, force: true });
     if (models.ProductUpdate) await models.ProductUpdate.destroy({ where: { createdBy: userIn }, force: true });
+
+    // ── Assessable work, the library and the everyday furniture ───────────────
+    // Kits last: their questions reference them, and their assignments were
+    // already cleared above with the tasks.
+    for (const [Kit, Question] of [
+      [models.QuizKit, models.QuizQuestion],
+      [models.InterviewKit, models.InterviewQuestion],
+    ]) {
+      if (!Kit) continue;
+      const kits = await Kit.findAll({ where: { createdBy: userIn }, attributes: ["id"], paranoid: false });
+      const kitIds = kits.map((k) => k.id);
+      if (kitIds.length && Question) await Question.destroy({ where: { kitId: { [Op.in]: kitIds } }, force: true });
+      await Kit.destroy({ where: { createdBy: userIn }, force: true });
+    }
+
+    if (models.Redemption) await models.Redemption.destroy({ where: { menteeId: userIn }, force: true });
+    if (models.Gift) await models.Gift.destroy({ where: { createdBy: userIn }, force: true });
+    if (models.Track) await models.Track.destroy({ where: { menteeId: userIn }, force: true });
+    if (models.RegistrationInvite) await models.RegistrationInvite.destroy({ where: { invitedBy: userIn }, force: true });
+    if (models.Document) await models.Document.destroy({ where: { createdBy: userIn }, force: true });
+    if (models.UserSettings) await models.UserSettings.destroy({ where: { userId: userIn }, force: true });
+
+    if (models.Challenge) {
+      const challenges = await models.Challenge.findAll({ where: { createdBy: userIn }, attributes: ["id"], paranoid: false });
+      const challengeIds = challenges.map((c) => c.id);
+      if (challengeIds.length && models.UserChallenge) await models.UserChallenge.destroy({ where: { challengeId: { [Op.in]: challengeIds } }, force: true });
+      await models.Challenge.destroy({ where: { createdBy: userIn }, force: true });
+    }
   }
   if (program) {
     const roadmaps = await models.Roadmap.findAll({ where: { programId: program.id }, attributes: ["id"], paranoid: false });
@@ -143,6 +201,17 @@ async function cleanupDemo() {
     }
     await models.Roadmap.destroy({ where: { programId: program.id }, force: true });
     await models.Clan.destroy({ where: { programId: program.id }, force: true });
+    const cohorts = await models.Cohort.findAll({ where: { programId: program.id }, attributes: ["id"], paranoid: false });
+    const cohortIds = cohorts.map((c) => c.id);
+    if (cohortIds.length) {
+      if (models.AssessmentSubmission && models.Application) {
+        const apps = await models.Application.findAll({ where: { cohortId: { [Op.in]: cohortIds } }, attributes: ["id"], paranoid: false });
+        const appIds = apps.map((a) => a.id);
+        if (appIds.length) await models.AssessmentSubmission.destroy({ where: { applicationId: { [Op.in]: appIds } }, force: true });
+      }
+      if (models.Application) await models.Application.destroy({ where: { cohortId: { [Op.in]: cohortIds } }, force: true });
+      if (models.CohortAssessment) await models.CohortAssessment.destroy({ where: { cohortId: { [Op.in]: cohortIds } }, force: true });
+    }
     await models.Cohort.destroy({ where: { programId: program.id }, force: true });
     await models.Program.destroy({ where: { id: program.id }, force: true });
   }
@@ -488,6 +557,10 @@ async function seed() {
       avgTaskRating: s.archetype === "star" ? 4.6 : s.archetype === "on_track" ? 4.1 : 3.6,
     });
 
+    // Kept so the sections further down can hang custom tasks (quiz, interview)
+    // off the same enrollment rather than looking it up again.
+    mentees[s.local].enrollment = enrollment;
+
     // Clan membership ties the mentee to the mentor's cohort.
     await models.ClanMembership.create({
       clanId: clan.id, userId: m.id, role: "mentee", status: "active", enrollmentId: enrollment.id,
@@ -737,6 +810,7 @@ async function seed() {
   const menteeList = menteeSpecs.map((s) => ({
     user: mentees[s.local].user,
     spec: s,
+    enrollmentId: mentees[s.local].enrollment.id,
     clan: s.clan === "FE" ? feClan : beClan,
     mentor: s.clan === "FE" ? aisha : omar,
   }));
@@ -1110,6 +1184,508 @@ async function seed() {
     console.log("✅ Sample bug report created (admin feedback inbox)\n");
   }
 
+
+  // ════════════════════════════════════════════════════════════════════════════
+  //  Assessable work, the library, and the everyday furniture
+  //
+  //  These screens had nothing behind them, so a tester opening a quiz, an
+  //  interview, the library or the rewards shelf saw an empty state and could
+  //  not tell a missing feature from missing data. Everything below is scoped
+  //  to demo users / the demo program and torn down by cleanupDemo().
+  // ════════════════════════════════════════════════════════════════════════════
+
+  // ── Everyone gets settings, which is where a timezone lives ──────────────────
+  // The streak is counted in the mentee's own calendar day, read from here. An
+  // account with no settings row falls back to UTC and would drift for anybody
+  // testing from a non-UTC zone, which is everybody.
+  if (models.UserSettings) {
+    console.log("⚙️  Seeding user settings (timezones)…");
+    const everyone = [admin, aisha, omar, sam, ...menteeList.map((m) => m.user)];
+    for (const person of everyone) {
+      await models.UserSettings.findOrCreate({
+        where: { userId: person.id },
+        defaults: { userId: person.id, timezone: TZ, language: "en" },
+      });
+    }
+    console.log(`✅ Settings for ${everyone.length} accounts (timezone ${TZ})\n`);
+  }
+
+  // ── The library ──────────────────────────────────────────────────────────────
+  // One item in every category, a pinned one at the top, and a mix of written
+  // articles and outside links, because those render differently.
+  if (models.Document) {
+    console.log("📖 Seeding the library…");
+    const LIBRARY = [
+      {
+        title: "How to give feedback that gets acted on",
+        category: "guidance",
+        summary: "The difference between a review somebody argues with and one they act on is usually the first sentence.",
+        content: "<p>Start with what the work does well, and be specific about it. \"Good job\" is not feedback.</p><p>Then name one thing to change, and say why it matters to the person reading it rather than to you.</p><p>Finish with what happens next. A review that ends without a next step leaves somebody staring at a screen.</p>",
+        author: "Aisha Khan", readMins: 4, pinned: true,
+      },
+      {
+        title: "Your first two weeks",
+        category: "guidance",
+        summary: "What to expect, who to talk to, and what nobody tells you on day one.",
+        content: "<p>Log your day even when the day went badly. The log is not a report card, it is how your mentor knows where you are.</p><p>Say you are stuck early. A blocker raised on Monday costs an hour. The same blocker raised on Friday costs a week.</p>",
+        author: "Pathment", readMins: 6,
+      },
+      {
+        title: "Refactoring UI",
+        category: "reading",
+        summary: "The design book for people who do not think of themselves as designers.",
+        url: "https://www.refactoringui.com/", author: "Adam Wathan & Steve Schoger", readMins: 12,
+      },
+      {
+        title: "The Twelve-Factor App",
+        category: "reading",
+        summary: "Still the clearest description of what a deployable service looks like.",
+        url: "https://12factor.net/", author: "Adam Wiggins", readMins: 20,
+      },
+      {
+        title: "Pull request template",
+        category: "template",
+        summary: "What to write so a reviewer can start reading code instead of guessing at it.",
+        content: "<p><strong>What this changes</strong><br/>One sentence.</p><p><strong>Why</strong><br/>The problem, not the solution.</p><p><strong>How to check it</strong><br/>The steps somebody else would take.</p><p><strong>What I am unsure about</strong><br/>Say it here rather than hoping nobody asks.</p>",
+        author: "Omar Farooq", readMins: 2,
+      },
+      {
+        title: "Code of conduct",
+        category: "policy",
+        summary: "What is expected of everybody here, and what happens when it is not met.",
+        content: "<p>Assume good faith. Ask before you assume.</p><p>Nobody is asked to be available outside their own working hours.</p><p>Report anything that does not sit right to an admin. It will be taken seriously and handled privately.</p>",
+        author: "Pathment", readMins: 3,
+      },
+    ];
+
+    for (const item of LIBRARY) {
+      await models.Document.create({ ...item, createdBy: admin.id, pinned: item.pinned === true });
+    }
+    console.log(`✅ Library: ${LIBRARY.length} items across guidance / reading / template / policy\n`);
+  }
+
+  // ── A quiz kit, assigned, taken and graded ───────────────────────────────────
+  // All four question kinds, because each renders and grades differently, and
+  // the pass mark is set so the seeded attempt sits comfortably above it.
+  let quizKit = null;
+  if (models.QuizKit && models.QuizQuestion) {
+    console.log("📝 Seeding a quiz kit…");
+    quizKit = await models.QuizKit.create({
+      title: "JavaScript fundamentals check",
+      description: "A short check on the parts of the language people most often get wrong. Twenty minutes, one attempt.",
+      createdBy: aisha.id, programId: program.id,
+      timeLimitSeconds: 20 * 60, passScore: 60,
+      shuffleQuestions: false, showAnswers: true, allowRetakeDefault: false,
+      evaluationDefault: "auto", status: "published",
+    });
+
+    const QUESTIONS = [
+      {
+        kind: "single", points: 5,
+        prompt: "What does `typeof null` return?",
+        options: [
+          { id: "a", label: "\"null\"" }, { id: "b", label: "\"object\"" },
+          { id: "c", label: "\"undefined\"" }, { id: "d", label: "It throws" },
+        ],
+        correctOptionIds: ["b"],
+        explanation: "A bug from the first version of JavaScript that can never be fixed without breaking the web.",
+      },
+      {
+        kind: "multi", points: 10,
+        prompt: "Which of these create a new array rather than changing the one you have?",
+        options: [
+          { id: "a", label: "map" }, { id: "b", label: "sort" },
+          { id: "c", label: "filter" }, { id: "d", label: "push" },
+        ],
+        correctOptionIds: ["a", "c"],
+        explanation: "sort and push change the array in place, which is the source of a great many surprises.",
+      },
+      {
+        kind: "boolean", points: 5,
+        prompt: "`const` means the value cannot change.",
+        options: [{ id: "true", label: "True" }, { id: "false", label: "False" }],
+        correctOptionIds: ["false"],
+        explanation: "It means the binding cannot be reassigned. The object it points at is as mutable as ever.",
+      },
+      {
+        kind: "short", points: 10, matchMode: "keyword",
+        prompt: "In one line: why does `await` only work inside an async function?",
+        acceptedAnswers: ["async"],
+        explanation: "Anything mentioning that await needs an async context to suspend in.",
+      },
+      {
+        kind: "single", points: 5,
+        prompt: "Which comparison is true?",
+        options: [
+          { id: "a", label: "'1' === 1" }, { id: "b", label: "NaN === NaN" },
+          { id: "c", label: "[] == false" }, { id: "d", label: "null === undefined" },
+        ],
+        correctOptionIds: ["c"],
+        explanation: "Loose equality coerces the empty array to an empty string and then to 0.",
+      },
+      {
+        kind: "short", points: 5, matchMode: "exact",
+        prompt: "What array method turns [[1,2],[3]] into [1,2,3]?",
+        acceptedAnswers: ["flat", "flat()", ".flat()"],
+        explanation: "flat, or flatMap when you are mapping at the same time.",
+      },
+    ];
+
+    const quizQuestions = [];
+    for (let i = 0; i < QUESTIONS.length; i++) {
+      quizQuestions.push(await models.QuizQuestion.create({
+        kitId: quizKit.id, position: i, required: true,
+        options: [], correctOptionIds: [], acceptedAnswers: [], matchMode: "exact",
+        ...QUESTIONS[i],
+      }));
+    }
+    console.log(`✅ Quiz kit "${quizKit.title}" with ${quizQuestions.length} questions (single / multi / boolean / short)\n`);
+
+    // Give it to two mentees in different states, so both sides are testable:
+    // one that has been taken and graded, and one still waiting to be opened.
+    if (models.QuizAssignment) {
+      console.log("📝 Assigning the quiz…");
+      const quizStep = await models.RoadmapTask.create({
+        roadmapId: null, title: "JavaScript fundamentals check", type: "quiz", difficulty: "easy",
+        taskOrder: 90, description: "A short check before we move on to the framework work.",
+        deliverable: "Complete the quiz.", estimatedHours: 1, isCustomTask: true, pointsBase: 40,
+      });
+
+      async function assignQuiz(target, { taken }) {
+        const task = await models.AssignedTask.create({
+          roadmapTaskId: quizStep.id, menteeId: target.user.id, mentorId: target.mentor.id,
+          enrollmentId: target.enrollmentId, isCustomTask: true,
+          status: taken ? "completed" : "assigned",
+          assignedAt: daysAgo(6), dueDate: daysAhead(taken ? -1 : 4),
+          startedAt: taken ? daysAgo(2) : null,
+          submittedAt: taken ? daysAgo(2) : null,
+          completedAt: taken ? daysAgo(2) : null,
+          pointsAwarded: taken ? 40 : 0,
+        });
+
+        const assignment = await models.QuizAssignment.create({
+          assignedTaskId: task.id, kitId: quizKit.id,
+          evaluationMode: "auto", allowRetake: false,
+          timeLimitSeconds: quizKit.timeLimitSeconds, shuffleQuestions: false,
+          showAnswers: true, passScore: quizKit.passScore,
+        });
+
+        if (!taken || !models.QuizSession || !models.QuizAnswer) return task;
+
+        // A real attempt: five of six right, so the result screen has both a
+        // green run and one wrong answer with its explanation to show.
+        const maxScore = quizQuestions.reduce((sum, q) => sum + q.points, 0);
+        const wrongAt = 4;
+        const autoScore = maxScore - quizQuestions[wrongAt].points;
+
+        const session = await models.QuizSession.create({
+          assignedTaskId: task.id, quizAssignmentId: assignment.id, menteeId: target.user.id,
+          attemptNumber: 1, status: "submitted",
+          startedAt: daysAgo(2), submittedAt: daysAgo(2),
+          currentPosition: quizQuestions.length,
+          autoScore, maxScore, scorePercent: Math.round((autoScore / maxScore) * 100),
+          passed: true,
+        });
+
+        for (let i = 0; i < quizQuestions.length; i++) {
+          const q = quizQuestions[i];
+          const right = i !== wrongAt;
+          await models.QuizAnswer.create({
+            sessionId: session.id, questionId: q.id, position: i, kind: q.kind,
+            promptSnapshot: q.prompt, pointsPossible: q.points,
+            selectedOptionIds: q.kind === "short" ? [] : (right ? q.correctOptionIds : ["a"]),
+            answerText: q.kind === "short" ? (right ? q.acceptedAnswers[0] : "not sure") : null,
+            isCorrect: right, autoPoints: right ? q.points : 0, pointsAwarded: right ? q.points : 0,
+          });
+        }
+
+        return task;
+      }
+
+      const quizTaker = menteeList.find((m) => m.spec.local === "mentee.maya") ?? menteeList[0];
+      const quizWaiting = menteeList.find((m) => m.spec.local === "mentee.noor") ?? menteeList[1];
+      await assignQuiz(quizTaker, { taken: true });
+      await assignQuiz(quizWaiting, { taken: false });
+      console.log("✅ Quiz assigned: one graded attempt (5 of 6 right) + one waiting to be opened\n");
+    }
+  }
+
+  // ── An interview kit, assigned, sat and awaiting review ──────────────────────
+  if (models.InterviewKit && models.InterviewQuestion) {
+    console.log("🎤 Seeding an interview kit…");
+    const interviewKit = await models.InterviewKit.create({
+      title: "Mid-level full stack screen",
+      description: "Four questions: how you explain your work, how you write it, and how you reason about a system you cannot see.",
+      createdBy: omar.id, programId: program.id,
+      timingMode: "per_question", cameraDefault: false,
+      aiGradingDefault: true, allowRetakeDefault: false, status: "published",
+    });
+
+    const IQ = [
+      {
+        kind: "voice", points: 10, timeLimitSeconds: 180,
+        prompt: "Walk me through something you have built that you are proud of. What was hard about it?",
+        referenceAnswer: "Looking for a specific project, a real constraint, and what they would do differently. Vague answers about teamwork score low.",
+      },
+      {
+        kind: "code", points: 20, timeLimitSeconds: 900, codeLanguage: "javascript",
+        prompt: "Write a function that takes a list of tasks and returns the longest run of consecutive days that has at least one completed task.",
+        starterCode: "function longestStreak(tasks) {\n  // tasks: [{ completedAt: '2026-08-14' }]\n}\n",
+        referenceAnswer: "A set of day keys and a walk backwards from today. Full marks need the empty list handled and duplicate days counted once.",
+      },
+      {
+        kind: "text", points: 15, timeLimitSeconds: 480,
+        prompt: "A page in production takes eight seconds to load. You cannot reproduce it locally. What do you do first, and why that first?",
+        referenceAnswer: "Should start by measuring rather than guessing: real user timings, then narrowing to network, server or render before touching any code.",
+      },
+      {
+        kind: "voice", points: 10, timeLimitSeconds: 120,
+        prompt: "Tell me about a time you disagreed with a review. How did it end?",
+        referenceAnswer: "Looking for somebody who can hold a position and also change it. Either extreme is a flag.",
+      },
+    ];
+
+    const iQuestions = [];
+    for (let i = 0; i < IQ.length; i++) {
+      iQuestions.push(await models.InterviewQuestion.create({
+        kitId: interviewKit.id, position: i, required: true, ...IQ[i],
+      }));
+    }
+    console.log(`✅ Interview kit "${interviewKit.title}" with ${iQuestions.length} questions (voice / code / text)\n`);
+
+    if (models.InterviewAssignment) {
+      console.log("🎤 Assigning the interview…");
+      const interviewStep = await models.RoadmapTask.create({
+        roadmapId: null, title: "Mid-level full stack screen", type: "interview", difficulty: "hard",
+        taskOrder: 91, description: "A practice screen under real conditions. Timed, one attempt.",
+        deliverable: "Sit the interview.", estimatedHours: 1, isCustomTask: true, pointsBase: 55,
+      });
+
+      async function assignInterview(target, { sat }) {
+        const task = await models.AssignedTask.create({
+          roadmapTaskId: interviewStep.id, menteeId: target.user.id, mentorId: target.mentor.id,
+          enrollmentId: target.enrollmentId, isCustomTask: true,
+          status: sat ? "submitted" : "assigned",
+          assignedAt: daysAgo(5), dueDate: daysAhead(sat ? -1 : 6),
+          startedAt: sat ? daysAgo(1) : null,
+          submittedAt: sat ? daysAgo(1) : null,
+        });
+
+        const assignment = await models.InterviewAssignment.create({
+          assignedTaskId: task.id, kitId: interviewKit.id,
+          allowRetake: false, cameraRequired: false, aiGradingEnabled: true,
+          timingMode: "per_question",
+        });
+
+        if (!sat || !models.InterviewSession || !models.InterviewAnswer) return task;
+
+        // Sat and submitted, waiting on a mentor. This is what makes the
+        // interview review screen worth opening.
+        const session = await models.InterviewSession.create({
+          assignedTaskId: task.id, interviewAssignmentId: assignment.id, menteeId: target.user.id,
+          attemptNumber: 1, status: "submitted",
+          startedAt: daysAgo(1), submittedAt: daysAgo(1),
+          currentPosition: iQuestions.length,
+        });
+
+        const ANSWERS = [
+          "I built the scheduling piece for a small clinic. The hard part was not the calendar, it was two receptionists booking the same slot at the same moment. I ended up locking on the slot row rather than trusting the check I had written above it.",
+          null,
+          "First I would look at real user timings rather than my own machine, because eight seconds for them and two for me is the whole problem. Once I know whether it is network, server or render, I have one place to look instead of three. Guessing at a fix before that is how you spend a day making something faster that was never slow.",
+          "A reviewer wanted me to split a function I thought was fine. I pushed back once, they explained it was about the test being unreadable rather than the function, and they were right. I split it.",
+        ];
+
+        for (let i = 0; i < iQuestions.length; i++) {
+          const q = iQuestions[i];
+          await models.InterviewAnswer.create({
+            sessionId: session.id, questionId: q.id, position: i, kind: q.kind,
+            promptSnapshot: q.prompt, pointsPossible: q.points,
+            transcript: q.kind === "voice" ? ANSWERS[i] : null,
+            code: q.kind === "code"
+              ? "function longestStreak(tasks) {\n  const days = new Set(tasks.map((t) => t.completedAt.slice(0, 10)));\n  let best = 0;\n  for (const day of days) {\n    let run = 1;\n    let cursor = new Date(day);\n    while (true) {\n      cursor.setDate(cursor.getDate() - 1);\n      const key = cursor.toISOString().slice(0, 10);\n      if (!days.has(key)) break;\n      run += 1;\n    }\n    best = Math.max(best, run);\n  }\n  return best;\n}"
+              : null,
+            codeLanguage: q.kind === "code" ? "javascript" : null,
+            answerText: q.kind === "text" ? ANSWERS[i] : null,
+          });
+        }
+
+        return task;
+      }
+
+      const sitter = menteeList.find((m) => m.spec.local === "mentee.priya") ?? menteeList[0];
+      const upcoming = menteeList.find((m) => m.spec.local === "mentee.ivan") ?? menteeList[1];
+      await assignInterview(sitter, { sat: true });
+      await assignInterview(upcoming, { sat: false });
+      console.log("✅ Interview assigned: one sat and awaiting review + one still to sit\n");
+    }
+  }
+
+  // ── The rewards shelf ────────────────────────────────────────────────────────
+  if (models.Gift) {
+    console.log("🎁 Seeding rewards…");
+    const GIFTS = [
+      { name: "One hour of 1:1 time", description: "A dedicated session with a mentor of your choosing, on whatever you want.", costXp: 300, stock: null },
+      { name: "Course of your choice", description: "Any single paid course up to fifty pounds, expensed.", costXp: 900, stock: 5 },
+      { name: "Pathment hoodie", description: "The good kind, not the conference kind.", costXp: 1200, stock: 12 },
+      { name: "CV and portfolio review", description: "A written review from a mentor who hires, turned around inside a week.", costXp: 500, stock: null },
+      { name: "Retired: sticker pack", description: "No longer available.", costXp: 100, stock: 0, active: false },
+    ];
+
+    const gifts = [];
+    for (const gift of GIFTS) {
+      gifts.push(await models.Gift.create({ ...gift, active: gift.active !== false, createdBy: admin.id }));
+    }
+
+    if (models.Redemption) {
+      const maya = byLocal("mentee.maya");
+      await models.Redemption.create({ giftId: gifts[0].id, menteeId: maya.id, redeemedBy: admin.id, costXp: gifts[0].costXp });
+      await models.Redemption.create({ giftId: gifts[3].id, menteeId: byLocal("mentee.ivan").id, costXp: gifts[3].costXp });
+    }
+    console.log(`✅ Rewards: ${GIFTS.length} gifts (one retired) + 2 redemptions\n`);
+  }
+
+  // ── Personal tracks (lanes a mentee organises their own work into) ───────────
+  if (models.Track) {
+    console.log("🛤️  Seeding personal tracks…");
+    let made = 0;
+    for (const m of menteeList.slice(0, 3)) {
+      const lanes = [
+        { name: "Programme", color: "#006963", origin: "program", orderIndex: 0 },
+        { name: "Side project", color: "#8A6A2F", origin: "blank", orderIndex: 1 },
+        { name: "Interview prep", color: "#3D5A8A", origin: "blank", orderIndex: 2 },
+      ];
+      for (const lane of lanes) {
+        await models.Track.create({ ...lane, menteeId: m.user.id, createdBy: m.user.id });
+        made += 1;
+      }
+    }
+    console.log(`✅ ${made} personal tracks across 3 mentees\n`);
+  }
+
+  // ── Invites, in every state the admin page can show ──────────────────────────
+  if (models.RegistrationInvite) {
+    console.log("✉️  Seeding registration invites…");
+    const crypto = require("crypto");
+    const hash = (raw) => crypto.createHash("sha256").update(raw).digest("hex");
+
+    const INVITES = [
+      { local: "pending.one", role: "mentee", expiresAt: daysAhead(5), usedAt: null, revokedAt: null },
+      { local: "pending.two", role: "mentee", expiresAt: daysAhead(2), usedAt: null, revokedAt: null },
+      { local: "expired.one", role: "mentee", expiresAt: daysAgo(3), usedAt: null, revokedAt: null },
+      { local: "expired.two", role: "mentor", expiresAt: daysAgo(9), usedAt: null, revokedAt: null },
+      { local: "revoked.one", role: "mentee", expiresAt: daysAhead(6), usedAt: null, revokedAt: daysAgo(1) },
+    ];
+
+    for (const invite of INVITES) {
+      await models.RegistrationInvite.create({
+        email: `${invite.local}${DEMO_DOMAIN}`,
+        tokenHash: hash(`demo-${invite.local}-${Date.now()}`),
+        role: invite.role, invitedBy: admin.id,
+        expiresAt: invite.expiresAt, usedAt: invite.usedAt, revokedAt: invite.revokedAt,
+        programId: program.id, cohortId: cohort.id,
+      });
+    }
+    console.log(`✅ ${INVITES.length} invites (pending / expired / revoked — the expired ones exercise resend)\n`);
+  }
+
+
+  // ── Intake: applications in every state the admin queue can show ─────────────
+  // The intake page was empty, so the whole accept / place / reject flow had
+  // nothing to act on. These are deliberately spread across the decisions an
+  // admin actually has to make, including the two awkward ones: somebody
+  // accepted but not yet placed in a clan, and somebody sitting on a decision
+  // long enough to be the oldest in the queue.
+  if (models.Application) {
+    console.log("📥 Seeding intake applications…");
+    const APPLICANTS = [
+      { first: "Hina", last: "Zafar", status: "pending", days: 9,
+        note: null, score: null,
+        why: "I have been building small tools at work for two years and want to do it properly." },
+      { first: "Bilal", last: "Ahmed", status: "pending", days: 4,
+        note: null, score: null,
+        why: "Career change from mechanical engineering. I finished CS50 last month." },
+      { first: "Tara", last: "Nasir", status: "assessment_sent", days: 6,
+        note: "Strong written application, assessment sent Tuesday.", score: null,
+        why: "I want to move from QA into building the things I currently test." },
+      { first: "Ruslan", last: "Iskakov", status: "under_review", days: 5,
+        note: "Good assessment. Wants evening sessions only, needs a mentor who can do that.", score: 78,
+        why: "I work nights and study in the mornings. I am looking for structure more than teaching." },
+      { first: "Amara", last: "Okafor", status: "accepted", days: 3,
+        note: "Excellent across the board. Accepted, still needs placing in a clan.", score: 91,
+        why: "I have shipped two side projects and want to learn how a real team works." },
+      { first: "Deniz", last: "Yilmaz", status: "waitlisted", days: 7,
+        note: "Would take them if a place opens. Held for the next cohort.", score: 66,
+        why: "Self taught for a year. I know my fundamentals are patchy and I want them fixed." },
+      { first: "Marcus", last: "Bell", status: "rejected", days: 11,
+        note: "Not ready for this cohort. Encouraged to apply again after some practice.", score: 34,
+        why: "I want to learn to code." },
+    ];
+
+    for (const person of APPLICANTS) {
+      const decided = ["accepted", "rejected", "waitlisted"].includes(person.status);
+      await models.Application.create({
+        cohortId: cohort.id,
+        email: `applicant.${person.first.toLowerCase()}${DEMO_DOMAIN}`,
+        firstName: person.first, lastName: person.last,
+        programPreference: program.name,
+        source: "public_link",
+        status: person.status,
+        assessmentScore: person.score,
+        assessmentSubmittedAt: person.score != null ? daysAgo(person.days - 1) : null,
+        reviewerNotes: person.note,
+        reviewedBy: decided || person.status === "under_review" ? admin.id : null,
+        decidedAt: decided ? daysAgo(Math.max(1, person.days - 2)) : null,
+        decisionReason: person.status === "rejected" ? "Not ready for this cohort yet." : null,
+        responses: {
+          why_join: person.why,
+          hours_per_week: person.status === "rejected" ? "2" : "10",
+          github: `https://github.com/${person.first.toLowerCase()}`,
+        },
+        createdAt: daysAgo(person.days),
+      });
+    }
+    console.log(`✅ ${APPLICANTS.length} applications (pending / sent / under review / accepted-unplaced / waitlisted / rejected)\n`);
+  }
+
+  // ── A running challenge, with people in it ───────────────────────────────────
+  if (models.Challenge) {
+    console.log("🏆 Seeding a challenge…");
+    const challenge = await models.Challenge.create({
+      createdBy: admin.id,
+      title: "Thirty days, no missed logs",
+      description: "Log every day for thirty days running. Missing one resets the count, so the only way through is to actually show up.",
+      type: "consistency",
+      requirements: { metric: "daily_log_streak", target: 30 },
+      eligibilityCriteria: { role: "mentee" },
+      pointsReward: 250,
+      startDate: daysAgo(12),
+      endDate: daysAhead(18),
+      status: "active",
+    });
+
+    if (models.UserChallenge) {
+      // Spread across the states the standings screen has to draw: somebody
+      // finished, somebody most of the way, somebody who just joined.
+      const entrants = [
+        { local: "mentee.maya", progress: 100, done: true },
+        { local: "mentee.ivan", progress: 70, done: false },
+        { local: "mentee.priya", progress: 40, done: false },
+        { local: "mentee.noor", progress: 10, done: false },
+      ];
+      for (const entrant of entrants) {
+        await models.UserChallenge.create({
+          userId: byLocal(entrant.local).id, challengeId: challenge.id,
+          progressPercentage: entrant.progress,
+          isCompleted: entrant.done,
+          enrolledAt: daysAgo(12),
+          completedAt: entrant.done ? daysAgo(1) : null,
+        });
+      }
+      await challenge.update({ totalParticipants: entrants.length, totalCompleted: entrants.filter((e) => e.done).length });
+      console.log(`✅ Challenge "${challenge.title}" with ${entrants.length} entrants (1 finished)\n`);
+    }
+  }
+
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   console.log("🎉 Demo data ready!  All accounts use password:  " + DEMO_PASSWORD);
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -1123,10 +1699,22 @@ async function seed() {
   console.log("  Mentee   mentee.priya" + DEMO_DOMAIN + "   (submissions awaiting review)");
   console.log("  …+ 4 more mentees spanning on-track / watch / new");
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log("  Now also seeded: cohort-review sessions + attendance, 1:1 slots");
-  console.log("  & meetings, DM threads, notifications, community posts, anonymous");
+  console.log("  Also seeded: cohort-review sessions + attendance, 1:1 slots &");
+  console.log("  meetings, DM threads, notifications, community posts, anonymous");
   console.log("  mentor feedback, daily streaks, badges/points/leaderboard, roadmap");
   console.log("  chaining (Core → Advanced) and a sample bug report.");
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log("  Things to open first:");
+  console.log("   • Quiz      maya has a graded attempt (5 of 6); noor has one waiting");
+  console.log("   • Interview priya has one sat and awaiting review; ivan has one to sit");
+  console.log("   • Library   6 items, one pinned, across all four categories");
+  console.log("   • Rewards   5 gifts (one retired) + 2 redemptions already made");
+  console.log("   • Invites   pending, expired and revoked, so resend has something to do");
+  console.log("   • Intake    7 applications, incl. one accepted but not yet placed");
+  console.log("   • Challenge 30 day logging streak, 4 entrants, 1 finished");
+  console.log("   • Tracks    3 personal lanes each on the first 3 mentees");
+  console.log("   • Settings  every account carries a timezone (" + TZ + "), which the");
+  console.log("               streak is counted in");
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 }
 
