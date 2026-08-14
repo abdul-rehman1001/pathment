@@ -5,17 +5,50 @@ const fullName = (u) => (u ? `${u.firstName} ${u.lastName}`.trim() : null);
 
 /** Rewards: gift catalog + redemptions. */
 class RewardsService {
-  async overview() {
+  /**
+   * The catalogue, plus who has spent points recently.
+   *
+   * The history is scoped to the caller's own clans unless they administer the
+   * programme. It used to be the latest twenty redemptions across the whole
+   * organisation for everyone who could read this route, so a mentor of one
+   * clan was shown the names of mentees in clans they have nothing to do with.
+   * Pass no viewer and it stays org wide, which is what an admin screen wants.
+   */
+  async overview(viewer = null) {
+    const scopeToClans = viewer && viewer.role !== 'admin' && viewer.role !== 'super_admin';
+
+    let menteeIds = null;
+    if (scopeToClans) {
+      const mine = await models.ClanMembership.findAll({
+        where: { userId: viewer.id, status: 'active' },
+        attributes: ['clanId']
+      });
+      const clanIds = [...new Set(mine.map((row) => row.clanId))];
+
+      const members = clanIds.length
+        ? await models.ClanMembership.findAll({
+            where: { clanId: clanIds, role: 'mentee', status: 'active' },
+            attributes: ['userId']
+          })
+        : [];
+
+      menteeIds = [...new Set(members.map((row) => row.userId))];
+    }
+
     const [gifts, redemptions] = await Promise.all([
       models.Gift.findAll({ where: { active: true }, order: [['created_at', 'DESC']] }),
-      models.Redemption.findAll({
-        order: [['created_at', 'DESC']],
-        limit: 20,
-        include: [
-          { model: models.Gift, as: 'gift', attributes: ['name'] },
-          { model: models.User, as: 'mentee', attributes: ['firstName', 'lastName'] }
-        ]
-      })
+      // No clan means nobody to show, rather than everybody.
+      menteeIds && menteeIds.length === 0
+        ? []
+        : models.Redemption.findAll({
+            where: menteeIds ? { menteeId: menteeIds } : undefined,
+            order: [['created_at', 'DESC']],
+            limit: 20,
+            include: [
+              { model: models.Gift, as: 'gift', attributes: ['name'] },
+              { model: models.User, as: 'mentee', attributes: ['firstName', 'lastName'] }
+            ]
+          })
     ]);
 
     return {

@@ -194,7 +194,7 @@ class PerformanceService {
    */
   async scoreMentees(menteeIds, { clanId = null } = {}) {
     const ids = [...new Set(menteeIds)].filter(Boolean);
-    if (!ids.length) return { weights: {}, disabled: [], mentees: [] };
+    if (!ids.length) return { weights: {}, disabled: [], mentees: [], eligibility: ELIGIBILITY };
 
     const [
       { weights, disabled, disabledBy },
@@ -317,7 +317,10 @@ class PerformanceService {
       };
     });
 
-    return { weights, disabled, disabledBy, mentees };
+    // The bar travels with the answer. Without it a client can say "only 2
+    // reviewed tasks" but not "2 of 3", which is the difference between a
+    // statement and something a mentor can act on this week.
+    return { weights, disabled, disabledBy, mentees, eligibility: ELIGIBILITY };
   }
 
   /**
