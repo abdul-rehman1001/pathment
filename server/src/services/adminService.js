@@ -7,6 +7,7 @@ const { generateRandomToken, hashToken } = require('../utils/jwt');
 const notificationOrchestrator = require('./notificationOrchestrator');
 const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
 const { createAuditLog } = require('../utils/auditContext');
+const { inviteLink } = require('../utils/links');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -143,8 +144,7 @@ class AdminService {
       }
     });
 
-    const clientBaseUrl = process.env.CLIENT_URL || 'http://localhost:3000';
-    const inviteUrl = `${clientBaseUrl.replace(/\/$/, '')}/register?invite=${encodeURIComponent(rawToken)}`;
+    const inviteUrl = inviteLink(rawToken);
 
     // A mentee placed in a clan gets that clan's WhatsApp group link in the email
     // so they can join it (WhatsApp can't be auto-joined via API).
@@ -912,7 +912,6 @@ class AdminService {
     const BATCH_SIZE = 500;
     const defaultTtlHours = Number(process.env.REGISTRATION_INVITE_EXPIRY_HOURS) || 72;
     const expiresAt = new Date(Date.now() + defaultTtlHours * 60 * 60 * 1000);
-    const clientBaseUrl = (process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
 
     const normalized = inviteRows.map(row => ({
       email: row.email.trim().toLowerCase(),
@@ -1041,7 +1040,7 @@ class AdminService {
     // The email worker delivers + retries; no Redis involved.
     if (createdRecords.length > 0) {
       Promise.allSettled(createdRecords.map((r) => {
-        const inviteUrl = `${clientBaseUrl}/register?invite=${encodeURIComponent(r.rawToken)}`;
+        const inviteUrl = inviteLink(r.rawToken);
         return notificationOrchestrator.sendRegistrationInviteEmail({ email: r.email, role: r.role, inviteUrl });
       })).catch((err) => console.error('[bulk-invite:enqueue-error]', err.message));
     }

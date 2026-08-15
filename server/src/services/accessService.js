@@ -5,6 +5,7 @@ const { ROLES } = require('../config/roles');
 const { ALL_PERMISSIONS } = require('../config/permissions');
 const { NotFoundError, ValidationError, ConflictError } = require('../utils/errors/errorTypes');
 const { generateRandomToken, hashToken } = require('../utils/jwt');
+const { inviteLink } = require('../utils/links');
 const authzService = require('./authzService');
 const notificationOrchestrator = require('./notificationOrchestrator');
 
@@ -369,8 +370,7 @@ class AccessService {
       newValues: { email: normalizedEmail, baseRole, role, scopeType, scopeId }
     }).catch(() => {});
 
-    const base = (process.env.CLIENT_URL || 'http://localhost:3000').split(',')[0].replace(/\/$/, '');
-    const inviteUrl = `${base}/register?invite=${encodeURIComponent(rawToken)}`;
+    const inviteUrl = inviteLink(rawToken);
     const emailDelivery = await notificationOrchestrator
       .sendRegistrationInviteEmail({ email: normalizedEmail, role: baseRole, inviteUrl })
       .catch(() => ({ sent: false }));

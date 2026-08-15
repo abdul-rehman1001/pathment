@@ -6,6 +6,7 @@ const { shouldCreateNotification } = require('../utils/notificationPreferences')
 const { NOTIFICATION_EVENTS, NOTIFICATION_MATRIX, resolveAudience } = require('../config/notificationMatrix');
 const { renderEmail, plainText } = require('../utils/emailTemplate');
 const { unsubscribeUrl } = require('../utils/emailUnsubscribe');
+const { resetLink, verifyLink, pageLink } = require('../utils/links');
 
 const escHtml = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -153,7 +154,12 @@ class NotificationOrchestrator {
             const unsub = unsubscribeUrl(recipient.userId);
             const heading = payload.title || 'Pathment';
             const bodyText = payload.emailText || payload.message || '';
-            const cta = { label: 'Open Pathment', url: payload.actionUrl || `${clientUrl()}/dashboard` };
+            // actionUrl is a relative path, because the bell and the mobile app
+            // both want it that way. An email does not: `href="/mentor/clan-team"`
+            // has no base to resolve against, which is why the button in every
+            // task, deadline and approval email did nothing. Only the email copy
+            // is made absolute; what is stored and what is pushed stay relative.
+            const cta = { label: 'Open Pathment', url: pageLink(payload.actionUrl) };
             const html = payload.emailHtml || renderEmail({
               heading,
               bodyHtml: `<p style="margin:0 0 14px;">${escHtml(bodyText)}</p>`,
@@ -263,8 +269,7 @@ class NotificationOrchestrator {
   }
 
   async sendPasswordResetEmail(user, resetToken) {
-    const baseUrl = process.env.CLIENT_URL || 'http://localhost:3000';
-    const resetUrl = `${baseUrl}/reset-password?token=${encodeURIComponent(resetToken)}`;
+    const resetUrl = resetLink(resetToken);
 
     // Transactional security email: always send, no unsubscribe (a security email
     // must reach the user).
@@ -285,8 +290,7 @@ class NotificationOrchestrator {
   }
 
   async sendEmailVerificationEmail(user, verificationToken) {
-    const baseUrl = process.env.CLIENT_URL || 'http://localhost:3000';
-    const verifyUrl = `${baseUrl}/verify-email?token=${encodeURIComponent(verificationToken)}`;
+    const verifyUrl = verifyLink(verificationToken);
 
     // Transactional auth email: always send, no unsubscribe.
     const heading = 'Verify your email';
