@@ -180,7 +180,7 @@ class TaskService {
       // Create custom roadmap task (not part of any roadmap - a one-off).
       roadmapTask = await models.RoadmapTask.create({
         title,
-        description: description || title || 'No description provided',
+        description: description || 'No description provided',
         type: type || 'custom',
         difficulty: difficulty || 'medium',
         taskOrder: 0,

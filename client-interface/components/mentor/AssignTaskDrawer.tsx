@@ -288,7 +288,7 @@ export function AssignTaskDrawer({
         .map((r) => ({ title: r.title || r.url, url: r.url }));
       const base = {
         title: title.trim(),
-        description: cleanHtml(description) || title.trim(),
+        description: cleanHtml(description),
         type,
         difficulty,
         dueDate: dueISO(),
@@ -486,7 +486,7 @@ export function AssignTaskDrawer({
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Brief</label>
-                <RichTextEditor content={description} onChange={setDescription} placeholder="What should they do? (defaults to the title)" minHeight="120px" />
+                <RichTextEditor content={description} onChange={setDescription} placeholder="Optional — what should they do?" minHeight="120px" />
               </div>
 
               <div className="grid grid-cols-2 gap-4">

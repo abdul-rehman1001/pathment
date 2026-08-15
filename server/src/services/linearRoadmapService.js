@@ -181,8 +181,8 @@ class LinearRoadmapService {
     return {
       roadmapId,
       title,
-      // description is NOT NULL — fall back to the title when no detail is given.
-      description: desc || step.brief || title,
+      // description is NOT NULL — use a visible placeholder, never copy the title.
+      description: desc || step.brief || 'No description provided',
       type: step.type || 'project',
       difficulty: step.difficulty || 'medium',
       taskOrder: order,
