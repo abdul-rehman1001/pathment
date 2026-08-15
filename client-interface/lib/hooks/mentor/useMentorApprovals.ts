@@ -3,6 +3,7 @@ import { useClan, ALL_CLANS } from '@/lib/context/ClanContext';
 import { mentorApi } from '@/lib/services/mentor-api';
 import { notifyApprovalsChanged } from '@/lib/utils/approvals-badge';
 import { submissionService } from '@/lib/services/submissionService';
+import type { SubmissionFile } from '@/lib/types/submission';
 
 export interface BulkReviewPayload {
   decision: 'approved' | 'approved_notes' | 'changes' | 'rejected';
@@ -26,6 +27,7 @@ export interface ApprovalItem {
   version: number;
   submissionText: string;
   submissionUrls: string[];
+  files: SubmissionFile[];
   submittedAt: string;
   isLate: boolean;
   title: string;
