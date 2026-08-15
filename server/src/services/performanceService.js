@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const { models, sequelize } = require('../db');
 const cohortService = require('./cohortService');
 const scoringSettingsService = require('./scoringSettingsService');
+const { NotFoundError } = require('../utils/errors/errorTypes');
 const {
   DIFFICULTY_WEIGHT,
   EFFORT_HOURS,
@@ -353,6 +354,68 @@ class PerformanceService {
   async clanLeaderboard(clanId, options = {}) {
     const menteeIds = await cohortService.resolveMenteeIdsForClan(clanId);
     return this.leaderboard(menteeIds, { ...options, clanId });
+  }
+
+  /** A clan's own number: the mean score of everybody in it with one. */
+  async clanAverage(clanId) {
+    const menteeIds = await cohortService.resolveMenteeIdsForClan(clanId);
+    if (!menteeIds.length) return null;
+
+    const { mentees } = await this.scoreMentees(menteeIds, { clanId });
+    const scored = mentees.filter((m) => m.eligible);
+    if (!scored.length) return null;
+
+    return Math.round(scored.reduce((sum, m) => sum + m.score, 0) / scored.length);
+  }
+
+  /**
+   * Where one clan sits among the others in its own programme.
+   *
+   * Only within the programme. Clans on different curricula are scored against
+   * different work, and ranking them together would produce a league table that
+   * says more about which programme is harder than about anybody's mentoring.
+   *
+   * Returns the asking clan's position and nothing else: no other clan's name,
+   * id or score. A mentor learning they are third of nine is useful; a mentor
+   * learning which of their colleagues is ninth is a staffroom problem, and the
+   * mentees in that clan never agreed to be a data point in it.
+   *
+   * A clan with nobody scored yet has no position rather than last place. There
+   * is a real difference between doing badly and not having started.
+   */
+  async clanStanding(clanId) {
+    const clan = await models.Clan.findByPk(clanId, { attributes: ['id', 'programId'] });
+    if (!clan) throw new NotFoundError('Clan not found');
+
+    const siblings = await models.Clan.findAll({
+      where: { programId: clan.programId },
+      attributes: ['id']
+    });
+
+    const averages = await Promise.all(
+      siblings.map(async (sibling) => ({
+        id: sibling.id,
+        average: await this.clanAverage(sibling.id)
+      }))
+    );
+
+    const scored = averages
+      .filter((entry) => entry.average !== null)
+      .sort((a, b) => b.average - a.average);
+
+    const mine = averages.find((entry) => entry.id === clanId);
+    const at = scored.findIndex((entry) => entry.id === clanId);
+
+    return {
+      average: mine ? mine.average : null,
+      band: band(mine && mine.average !== null ? mine.average : null),
+      rank: at >= 0 ? at + 1 : null,
+      // Every clan in the programme, including the ones with nobody scored, so
+      // "third of nine" is not silently "third of the four that had started".
+      outOf: siblings.length,
+      /** How many have enough work to be placed at all. */
+      ranked: scored.length
+    };
   }
 }
 

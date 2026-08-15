@@ -41,6 +41,21 @@ exports.clanLeaderboard = catchAsync(async (req, res) => {
 });
 
 /**
+ * GET /api/performance/clan/:clanId/standing
+ * Where this clan sits among the others on its programme.
+ *
+ * Guarded the same way the leaderboard is, and deliberately thin: the mentor's
+ * own position and how many clans there are, never another clan's name or
+ * score.
+ */
+exports.clanStanding = catchAsync(async (req, res) => {
+  await assertRunsClan(req.user, req.params.clanId);
+
+  const standing = await performanceService.clanStanding(req.params.clanId);
+  res.status(200).json(successResponse('Clan standing retrieved', standing));
+});
+
+/**
  * GET /api/performance/me
  * A mentee's own score, and where they sit among the people they train with.
  *

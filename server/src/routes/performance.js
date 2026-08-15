@@ -16,6 +16,16 @@ router.get(
   performanceController.clanLeaderboard
 );
 
+// Where that clan sits among the others on its programme. Same guard as the
+// leaderboard above: a mentor may only ask about a clan they run, and the
+// answer names nobody else.
+router.get(
+  '/clan/:clanId/standing',
+  authenticate,
+  authorize(['mentor', 'admin']),
+  performanceController.clanStanding
+);
+
 // What the score is made of. Readable by anyone who can see a clan's numbers,
 // because a score nobody can inspect is a score nobody should trust.
 router.get(
