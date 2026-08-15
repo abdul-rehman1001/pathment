@@ -28,6 +28,20 @@ const patterns = {
  * Auth validation schemas
  */
 const authSchemas = {
+  signInLinkRequest: Joi.object({
+    email: patterns.email.messages({
+      'string.email': 'Please provide a valid email address',
+      'string.empty': 'Email is required'
+    })
+  }),
+
+  signInLinkVerify: Joi.object({
+    token: Joi.string().trim().required().messages({
+      'string.empty': 'Sign-in link token is required'
+    }),
+    client: Joi.string().trim().max(32).optional()
+  }),
+
   register: Joi.object({
     firstName: Joi.string().min(2).max(50).trim().required().messages({
       'string.empty': 'First name is required',

@@ -57,6 +57,10 @@ const resetLink = (token) =>
 const verifyLink = (token) =>
   through('v', token, `/verify-email?token=${encodeURIComponent(token || '')}`);
 
+/** A one-time sign-in link. Fifteen minutes, single use, straight into a session. */
+const signInLink = (token) =>
+  through('m', token, `/sign-in?link=${encodeURIComponent(token || '')}`);
+
 /**
  * Where a notification points, made absolute.
  *
@@ -79,4 +83,4 @@ function pageLink(path) {
   return `${host}/g/${tenantSlug()}?to=${encodeURIComponent(safe)}`;
 }
 
-module.exports = { inviteLink, resetLink, verifyLink, pageLink, tenantSlug };
+module.exports = { inviteLink, resetLink, verifyLink, signInLink, pageLink, tenantSlug };

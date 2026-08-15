@@ -75,6 +75,49 @@ class AuthController {
   });
 
   /**
+   * Ask for a sign-in link
+   * POST /api/auth/sign-in-link
+   */
+  requestSignInLink = catchAsync(async (req, res) => {
+    await authService.requestSignInLink(req.body.email, { ip: req.ip });
+
+    // Always the same answer. Whether the address has an account behind it is
+    // not something an unauthenticated caller gets to learn from a status code.
+    res.status(200).json(
+      successResponse('If that address has a Pathment account, a sign-in link is on its way.')
+    );
+  });
+
+  /**
+   * Spend a sign-in link
+   * POST /api/auth/sign-in-link/verify
+   */
+  verifySignInLink = catchAsync(async (req, res) => {
+    const result = await authService.consumeSignInLink(req.body.token, { client: req.body.client });
+
+    if (result.requiresTwoFactor) {
+      res.status(200).json(
+        successResponse(AUTH_MESSAGES.LOGIN_SUCCESS, {
+          requiresTwoFactor: true,
+          temporaryToken: result.temporaryToken,
+          user: result.user
+        })
+      );
+      return;
+    }
+
+    res.status(200).json(
+      successResponse(AUTH_MESSAGES.LOGIN_SUCCESS, {
+        user: result.user,
+        tokens: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken
+        }
+      })
+    );
+  });
+
+  /**
    * Refresh access token
    * POST /api/auth/refresh
    */

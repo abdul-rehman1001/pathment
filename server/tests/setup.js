@@ -17,6 +17,7 @@ jest.mock('../src/services/notificationOrchestrator', () => {
     sendRegistrationInviteEmail: jest.fn().mockResolvedValue({ sent: true }),
     sendPasswordResetEmail: jest.fn().mockResolvedValue({ sent: true }),
     sendEmailVerificationEmail: jest.fn().mockResolvedValue({ sent: true }),
+    sendSignInLinkEmail: jest.fn().mockResolvedValue({ sent: true }),
   };
 });
 

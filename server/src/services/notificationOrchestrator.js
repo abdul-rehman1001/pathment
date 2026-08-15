@@ -6,7 +6,7 @@ const { shouldCreateNotification } = require('../utils/notificationPreferences')
 const { NOTIFICATION_EVENTS, NOTIFICATION_MATRIX, resolveAudience } = require('../config/notificationMatrix');
 const { renderEmail, plainText } = require('../utils/emailTemplate');
 const { unsubscribeUrl } = require('../utils/emailUnsubscribe');
-const { resetLink, verifyLink, pageLink } = require('../utils/links');
+const { resetLink, verifyLink, signInLink, pageLink } = require('../utils/links');
 
 const escHtml = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -286,6 +286,37 @@ class NotificationOrchestrator {
         preheader: 'Reset your Pathment password',
         footerNote: "For your security this link expires soon and works once. Didn't request it? Ignore this email — your password stays the same.",
       }),
+    });
+  }
+
+  /**
+   * The link that signs somebody in.
+   *
+   * Transactional and never suppressed: somebody is waiting on this with the
+   * app open. The wording is deliberately blunt about what the link does,
+   * because a link that hands over a session is worth being able to recognise
+   * when it arrives and nobody asked for it.
+   */
+  async sendSignInLinkEmail(user, linkToken) {
+    const url = signInLink(linkToken);
+    const heading = 'Your sign-in link';
+
+    return emailService.sendEmail({
+      to: user.email,
+      emailType: 'sign_in_link',
+      subject: 'Your Pathment sign-in link',
+      text: plainText({
+        heading,
+        bodyText: `Hi ${user.firstName || 'there'}, this link signs you in to Pathment. It works once and expires in 15 minutes. If you did not ask for it, ignore this email and nothing happens.`,
+        cta: { label: 'Sign in', url }
+      }),
+      html: renderEmail({
+        heading,
+        bodyHtml: `<p style="margin:0 0 14px;">Hi ${escHtml(user.firstName || 'there')}, tap below and you are in. No password needed.</p>`,
+        cta: { label: 'Sign in', url },
+        preheader: 'Your Pathment sign-in link',
+        footerNote: "This link works once and expires in 15 minutes. Didn't ask for it? Ignore this email — nobody can sign in without opening the link."
+      })
     });
   }
 

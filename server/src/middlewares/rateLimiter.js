@@ -51,6 +51,11 @@ const loginLimiter = make({ windowMs: 15 * 60 * 1000, max: 5, message: 'Too many
 // Password reset: 3 / hour.
 const passwordResetLimiter = make({ windowMs: 60 * 60 * 1000, max: 3, message: 'Too many password reset requests. Please try again later.' });
 
+// Sign-in link: 3 / hour. The only realistic abuse is mailbombing an address
+// somebody already knows, so this is tighter than login and matches the reset
+// limiter it sits beside.
+const signInLinkLimiter = make({ windowMs: 60 * 60 * 1000, max: 3, message: 'Too many sign-in link requests. Please try again later.', skipSuccessfulRequests: false });
+
 // Register: 5 / hour (count all attempts).
 const registerLimiter = make({ windowMs: 60 * 60 * 1000, max: 5, message: 'Too many registration attempts. Please try again later.', skipSuccessfulRequests: false });
 
@@ -109,6 +114,7 @@ const publicIntakeLimiter = make({
 module.exports = {
   loginLimiter,
   passwordResetLimiter,
+  signInLinkLimiter,
   registerLimiter,
   verifyEmailLimiter,
   resendVerificationLimiter,

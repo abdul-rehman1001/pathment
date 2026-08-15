@@ -10,7 +10,8 @@ const {
   registerLimiter,
   verifyEmailLimiter,
   resendVerificationLimiter,
-  refreshTokenLimiter
+  refreshTokenLimiter,
+  signInLinkLimiter
 } = require('../middlewares/rateLimiter');
 
 /**
@@ -37,6 +38,22 @@ router.post(
   loginLimiter,
   validateBody(authSchemas.login),
   authController.login
+);
+
+// Ask for a sign-in link. Answers the same whatever the address was.
+router.post(
+  '/sign-in-link',
+  signInLinkLimiter,
+  validateBody(authSchemas.signInLinkRequest),
+  authController.requestSignInLink
+);
+
+// Spend a sign-in link. Same shape as login, two factor included.
+router.post(
+  '/sign-in-link/verify',
+  loginLimiter,
+  validateBody(authSchemas.signInLinkVerify),
+  authController.verifySignInLink
 );
 
 // Refresh access token

@@ -42,6 +42,7 @@ describe('with the link host set', () => {
     expect(links.inviteLink('abc123')).toBe('https://links.pathment.me/i/devweekends/abc123');
     expect(links.resetLink('abc123')).toBe('https://links.pathment.me/r/devweekends/abc123');
     expect(links.verifyLink('abc123')).toBe('https://links.pathment.me/v/devweekends/abc123');
+    expect(links.signInLink('abc123')).toBe('https://links.pathment.me/m/devweekends/abc123');
   });
 
   test('a notification path is carried whole, and escaped', () => {
@@ -78,6 +79,7 @@ describe('before the link host exists', () => {
     expect(links.inviteLink('abc')).toBe('https://devweekends.pathment.me/register?invite=abc');
     expect(links.resetLink('abc')).toBe('https://devweekends.pathment.me/reset-password?token=abc');
     expect(links.verifyLink('abc')).toBe('https://devweekends.pathment.me/verify-email?token=abc');
+    expect(links.signInLink('abc')).toBe('https://devweekends.pathment.me/sign-in?link=abc');
     expect(links.pageLink('/mentor/clan-team')).toBe('https://devweekends.pathment.me/mentor/clan-team');
   });
 

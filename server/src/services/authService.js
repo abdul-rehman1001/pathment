@@ -726,6 +726,127 @@ class AuthService {
   }
 
   /**
+   * Ask for a sign-in link.
+   *
+   * Always succeeds from the caller's point of view, whatever the address was.
+   * Answering "no such account" would turn this endpoint into a way to ask
+   * whether somebody is a Pathment member, and that is not a question a
+   * stranger gets to have answered.
+   *
+   * Outstanding links for the same person are spent first. Somebody who taps
+   * the button three times because the first mail was slow should end up with
+   * one working link, not three.
+   */
+  async requestSignInLink(email, { ip = null } = {}) {
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    const user = await models.User.findOne({ where: { email: normalizedEmail } });
+
+    // Every one of these is a silent no. A disabled account and an unverified
+    // one are both real accounts, and saying so is the leak.
+    if (!user || user.status !== 'active' || !user.emailVerified) {
+      return true;
+    }
+
+    await models.SignInLinkToken.update(
+      { usedAt: new Date() },
+      { where: { userId: user.id, usedAt: null } }
+    );
+
+    const linkToken = generateRandomToken();
+    await models.SignInLinkToken.create({
+      userId: user.id,
+      token: hashToken(linkToken),
+      // Fifteen minutes. A reset link can afford an hour because it still makes
+      // you choose a password; this one hands over a session outright.
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+      requestedIp: ip
+    });
+
+    notificationOrchestrator.sendSignInLinkEmail(user, linkToken).catch((error) => {
+      console.warn('sign in link email failed:', error.message);
+    });
+
+    return true;
+  }
+
+  /**
+   * Spend a sign-in link and hand back a session.
+   *
+   * Two factor is deliberately NOT bypassed. Proving you can read an inbox is
+   * one factor, and letting an emailed link skip the second would quietly make
+   * two factor mean nothing for everybody who turned it on. So this returns the
+   * same challenge a password login returns and the client answers it the same
+   * way.
+   */
+  async consumeSignInLink(token, { client = 'web' } = {}) {
+    const hashedToken = hashToken(String(token || ''));
+
+    const link = await models.SignInLinkToken.findOne({
+      where: {
+        token: hashedToken,
+        usedAt: null,
+        expiresAt: { [Op.gt]: new Date() }
+      }
+    });
+
+    if (!link) {
+      throw new ValidationError(AUTH_MESSAGES.INVALID_TOKEN);
+    }
+
+    // Spent before anything else happens, so two taps on the same link cannot
+    // both come back with a session.
+    link.usedAt = new Date();
+    await link.save();
+
+    const user = await models.User.findByPk(link.userId, {
+      include: [
+        { model: models.MentorProfile, as: 'mentorProfile' },
+        { model: models.MenteeProfile, as: 'menteeProfile' },
+        { model: models.AdminProfile, as: 'adminProfile' }
+      ]
+    });
+
+    if (!user) {
+      throw new ValidationError(AUTH_MESSAGES.INVALID_TOKEN);
+    }
+
+    // Checked when it is spent, not when it was sent. An account suspended in
+    // between must not be let in by a link already in flight.
+    if (user.status !== 'active') {
+      throw new AuthenticationError(AUTH_MESSAGES.ACCOUNT_DISABLED);
+    }
+
+    if (user.twoFactorEnabled) {
+      const temporaryToken = generateAccessToken(
+        { id: user.id, email: user.email, role: user.role, temp: true },
+        '5m'
+      );
+
+      const pending = user.toJSON();
+      delete pending.passwordHash;
+
+      return { requiresTwoFactor: true, temporaryToken, user: pending };
+    }
+
+    user.lastLoginAt = new Date();
+    await user.save();
+
+    const accessToken = generateAccessToken({ id: user.id, email: user.email, role: user.role });
+    const { refreshToken } = await this._issueRefreshToken(user, { rememberMe: false, client });
+
+    const userResponse = user.toJSON();
+    delete userResponse.passwordHash;
+
+    const authzService = require('./authzService');
+    const assignments = await authzService.getAssignments(user);
+    userResponse.capabilities = await authzService.getCapabilities(user, { assignments });
+    userResponse.permissions = await authzService.getPermissionUnion(user);
+    userResponse.canAccessAdmin = await authzService.hasAdminAccess(user, { assignments });
+
+    return { user: userResponse, accessToken, refreshToken };
+  }
+
+  /**
    * Change password (when user is logged in)
    */
   async changePassword(userId, currentPassword, newPassword) {

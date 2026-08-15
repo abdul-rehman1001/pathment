@@ -13,6 +13,7 @@ const CRITICAL_EMAIL_TYPES = new Set([
   'password_reset',
   'email_verification',
   'magic_link',
+  'sign_in_link', // somebody is sitting there with the app open waiting for it
   'login_code',
   'two_factor',
   'account_access',
