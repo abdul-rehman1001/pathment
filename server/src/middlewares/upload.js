@@ -34,11 +34,22 @@ const allowedTypes = [
   'video/x-matroska',
   'video/mpeg',
   'video/3gpp',
-  // Audio
+  // Audio. The browser records webm; a phone records AAC in an MP4 container,
+  // which arrives as .m4a under any of the four names below depending on the
+  // device. Leaving them out is what made every voice answer from the mobile
+  // app fail with "File type not supported" after the mentee had already spoken.
   'audio/mpeg',
   'audio/wav',
+  'audio/x-wav',
   'audio/webm',
   'audio/ogg',
+  'audio/m4a',
+  'audio/x-m4a',
+  'audio/mp4',
+  'audio/aac',
+  'audio/3gpp',
+  'audio/amr',
+  'audio/x-caf',
   // Archives (incl. Windows/Edge .zip variants)
   'application/zip',
   'application/x-zip-compressed',
@@ -63,7 +74,7 @@ const allowedExtensions = [
   '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.csv', '.md',
   '.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg',
   '.mp4', '.mov', '.webm', '.avi', '.mkv', '.mpeg', '.mpg', '.3gp',
-  '.mp3', '.wav', '.ogg',
+  '.mp3', '.wav', '.ogg', '.m4a', '.aac', '.amr', '.caf',
   '.zip', '.rar', '.7z', '.gz', '.tar',
   '.html', '.css', '.js', '.json', '.xml',
 ];
@@ -125,5 +136,7 @@ upload.arraySafe = (field, maxCount) => withUploadErrors(upload.array(field, max
 upload.singleSafe = (field) => withUploadErrors(upload.single(field));
 /** `upload.singleSafeLarge('audio')` — single upload with a 25MB cap. */
 upload.singleSafeLarge = (field) => withUploadErrors(uploadLarge.single(field));
+/** Exposed so the accepted-type list can be asserted directly in tests. */
+upload.fileFilter = fileFilter;
 
 module.exports = upload;
