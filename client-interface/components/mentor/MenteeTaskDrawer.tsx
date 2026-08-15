@@ -32,7 +32,9 @@ const DIFF_CLS: Record<string, string> = {
 export function MenteeTaskDrawer({ task, onClose, onChanged }: { task: any; onClose: () => void; onChanged: () => void }) {
   const router = useRouter();
   const confirm = useConfirm();
-  const [editing, setEditing] = useState(false);
+  // Open in the edit form directly (one click from the review list). Closing
+  // the editor returns to this read-only view so Unassign / Review stay available.
+  const [editing, setEditing] = useState(true);
   const [busy, setBusy] = useState(false);
   const rt = task.roadmapTask || {};
   const title = rt.title || task.title || 'Task';
@@ -63,7 +65,7 @@ export function MenteeTaskDrawer({ task, onClose, onChanged }: { task: any; onCl
 
   return (
     <>
-      <Drawer open onClose={onClose} title={title} subtitle="Assigned task · this mentee"
+      {!editing && <Drawer open onClose={onClose} title={title} subtitle="Assigned task · this mentee"
         footer={
           <div className="flex flex-wrap justify-end gap-2">
             {canUnassign && (
@@ -155,7 +157,7 @@ export function MenteeTaskDrawer({ task, onClose, onChanged }: { task: any; onCl
             </div>
           )}
         </div>
-      </Drawer>
+      </Drawer>}
 
       {editing && <TaskEditDrawer task={task} onClose={() => setEditing(false)} onSaved={() => { onChanged(); onClose(); }} />}
     </>
