@@ -13,6 +13,7 @@ import { StepCustomizeModal } from '@/components/mentor/StepCustomizeModal';
 import RichTextEditor from '@/components/shared/RichTextEditor';
 import { cleanHtml } from '@/lib/utils/html';
 import { pointsForDifficulty } from '@/lib/config/points';
+import { useFormDraft, clearFormDraft } from '@/lib/hooks/shared/useFormDraft';
 import { interviewApi, type InterviewKitSummary } from '@/lib/services/interview-api';
 import { quizApi, type QuizKitSummary } from '@/lib/services/quiz-api';
 import Link from 'next/link';
@@ -159,6 +160,48 @@ export function AssignTaskDrawer({
   const drawerRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const titleId = 'assign-task-title';
+  const submitRef = useRef<() => Promise<void>>(async () => {});
+  const draftKey = `pathment:assign-task:${mode}:${mentee?.id ?? 'bulk'}`;
+
+  type AssignDraft = {
+    source: AssignSource;
+    roadmapId: string;
+    title: string;
+    type: string;
+    description: string;
+    difficulty: string;
+    dueDays: number;
+    dueExact: string;
+    deliverable: string;
+    criteria: string[];
+    resources: { title: string; url: string }[];
+    trackId: string;
+    kitId: string;
+    quizKitId: string;
+    selected: string[];
+  };
+
+  const { flush: flushDraft } = useFormDraft<AssignDraft>(draftKey, {
+    source, roadmapId, title, type, description, difficulty, dueDays, dueExact,
+    deliverable, criteria, resources, trackId, kitId, quizKitId, selected: [...selected],
+  }, (d) => {
+    if (!d || typeof d !== 'object') return;
+    if (d.source === 'custom' || d.source === 'roadmap') setSource(d.source);
+    if (typeof d.roadmapId === 'string') setRoadmapId(d.roadmapId);
+    if (typeof d.title === 'string') setTitle(d.title);
+    if (typeof d.type === 'string') setType(d.type);
+    if (typeof d.description === 'string') setDescription(d.description);
+    if (typeof d.difficulty === 'string') setDifficulty(d.difficulty);
+    if (typeof d.dueDays === 'number') setDueDays(d.dueDays);
+    if (typeof d.dueExact === 'string') setDueExact(d.dueExact);
+    if (typeof d.deliverable === 'string') setDeliverable(d.deliverable);
+    if (Array.isArray(d.criteria)) setCriteria(d.criteria);
+    if (Array.isArray(d.resources)) setResources(d.resources);
+    if (typeof d.trackId === 'string') setTrackId(d.trackId);
+    if (typeof d.kitId === 'string') setKitId(d.kitId);
+    if (typeof d.quizKitId === 'string') setQuizKitId(d.quizKitId);
+    if (Array.isArray(d.selected)) setSelected(new Set(d.selected));
+  });
 
   // Load this mentee's lanes for the track picker (single mode only).
   useEffect(() => {
@@ -209,12 +252,20 @@ export function AssignTaskDrawer({
     return () => { active = false; };
   }, [source, roadmapId, mode, mentee?.id]);
 
+  const closeKeepingDraft = useCallback(() => { flushDraft(); onClose(); }, [flushDraft, onClose]);
+
   // Focus first field on open.
   useEffect(() => { titleRef.current?.focus(); }, []);
 
-  // Escape to close + focus trap (keep Tab within the drawer).
+  // Escape to close (draft is flushed first) + Ctrl/Cmd+Enter to submit + Tab trap.
   const onKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') { e.stopPropagation(); onClose(); return; }
+    if (e.key === 'Escape') { e.stopPropagation(); closeKeepingDraft(); return; }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      void submitRef.current();
+      return;
+    }
     if (e.key !== 'Tab') return;
     const root = drawerRef.current;
     if (!root) return;
@@ -226,7 +277,7 @@ export function AssignTaskDrawer({
     const last = focusable[focusable.length - 1];
     if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
     else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-  }, [onClose]);
+  }, [closeKeepingDraft]);
 
   const toggleMentee = (id: string) => setSelected((prev) => {
     const next = new Set(prev);
@@ -276,6 +327,7 @@ export function AssignTaskDrawer({
         }
         if (failed) toast.error(`${failed} mentee${failed > 1 ? 's' : ''} couldn't be assigned`);
         toast.success(`Roadmap assigned to ${assigned} mentee${assigned > 1 ? 's' : ''}`);
+        clearFormDraft(draftKey);
         onAssigned?.();
         onClose();
         return;
@@ -321,6 +373,7 @@ export function AssignTaskDrawer({
         toast.success(`Task assigned to ${mentee?.name || 'the mentee'}`);
       }
       onAssigned?.();
+      clearFormDraft(draftKey);
       onClose();
     } catch (error: any) {
       toast.error(extractApiErrorMessage(error, 'Could not assign'));
@@ -328,6 +381,18 @@ export function AssignTaskDrawer({
       setSaving(false);
     }
   };
+  submitRef.current = submit;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        void submitRef.current();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   const field = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500';
   const pill = (active: boolean) =>
@@ -337,7 +402,7 @@ export function AssignTaskDrawer({
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end" onKeyDown={onKeyDown}>
-      <div className="absolute inset-0 bg-black/40 dark:bg-black/70" onClick={onClose} aria-hidden="true" />
+      <div className="absolute inset-0 bg-black/40 dark:bg-black/70" onClick={closeKeepingDraft} aria-hidden="true" />
       <div
         ref={drawerRef}
         role="dialog"
@@ -352,7 +417,7 @@ export function AssignTaskDrawer({
               {mode === 'bulk' ? `${selected.size} mentee${selected.size === 1 ? '' : 's'} selected` : `to ${mentee?.name ?? 'mentee'}`}
             </p>
           </div>
-          <button onClick={onClose} aria-label="Close" className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X className="w-5 h-5" /></button>
+          <button onClick={closeKeepingDraft} aria-label="Close" className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X className="w-5 h-5" /></button>
         </div>
 
         <>
@@ -711,8 +776,8 @@ export function AssignTaskDrawer({
             </div>
 
             <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-2">
-              <button onClick={onClose} className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm hover:bg-slate-50">Cancel</button>
-              <button onClick={submit} disabled={!canSubmit || saving} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50">
+              <button onClick={closeKeepingDraft} className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm hover:bg-slate-50">Cancel</button>
+              <button onClick={submit} disabled={!canSubmit || saving} title="Ctrl+Enter" className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                 {source === 'roadmap'
                   ? (mode === 'bulk' ? `Assign roadmap to ${targetCount}` : 'Assign roadmap')
