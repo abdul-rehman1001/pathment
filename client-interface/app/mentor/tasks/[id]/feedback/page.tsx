@@ -7,8 +7,6 @@ import {
   CheckCircle2,
   AlertCircle,
   ExternalLink,
-  FileText,
-  Download,
   User,
   Calendar,
   RotateCw,
@@ -16,9 +14,9 @@ import {
   Loader2
 } from 'lucide-react';
 import RichTextEditor from '@/components/shared/RichTextEditor';
+import { SubmissionFileList } from '@/components/shared/SubmissionFileList';
 import { useMentorTaskFeedback } from '@/lib/hooks/mentor';
 import { PageHeader } from '@/components/admin/ui';
-import { formatFileSize } from '@/lib/utils/formatting';
 import { pointsForDifficulty } from '@/lib/config/points';
 
 interface PageProps {
@@ -219,33 +217,7 @@ export default function FeedbackProvision({ params }: PageProps) {
         {submission.files && submission.files.length > 0 && (
           <div>
             <h4 className="text-sm text-slate-700 mb-3">File Attachments</h4>
-            <div className="space-y-2">
-              {submission.files.map((file: any) => (
-                <div
-                  key={file.id}
-                  className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-lg"
-                >
-                  <div className="flex items-center gap-3">
-                    <FileText className="w-5 h-5 text-slate-600" />
-                    <div>
-                      <p className="text-sm text-slate-900">{file.fileName}</p>
-                      {Number(file.fileSizeBytes) > 0 && (
-                        <p className="text-xs text-slate-500">{formatFileSize(Number(file.fileSizeBytes))}</p>
-                      )}
-                    </div>
-                  </div>
-                  <a
-                    href={file.fileUrl}
-                    download
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-2 hover:bg-slate-200 rounded transition-colors"
-                  >
-                    <Download className="w-4 h-4 text-slate-600" />
-                  </a>
-                </div>
-              ))}
-            </div>
+            <SubmissionFileList files={submission.files} />
           </div>
         )}
       </div>

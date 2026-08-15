@@ -22,6 +22,7 @@ import {
   ListChecks,
 } from 'lucide-react';
 import { ResourceLink } from '@/components/shared/ResourceLink';
+import { SubmissionFileList } from '@/components/shared/SubmissionFileList';
 import { useTaskDetail } from '@/lib/hooks/mentee';
 import { PageHeader, StatusBadge } from '@/components/admin/ui';
 import { useActivityTracker } from '@/lib/hooks/shared/useActivityTracker';
@@ -305,6 +306,14 @@ export default function TaskDetailsPage({ params }: PageProps) {
                       </li>
                     ))}
                   </ul>
+                </div>
+              )}
+
+              {/* Submission files */}
+              {latestSubmission.files && latestSubmission.files.length > 0 && (
+                <div>
+                  <p className="text-xs text-slate-500 mb-2">Attachments</p>
+                  <SubmissionFileList files={latestSubmission.files} />
                 </div>
               )}
 
