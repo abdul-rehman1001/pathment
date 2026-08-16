@@ -47,3 +47,8 @@ OPS-RUNBOOK.local.md
 
 # local promote-to-main helper
 promote.sh
+
+# Local-only helpers, committed by accident once — keep them off the repo.
+# changelog.json is the paste buffer for the admin "What's New" JSON import.
+changelog.json
+create-github-issues-*.sh
