@@ -12,11 +12,18 @@ import { ReassignClanModal } from '@/components/admin/ReassignClanModal';
 import { ClanLevelsField } from '@/components/admin/ClanLevelsField';
 import { useAdminClans, type Clan, type ClanMembershipRow } from '@/lib/hooks/admin';
 import { clanApi } from '@/lib/services/clan-api';
+import { useConfirm } from '@/lib/context/ConfirmContext';
 import { programsApi } from '@/lib/services/program-api';
 import { mentorApi } from '@/lib/services/mentor-api';
 import { menteeApi } from '@/lib/services/mentee-api';
 
-interface Person { id: string; firstName: string; lastName: string; email?: string; role?: string }
+interface Person {
+  id: string; firstName: string; lastName: string; email?: string; role?: string;
+  /** Set when they're ALREADY a mentee of another clan — adding is a move, not an add. */
+  placedClanId?: string | null; placedClanName?: string | null;
+  /** Set when they can't be a mentee at all (currently: platform admins). */
+  blockedReason?: string | null;
+}
 
 const ROLE_LABEL: Record<string, string> = {
   lead_mentor: 'Lead mentor', co_mentor: 'Co-mentor', mentee: 'Mentee', core_team: 'Core team',
@@ -134,6 +141,7 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
   const [pickResults, setPickResults] = useState<Person[]>([]);
   const [searching, setSearching] = useState(false);
   const [picked, setPicked] = useState<Person | null>(null);
+  const confirm = useConfirm();
 
   const load = async () => {
     setLoading(true);
@@ -193,7 +201,14 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
       setSearching(true);
       const req = role === 'mentee' ? clanApi.availableMembers(clanId, q) : clanApi.candidates(clanId, q);
       req
-        .then((r: any) => { if (alive) setPickResults((r.data?.people || []).map((p: any) => ({ id: p.id, firstName: p.firstName ?? (p.name || '').split(' ')[0] ?? '', lastName: p.lastName ?? (p.name || '').split(' ').slice(1).join(' '), email: p.email, role: p.role }))); })
+        .then((r: any) => { if (alive) setPickResults((r.data?.people || []).map((p: any) => ({
+          id: p.id,
+          firstName: p.firstName ?? (p.name || '').split(' ')[0] ?? '',
+          lastName: p.lastName ?? (p.name || '').split(' ').slice(1).join(' '),
+          email: p.email, role: p.role,
+          placedClanId: p.placedClanId ?? null, placedClanName: p.placedClanName ?? null,
+          blockedReason: p.blockedReason ?? null,
+        }))); })
         .catch(() => { if (alive) setPickResults([]); })
         .finally(() => { if (alive) setSearching(false); });
     }, 250);
@@ -202,10 +217,28 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
 
   const add = async () => {
     if (!picked) { toast.error('Search and pick a person'); return; }
+    // Someone already a mentee elsewhere can't be ADDED (one placement per
+    // person) — but the admin's intent is clear, so MOVE them instead of
+    // throwing "already a mentee of X" back at them. Confirm first: the move
+    // pulls them off their current mentor's roster.
+    const movingFrom = role === 'mentee' && picked.placedClanId ? picked.placedClanName : null;
+    if (movingFrom) {
+      const ok = await confirm({
+        title: `Move ${picked.firstName} into this clan?`,
+        description: `${picked.firstName} ${picked.lastName} is currently a mentee of ${movingFrom}. Moving them here removes them from that clan. Their progress moves with them unless the two clans run different programs, in which case they start the new program fresh.`,
+        confirmLabel: 'Move here',
+      });
+      if (!ok) return;
+    }
     try {
       setBusy(true);
-      await clanApi.addMember(clanId, picked.id, role);
-      toast.success('Member added');
+      if (movingFrom) {
+        await clanApi.reassign(picked.id, clanId);
+        toast.success(`Moved ${picked.firstName} from ${movingFrom}`);
+      } else {
+        await clanApi.addMember(clanId, picked.id, role);
+        toast.success('Member added');
+      }
       setPicked(null); setPickQuery(''); setPickResults([]);
       await load(); onChanged();
     } catch (e: any) { toast.error(e?.response?.data?.message || 'Could not add member'); }
@@ -326,27 +359,45 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
                           <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border border-slate-200 bg-card shadow-lg dark:shadow-[0_8px_30px_rgba(0,0,0,0.5)]">
                             {searching ? (
                               <div className="py-4 flex justify-center"><Loader2 className="w-4 h-4 animate-spin text-slate-400" /></div>
-                            ) : pickResults.map((p) => (
-                              <button key={p.id} onClick={() => { setPicked(p); setPickResults([]); }} className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50">
+                            ) : pickResults.map((p) => {
+                              // A platform admin can't be a mentee — show them
+                              // greyed with the reason rather than omitting them,
+                              // which is what made the search look broken.
+                              const blocked = role === 'mentee' && !!p.blockedReason;
+                              const placedElsewhere = role === 'mentee' && !!p.placedClanId;
+                              return (
+                              <button key={p.id} disabled={blocked}
+                                onClick={() => { if (!blocked) { setPicked(p); setPickResults([]); } }}
+                                className={`w-full text-left px-3 py-2 text-sm ${blocked ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-50'}`}>
                                 <span className="block text-slate-900">
                                   {p.firstName} {p.lastName}
                                   {role === 'mentee' && p.role === 'mentor' && (
                                     <span className="ml-2 align-middle rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">Mentor</span>
                                   )}
+                                  {placedElsewhere && (
+                                    <span className="ml-2 align-middle rounded-full bg-brand-50 px-1.5 py-0.5 text-[10px] font-medium text-brand-700">Move from {p.placedClanName}</span>
+                                  )}
                                 </span>
                                 {p.email && <span className="block text-xs text-slate-500">{p.email}</span>}
+                                {blocked && <span className="block text-xs text-slate-400">Platform admins can&apos;t be added as a mentee</span>}
                               </button>
-                            ))}
+                              );
+                            })}
                           </div>
                         )}
                       </div>
                     )}
                   </div>
                   <button onClick={add} disabled={busy || !picked} className="px-3 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm inline-flex items-center gap-1.5 disabled:opacity-50">
-                    {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}Add
+                    {busy ? <Loader2 className="w-4 h-4 animate-spin" />
+                      : (role === 'mentee' && picked?.placedClanId) ? <ArrowRightLeft className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                    {(role === 'mentee' && picked?.placedClanId) ? 'Move here' : 'Add'}
                   </button>
                 </div>
-                <p className="text-xs text-slate-400 mt-2">Search finds anyone (incl. someone you removed earlier). Adding a mentee here places them in this clan.</p>
+                <p className="text-xs text-slate-400 mt-2">
+                  Search finds anyone (incl. someone you removed earlier). Adding a mentee here places them in this clan
+                  {' '}— and anyone already in another clan is offered as a move.
+                </p>
               </div>
 
               {/* Members */}

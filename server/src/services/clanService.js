@@ -635,30 +635,52 @@ class ClanService {
   }
 
   /**
-   * People a lead mentor can pull into their clan AS A MENTEE. Anyone active who
-   * isn't already placed as a mentee somewhere — INCLUDING mentors, who can learn
-   * in one clan while mentoring another (a mentor and a mentee are the same kind
-   * of account; the difference is the clan role, not the base role). Optional `q`
-   * filters by name/email.
+   * People who can be pulled into a clan AS A MENTEE, for the add-member picker.
    *
-   * Two deliberate exclusions:
-   *   - already an active mentee in ANY clan → one mentee placement at a time, so
-   *     a person is never a mentee of two clans at once (mentoring is unlimited).
-   *   - platform admins → a super-admin as someone's mentee is never intended.
+   * This used to silently DROP anyone already placed as a mentee elsewhere (and
+   * platform admins). The rule itself is right — one mentee placement per person
+   * — but hiding them made the picker look broken: you'd search someone's exact
+   * email, get nothing back, and have no idea why. Meanwhile the co-mentor picker
+   * (listCandidates) found them instantly, which made it look like a search bug.
    *
-   * A co-mentor with no mentee placement DOES appear here (that's the point), and
-   * so does a co-mentor of THIS clan — adding them makes them a mentee here too,
-   * the supported mentee-and-co-mentor dual role.
+   * So they're RETURNED now, annotated with why they can't just be added:
+   *   - `placedClanId/placedClanName` → already a mentee there. The caller offers
+   *     to MOVE them (reassignMentee) instead of a dead end.
+   *   - `blockedReason: 'admin'` → a platform admin as someone's mentee is never
+   *     intended, so it's shown greyed with the reason rather than vanishing.
+   * Anyone already an active mentee of THIS clan is still omitted — adding them
+   * here is a genuine no-op with nothing to explain.
+   *
+   * Mentors appear (a mentor can learn in one clan while mentoring another), and
+   * so does a co-mentor of this clan — that's the supported dual role.
    */
-  async listAvailableMembers({ q } = {}) {
+  async listAvailableMembers({ q, clanId = null, includePlaced = false } = {}) {
     const { Op } = require('sequelize');
-    const assigned = await models.ClanMembership.findAll({
-      where: { status: { [Op.in]: ['active', 'paused'] }, role: 'mentee' }, attributes: ['userId']
+    const placements = await models.ClanMembership.findAll({
+      where: { status: { [Op.in]: ['active', 'paused'] }, role: 'mentee' },
+      attributes: ['userId', 'clanId'],
+      include: [{ model: models.Clan, as: 'clan', attributes: ['id', 'name'] }],
     });
-    const assignedIds = [...new Set(assigned.map((m) => m.userId).filter(Boolean))];
+    // userId → where they're currently placed.
+    const placedBy = new Map();
+    placements.forEach((m) => { if (m.userId) placedBy.set(m.userId, { clanId: m.clanId, clanName: m.clan?.name || 'another clan' }); });
+    // Already a mentee HERE → nothing to offer, leave them out.
+    const hereIds = clanId
+      ? placements.filter((m) => m.clanId === clanId).map((m) => m.userId).filter(Boolean)
+      : [];
+    // `includePlaced` is for callers who can actually ACT on a placed person —
+    // i.e. an admin, who can reassign. A mentor must not be offered someone in
+    // another mentor's clan: taking them is a transfer REQUEST the other side
+    // accepts (see menteeTransferService), never a unilateral grab. So for
+    // everyone else this keeps the original behaviour and omits them.
+    const excludeIds = new Set(hereIds);
+    if (!includePlaced) {
+      placedBy.forEach((_v, userId) => excludeIds.add(userId));
+    }
 
-    const where = { role: { [Op.ne]: 'admin' }, status: 'active' };
-    if (assignedIds.length) where.id = { [Op.notIn]: assignedIds };
+    const where = { status: 'active' };
+    if (!includePlaced) where.role = { [Op.ne]: 'admin' };
+    if (excludeIds.size) where.id = { [Op.notIn]: [...excludeIds] };
     if (q && q.trim()) {
       const like = { [Op.iLike]: `%${q.trim()}%` };
       where[Op.and] = [{ [Op.or]: [{ firstName: like }, { lastName: like }, { email: like }] }];
@@ -669,7 +691,22 @@ class ClanService {
       order: [['firstName', 'ASC']],
       limit: 50
     });
-    return users.map((u) => ({ id: u.id, name: `${u.firstName} ${u.lastName}`.trim() || u.email, email: u.email, role: u.role }));
+
+    return users.map((u) => {
+      const placed = placedBy.get(u.id) || null;
+      return {
+        id: u.id,
+        name: `${u.firstName} ${u.lastName}`.trim() || u.email,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        email: u.email,
+        role: u.role,
+        // Placed elsewhere → addMember would throw; the picker moves them instead.
+        placedClanId: placed ? placed.clanId : null,
+        placedClanName: placed ? placed.clanName : null,
+        blockedReason: u.role === 'admin' ? 'admin' : null,
+      };
+    });
   }
 
   /**
