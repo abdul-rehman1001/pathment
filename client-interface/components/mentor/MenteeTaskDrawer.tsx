@@ -11,6 +11,7 @@ import taskApi from '@/lib/services/task-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 import { pointsForDifficulty } from '@/lib/config/points';
+import { isMissingDescription, looksLikeHtml } from '@/lib/utils/html';
 
 const STATUS_CLS: Record<string, string> = {
   assigned: 'bg-slate-100 text-slate-600', not_started: 'bg-slate-100 text-slate-600',
@@ -37,7 +38,8 @@ export function MenteeTaskDrawer({ task, onClose, onChanged }: { task: any; onCl
   const rt = task.roadmapTask || {};
   const title = rt.title || task.title || 'Task';
   const description = rt.description || task.description || '';
-  const isHtml = description ? /<[a-z][\s\S]*>/i.test(description) : false;
+  const isHtml = looksLikeHtml(description);
+  const missingDescription = isMissingDescription(description, title);
   const criteria: string[] = rt.acceptanceCriteria || task.acceptanceCriteria || [];
   const resources: any[] = rt.resources || [];
   const due = task.dueDate ? new Date(task.dueDate) : null;
@@ -124,9 +126,11 @@ export function MenteeTaskDrawer({ task, onClose, onChanged }: { task: any; onCl
             </div>
           )}
 
-          {description && (isHtml
+          {missingDescription
+            ? <p className="text-sm text-slate-400">No description provided.</p>
+            : isHtml
             ? <div className="prose prose-sm max-w-none dark:prose-invert text-slate-600 dark:text-slate-300" dangerouslySetInnerHTML={{ __html: description }} />
-            : <p className="text-sm text-slate-600 whitespace-pre-wrap">{description}</p>)}
+            : <p className="text-sm text-slate-600 whitespace-pre-wrap">{description}</p>}
 
           {rt.deliverable && (
             <div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2">

@@ -28,6 +28,7 @@ import { useActivityTracker } from '@/lib/hooks/shared/useActivityTracker';
 import { FrictionPanel } from '@/components/mentee/FrictionPanel';
 import { SubmitTaskDrawer } from '@/components/mentee/SubmitTaskDrawer';
 import { InterviewReviewDrawer } from '@/components/mentor/InterviewReviewDrawer';
+import { isMissingDescription } from '@/lib/utils/html';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -119,11 +120,13 @@ export default function TaskDetailsPage({ params }: PageProps) {
                 </span>
               )}
             </div>
-            {taskDescription && (descriptionIsHtml ? (
+            {isMissingDescription(taskDescription, taskTitle) ? (
+              <p className="text-sm text-slate-400">No description provided.</p>
+            ) : descriptionIsHtml ? (
               <div className="prose prose-sm max-w-none dark:prose-invert text-slate-600 dark:text-slate-300" dangerouslySetInnerHTML={{ __html: taskDescription }} />
             ) : (
               <p className="text-slate-600 whitespace-pre-wrap">{taskDescription}</p>
-            ))}
+            )}
             {task.mentorNote && (
               <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-500/10 dark:border-amber-500/30 px-3 py-2">
                 <StickyNote className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />

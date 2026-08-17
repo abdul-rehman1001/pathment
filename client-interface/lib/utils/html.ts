@@ -40,3 +40,12 @@ export function stripHtml(s: string | null | undefined): string {
     .replace(/\s+/g, ' ')
     .trim();
 }
+
+/** True when stored description is blank, a generic placeholder, or a silent copy of the title. */
+export function isMissingDescription(description: string | null | undefined, title?: string | null): boolean {
+  const plain = stripHtml(description);
+  if (!plain) return true;
+  if (/^no description provided\.?$/i.test(plain)) return true;
+  if (title && plain === title.trim()) return true;
+  return false;
+}
