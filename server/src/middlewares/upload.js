@@ -136,7 +136,40 @@ upload.arraySafe = (field, maxCount) => withUploadErrors(upload.array(field, max
 upload.singleSafe = (field) => withUploadErrors(upload.single(field));
 /** `upload.singleSafeLarge('audio')` — single upload with a 25MB cap. */
 upload.singleSafeLarge = (field) => withUploadErrors(uploadLarge.single(field));
-/** Exposed so the accepted-type list can be asserted directly in tests. */
+/**
+ * Pictures and clips only, for the places that mean "show me what you saw".
+ *
+ * The shared filter is deliberately broad because a task submission can be a
+ * zip of source or an html file. A feedback attachment cannot: both clients
+ * only ever offer a screenshot or a short recording, so anything else arriving
+ * there is either a mistake or somebody posting straight at the endpoint, and
+ * neither should end up in the feedback folder.
+ */
+const mediaOnlyFilter = (req, file, cb) => {
+  const ext = path.extname(file.originalname || '').toLowerCase();
+  const mime = String(file.mimetype || '');
+
+  const looksLikeMedia =
+    mime.startsWith('image/') ||
+    mime.startsWith('video/') ||
+    ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.mp4', '.mov', '.webm', '.3gp', '.mkv'].includes(ext);
+
+  if (looksLikeMedia) return cb(null, true);
+
+  cb(new ValidationError('Attach a screenshot or a short clip. Other files are not accepted here.'));
+};
+
+const uploadMedia = multer({
+  storage: storage,
+  fileFilter: mediaOnlyFilter,
+  limits: { fileSize: 10 * 1024 * 1024 }
+});
+
+/** `upload.singleSafeMedia('attachment')` — a picture or a clip, 10MB. */
+upload.singleSafeMedia = (field) => withUploadErrors(uploadMedia.single(field));
+
+/** Exposed so the accepted-type lists can be asserted directly in tests. */
 upload.fileFilter = fileFilter;
+upload.mediaOnlyFilter = mediaOnlyFilter;
 
 module.exports = upload;

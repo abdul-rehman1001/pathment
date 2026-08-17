@@ -46,3 +46,45 @@ describe('what an interview voice answer may be recorded as', () => {
     await expect(accepts('run.sh', 'application/x-sh')).resolves.toBe(false);
   });
 });
+
+/**
+ * Feedback attachments are pictures and clips only.
+ *
+ * The shared filter is deliberately broad, because a task submission can be a
+ * zip of source or an html file. A feedback attachment cannot: both clients
+ * only ever offer a screenshot or a short recording, so anything else arriving
+ * there is a mistake or somebody posting straight at the endpoint, and neither
+ * belongs in the feedback folder.
+ */
+describe('the media only filter', () => {
+  const accepts = (name, mimetype) =>
+    new Promise((resolve) => {
+      upload.mediaOnlyFilter({}, { originalname: name, mimetype }, (err, ok) =>
+        resolve(!err && ok === true)
+      );
+    });
+
+  test('takes a screenshot from either platform', async () => {
+    expect(await accepts('shot.png', 'image/png')).toBe(true);
+    expect(await accepts('IMG_2049.HEIC', 'image/heic')).toBe(true);
+    expect(await accepts('shot.jpg', 'application/octet-stream')).toBe(true);
+  });
+
+  test('takes a short clip, including what a phone records', async () => {
+    expect(await accepts('clip.mp4', 'video/mp4')).toBe(true);
+    expect(await accepts('clip.mov', 'video/quicktime')).toBe(true);
+    expect(await accepts('clip.3gp', 'video/3gpp')).toBe(true);
+  });
+
+  test('refuses the things the shared filter would have let through', async () => {
+    expect(await accepts('source.zip', 'application/zip')).toBe(false);
+    expect(await accepts('script.js', 'text/javascript')).toBe(false);
+    expect(await accepts('notes.pdf', 'application/pdf')).toBe(false);
+    expect(await accepts('answer.m4a', 'audio/m4a')).toBe(false);
+  });
+
+  test('refuses an executable however it is dressed up', async () => {
+    expect(await accepts('run.exe', 'application/octet-stream')).toBe(false);
+    expect(await accepts('run.sh', 'text/plain')).toBe(false);
+  });
+});

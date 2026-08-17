@@ -15,7 +15,7 @@ const { feedbackSchemas } = require('../validations/feedbackValidation');
 router.post(
   '/',
   authenticate,
-  upload.singleSafe('attachment'),
+  upload.singleSafeMedia('attachment'),
   validateBody(feedbackSchemas.create),
   ctrl.create
 );
