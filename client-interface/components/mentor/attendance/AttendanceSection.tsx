@@ -54,11 +54,6 @@ export function AttendanceSection({
     });
   }, [cohort, attendance, currentFilter]);
 
-  const handleSave = async (updates: Record<string, Attendance>) => {
-    await onSaveAttendance(updates);
-    setIsModalOpen(false);
-  };
-
   return (
     <div className="space-y-3 mb-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -112,7 +107,7 @@ export function AttendanceSection({
         onClose={() => setIsModalOpen(false)}
         mentees={cohort}
         initialAttendance={attendance}
-        onSave={handleSave}
+        onSave={onSaveAttendance}
         isSaving={isSaving}
       />
     </div>
