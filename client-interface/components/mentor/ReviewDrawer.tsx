@@ -9,6 +9,7 @@ import { FeedbackAssist } from '@/components/mentor/FeedbackAssist';
 import { looksLikeHtml } from '@/lib/utils/html';
 import { toExternalHref } from '@/lib/utils/url';
 import { RichContent } from '@/components/shared/RichContent';
+import { SubmissionFileList } from '@/components/shared/SubmissionFileList';
 import type { ApprovalItem } from '@/lib/hooks/mentor';
 
 type Decision = 'approved' | 'approved_notes' | 'changes' | 'rejected';
@@ -169,6 +170,12 @@ export function ReviewDrawer({
             html={item.submissionText}
             className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4 text-slate-700 dark:text-slate-300"
           />
+          {item.files.length > 0 && (
+            <div className="mt-3">
+              <p className="text-xs font-medium text-slate-500 mb-1.5">Attachments</p>
+              <SubmissionFileList files={item.files} />
+            </div>
+          )}
           {item.submissionUrls.length > 0 && (
             <div className="mt-2 space-y-1">
               {item.submissionUrls.map((u, i) => (

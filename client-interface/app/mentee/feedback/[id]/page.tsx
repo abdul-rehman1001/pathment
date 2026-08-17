@@ -22,6 +22,7 @@ import {
 import { useTaskDetail } from '@/lib/hooks/mentee';
 import { toExternalHref } from '@/lib/utils/url';
 import { RichContent } from '@/components/shared/RichContent';
+import { SubmissionFileList } from '@/components/shared/SubmissionFileList';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -283,6 +284,14 @@ export default function FeedbackView({ params }: PageProps) {
                 </div>
               </div>
             )}
+
+          {/* Attachments */}
+          {latestSubmission.files && latestSubmission.files.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-slate-700 text-sm font-medium mb-2">Attachments</h3>
+              <SubmissionFileList files={latestSubmission.files} />
+            </div>
+          )}
 
           {latestSubmission.submittedAt && (
             <p className="text-xs text-slate-400 flex items-center gap-1">

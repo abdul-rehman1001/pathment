@@ -980,6 +980,12 @@ class SubmissionService {
           { model: models.RoadmapTask, as: 'roadmapTask', attributes: ['title', 'type', 'description', 'deliverable', 'acceptanceCriteria', 'pointsBase', 'difficulty'] },
           { model: models.User, as: 'mentee', attributes: ['id', 'firstName', 'lastName', 'profilePictureUrl'] }
         ]
+      },
+      {
+        model: models.TaskSubmissionFile,
+        as: 'files',
+        required: false,
+        attributes: ['id', 'fileName', 'fileUrl', 'fileType', 'fileSizeBytes']
       }],
       order: [['submittedAt', 'ASC']]
     });
@@ -1032,6 +1038,13 @@ class SubmissionService {
         version: s.version,
         submissionText: s.submissionText,
         submissionUrls: s.submissionUrls || [],
+        files: (s.files || []).map((f) => ({
+          id: f.id,
+          fileName: f.fileName,
+          fileUrl: f.fileUrl,
+          fileType: f.fileType,
+          fileSizeBytes: f.fileSizeBytes,
+        })),
         submittedAt: s.submittedAt,
         isLate: t.isLate,
         // Extension-request fields — lets the client split the queue into a
