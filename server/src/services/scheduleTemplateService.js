@@ -127,16 +127,22 @@ class ScheduleTemplateService {
     if (!Array.isArray(menteeIds) || !menteeIds.length) throw new ValidationError('menteeIds required');
 
     // blocks → empty SlotConfig[]
-    const slots = (t.blocks || []).map((b) => ({
-      id: b.id,
-      label: b.label,
-      time: b.time,
-      days: b.days || 'everyday',
-      kind: 'empty',
-      roadmapChain: [],
-      recurring: null,
-      bookable: !!b.bookable
-    }));
+    const seen = new Set();
+    const slots = (t.blocks || []).map((b, i) => {
+      let id = b.id || slug(b.label) || `block-${i}`;
+      if (seen.has(id)) { let n = 2; while (seen.has(`${id}-${n}`)) n += 1; id = `${id}-${n}`; }
+      seen.add(id);
+      return {
+        id,
+        label: b.label || `Block ${i + 1}`,
+        time: b.time || 'Flexible',
+        days: ['everyday', 'weekdays', 'weekends'].includes(b.days) ? b.days : 'everyday',
+        kind: 'empty',
+        roadmapChain: [],
+        recurring: null,
+        bookable: !!b.bookable
+      };
+    });
 
     const results = [];
     for (const menteeId of menteeIds) {
@@ -161,7 +167,28 @@ class ScheduleTemplateService {
       include: [{ model: models.ScheduleTemplate, as: 'template', attributes: ['id', 'name'] }]
     });
     if (!ms) return null;
-    const schedule = await this._enrichSchedule(menteeId, Array.isArray(ms.schedule) ? ms.schedule : []);
+
+    let rawSchedule = Array.isArray(ms.schedule) ? ms.schedule : [];
+    let modified = false;
+    const seen = new Set();
+    rawSchedule = rawSchedule.map((s, i) => {
+      let id = s.id || slug(s.label) || `block-${i}`;
+      if (seen.has(id)) { let n = 2; while (seen.has(`${id}-${n}`)) n += 1; id = `${id}-${n}`; }
+      seen.add(id);
+      if (s.id !== id) {
+        modified = true;
+        return { ...s, id };
+      }
+      return s;
+    });
+
+    if (modified) {
+      ms.schedule = rawSchedule;
+      ms.changed('schedule', true);
+      await ms.save().catch(() => {});
+    }
+
+    const schedule = await this._enrichSchedule(menteeId, rawSchedule);
     return { templateId: ms.templateId, templateName: ms.template?.name || null, schedule };
   }
 
@@ -211,10 +238,14 @@ class ScheduleTemplateService {
     const ms = await models.MenteeSchedule.findOne({ where: { menteeId } });
     if (!ms) throw new NotFoundError('Mentee has no schedule assigned');
     const schedule = Array.isArray(ms.schedule) ? ms.schedule : [];
-    const idx = schedule.findIndex((s) => s.id === slotId);
+    let idx = schedule.findIndex((s, i) => (s.id || slug(s.label) || `block-${i}`) === slotId);
+    if (idx === -1 && /^(slot|block)-\d+$/.test(slotId)) {
+      const num = Number(slotId.replace(/^(slot|block)-/, ''));
+      if (num >= 0 && num < schedule.length) idx = num;
+    }
     if (idx === -1) throw new NotFoundError('Slot not found');
 
-    const slot = { ...schedule[idx] };
+    const slot = { ...schedule[idx], id: schedule[idx].id || slotId };
     const kind = patch.kind;
     if (kind && !['roadmap', 'recurring', 'empty'].includes(kind)) throw new ValidationError('Invalid slot kind');
     if (kind) slot.kind = kind;
@@ -225,7 +256,45 @@ class ScheduleTemplateService {
       slot.startStep = Number.isInteger(patch.startStep) ? Math.max(0, patch.startStep) : (slot.startStep || 0);
       slot.recurring = null;
     } else if (slot.kind === 'recurring') {
-      slot.recurring = patch.recurring || slot.recurring || null;
+      const rec = patch.recurring || slot.recurring;
+      if (!rec || !rec.title || !String(rec.title).trim()) {
+        throw new ValidationError('Recurring task title is required');
+      }
+      let daysOfWeek = [];
+      if (Array.isArray(rec.daysOfWeek) && rec.daysOfWeek.length > 0) {
+        daysOfWeek = rec.daysOfWeek.map(Number).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
+      } else if (rec.dayOfWeek !== undefined && rec.dayOfWeek !== null && rec.dayOfWeek !== '') {
+        daysOfWeek = [Number(rec.dayOfWeek)];
+      }
+      if (!daysOfWeek.length) daysOfWeek = [1];
+      const dayOfWeek = daysOfWeek[0];
+
+      const timeLocal = rec.timeLocal || slot.recurring?.timeLocal || '09:00';
+      if (!/^\d{2}:\d{2}$/.test(timeLocal)) {
+        throw new ValidationError('timeLocal must be in HH:mm format');
+      }
+      const startsOn = rec.startsOn || slot.recurring?.startsOn || new Date().toISOString().split('T')[0];
+      const endsOn = rec.endsOn ? String(rec.endsOn).split('T')[0] : null;
+      const dueOffsetDays = Number.isInteger(Number(rec.dueOffsetDays)) && Number(rec.dueOffsetDays) > 0 
+        ? Number(rec.dueOffsetDays) 
+        : (slot.recurring?.dueOffsetDays || 7);
+      const intervalWeeks = Number.isInteger(Number(rec.intervalWeeks)) && Number(rec.intervalWeeks) >= 1 
+        ? Math.min(52, Number(rec.intervalWeeks))
+        : (slot.recurring?.intervalWeeks || 1);
+
+      slot.recurring = {
+        title: String(rec.title).trim(),
+        type: rec.type || 'discussion',
+        recurrence: rec.recurrence || 'weekly',
+        dayOfWeek,
+        daysOfWeek,
+        timeLocal,
+        timezone: rec.timezone || slot.recurring?.timezone || ms.timezone || 'UTC',
+        startsOn,
+        endsOn,
+        dueOffsetDays,
+        intervalWeeks
+      };
       slot.roadmapChain = [];
     } else if (slot.kind === 'empty') {
       slot.roadmapChain = [];
@@ -256,16 +325,34 @@ class ScheduleTemplateService {
    * shortcut: configure a block once, push it to all, then tweak individuals.
    * Returns { applied } (how many mentee schedules had the slot).
    */
-  async applySlotToAll(mentorId, slotId, patch) {
-    const schedules = await models.MenteeSchedule.findAll({ where: { assignedBy: mentorId } });
+  async applySlotToAll(mentorId, slotId, patch, menteeIds = null) {
+    const where = Array.isArray(menteeIds) && menteeIds.length
+      ? { menteeId: menteeIds, assignedBy: mentorId }
+      : { assignedBy: mentorId };
+    const schedules = await models.MenteeSchedule.findAll({ where });
     let applied = 0;
     for (const ms of schedules) {
       const sched = Array.isArray(ms.schedule) ? ms.schedule : [];
-      if (!sched.some((s) => s.id === slotId)) continue;
-      await this.updateSlot(ms.menteeId, slotId, patch, mentorId); // reuse single-slot logic (incl. chain start)
+      let idx = sched.findIndex((s, i) => (s.id || slug(s.label) || `block-${i}`) === slotId);
+      if (idx === -1 && /^(slot|block)-\d+$/.test(slotId)) {
+        const num = Number(slotId.replace(/^(slot|block)-/, ''));
+        if (num >= 0 && num < sched.length) idx = num;
+      }
+      if (idx === -1) continue;
+
+      const targetSlotId = sched[idx].id || slotId;
+      await this.updateSlot(ms.menteeId, targetSlotId, patch, mentorId);
       applied += 1;
     }
     return { applied };
+  }
+
+  /**
+   * Immediately materialize tasks for a recurring slot across assigned/selected mentees.
+   */
+  async activateSlot(mentorId, slotId, menteeIds = null) {
+    const recurringSlotMaterializer = require('./recurringSlotMaterializer');
+    return recurringSlotMaterializer.activateSlotForMentor(mentorId, slotId, menteeIds);
   }
 }
 

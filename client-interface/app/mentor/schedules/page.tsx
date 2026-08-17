@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
-  CalendarClock, Plus, Trash2, Loader2, Check, X, Clock, User, LayoutGrid, Users, Route, Repeat, Download, Search, Pencil, FileJson, Copy, CalendarRange,
+  CalendarClock, Plus, Trash2, Loader2, Check, X, Clock, User, LayoutGrid, Users, Route, Repeat, Download, Search, Pencil, FileJson, Copy, CalendarRange, Zap, CheckSquare,
 } from 'lucide-react';
 import { useMentorSchedule, useScheduleTemplates, useMentorCohort, useMentorRoadmaps, type ScheduleTemplate } from '@/lib/hooks/mentor';
 import { meetingsApi, type AvailabilityRule } from '@/lib/services/meetings-api';
@@ -17,12 +17,21 @@ import { useConfirm } from '@/lib/context/ConfirmContext';
 
 const DURATIONS = [15, 30, 45, 60];
 const SLOT_DAYS = ['everyday', 'weekdays', 'weekends'];
-const TASK_TYPES = ['reading', 'discussion', 'video', 'quiz', 'assignment', 'project'];
+const TASK_TYPES = ['discussion', 'project', 'reading', 'assignment', 'exercise'];
 const RECURRENCES = ['daily', 'weekly', 'once'];
+const DAYS_LIST = [
+  { value: 1, label: 'Monday' },
+  { value: 2, label: 'Tuesday' },
+  { value: 3, label: 'Wednesday' },
+  { value: 4, label: 'Thursday' },
+  { value: 5, label: 'Friday' },
+  { value: 6, label: 'Saturday' },
+  { value: 0, label: 'Sunday' },
+];
 const field = 'border border-slate-300 rounded-lg px-3 py-2 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500';
 
 // ───────────────────────── Templates tab ─────────────────────────
-interface DraftBlock { label: string; time: string; days: string; bookable: boolean }
+interface DraftBlock { id?: string; label: string; time: string; days: string; bookable: boolean }
 
 // A sensible starting day-shape so "New schedule" is never blank (the mentor
 // tweaks/removes from here instead of building from scratch).
@@ -106,7 +115,7 @@ function ScheduleDrawer({ template, onClose, onSaved }: { template: ScheduleTemp
   const [desc, setDesc] = useState(template?.description || '');
   const [blocks, setBlocks] = useState<DraftBlock[]>(
     template?.blocks?.length
-      ? template.blocks.map((b) => ({ label: b.label, time: b.time, days: b.days, bookable: !!b.bookable }))
+      ? template.blocks.map((b) => ({ id: b.id, label: b.label, time: b.time, days: b.days, bookable: !!b.bookable }))
       : DEFAULT_BLOCKS.map((b) => ({ ...b })) // new schedule starts from a ready day-shape
   );
   const [saving, setSaving] = useState(false);
@@ -321,116 +330,375 @@ function RoadmapSlotEditor({ slot, menteeId, roadmaps, onPatch, refreshTick }: {
 function FillTab() {
   const { cohort } = useMentorCohort();
   const { local } = useMentorRoadmaps();
+  const [scope, setScope] = useState<'all' | 'selected' | 'single'>('all');
+  const [selectedMenteeIds, setSelectedMenteeIds] = useState<Set<string>>(new Set());
   const [menteeId, setMenteeId] = useState('');
   const [q, setQ] = useState('');
   const [slots, setSlots] = useState<ScheduleSlot[]>([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
-  // Bumped after a slot save so each roadmap editor re-checks the mentee's
-  // progress (e.g. shows "already started" once a save kicks the roadmap off).
   const [refreshTick, setRefreshTick] = useState(0);
+
+  // Initialize selectedMenteeIds when cohort loads
+  useEffect(() => {
+    if (cohort.length > 0 && selectedMenteeIds.size === 0) {
+      setSelectedMenteeIds(new Set(cohort.map((m: any) => m.id)));
+    }
+  }, [cohort]);
 
   const selectedMentee = cohort.find((m: any) => m.id === menteeId);
   const filteredCohort = cohort.filter((m: any) => m.name.toLowerCase().includes(q.trim().toLowerCase()));
 
-  // Push one slot's config to every mentee who has that slot (the 40-student shortcut).
-  const applyAll = async (slot: ScheduleSlot) => {
-    try {
-      setBusy(slot.id + ':all');
-      const r: any = await scheduleApi.applySlotToAll(slot.id, { kind: slot.kind, roadmapChain: slot.roadmapChain, startStep: slot.startStep, recurring: slot.recurring });
-      toast.success(`Applied "${slot.label}" to ${r?.data?.applied ?? 0} mentee${(r?.data?.applied ?? 0) === 1 ? '' : 's'}`);
-    } catch { toast.error('Could not apply to all'); } finally { setBusy(null); }
-  };
+  // Active target mentee ID for loading slot structure
+  const activeLoadId = scope === 'single' ? menteeId : (cohort[0]?.id || '');
 
   const load = async (id: string) => {
     if (!id) { setSlots([]); return; }
     setLoading(true);
-    try { const r = await scheduleApi.getMenteeSchedule(id); setSlots(r?.data?.schedule?.schedule ?? []); }
+    try {
+      const r = await scheduleApi.getMenteeSchedule(id);
+      const rawSlots: ScheduleSlot[] = r?.data?.schedule?.schedule ?? [];
+      const sanitized = rawSlots.map((s, i) => ({ ...s, id: s.id || `slot-${i}` }));
+      setSlots(sanitized);
+    }
     finally { setLoading(false); }
   };
-  useEffect(() => { load(menteeId); }, [menteeId]);
+  useEffect(() => { load(activeLoadId); }, [activeLoadId]);
 
-  const patchSlot = (slotId: string, p: Partial<ScheduleSlot>) => setSlots((prev) => prev.map((s) => s.id === slotId ? { ...s, ...p } : s));
+  const patchSlot = (slotId: string, p: Partial<ScheduleSlot>) =>
+    setSlots((prev) => prev.map((s, i) => (s.id || `slot-${i}`) === slotId ? { ...s, ...p } : s));
 
-  const save = async (slot: ScheduleSlot) => {
+  // Save/Apply slot config across target mentees
+  const saveSlotConfig = async (slot: ScheduleSlot, slotId: string) => {
+    if (!slotId) return;
     try {
-      setBusy(slot.id);
-      const res: any = await scheduleApi.updateSlot(menteeId, slot.id, { kind: slot.kind, roadmapChain: slot.roadmapChain, startStep: slot.startStep, recurring: slot.recurring });
-      const startedId = res?.data?.slot?.chainStarted;
-      if (startedId) {
-        const rm = local.find((r) => r.id === startedId);
-        toast.success(`Slot saved - started "${rm?.name || 'roadmap'}" for this mentee`);
+      setBusy(slotId);
+      if (scope === 'single') {
+        if (!menteeId) { toast.error('Pick a mentee first'); return; }
+        const res: any = await scheduleApi.updateSlot(menteeId, slotId, { kind: slot.kind, roadmapChain: slot.roadmapChain, startStep: slot.startStep, recurring: slot.recurring });
+        const startedId = res?.data?.slot?.chainStarted;
+        if (startedId) {
+          const rm = local.find((r) => r.id === startedId);
+          toast.success(`Slot saved - started "${rm?.name || 'roadmap'}" for this mentee`);
+        } else {
+          toast.success('Slot saved for mentee');
+        }
       } else {
-        toast.success('Slot saved');
+        const targetIds = scope === 'selected' ? [...selectedMenteeIds] : undefined;
+        if (scope === 'selected' && (!targetIds || targetIds.length === 0)) {
+          toast.error('Select at least one mentee');
+          return;
+        }
+        const r: any = await scheduleApi.applySlotToAll(slotId, { kind: slot.kind, roadmapChain: slot.roadmapChain, startStep: slot.startStep, recurring: slot.recurring }, targetIds);
+        const count = r?.data?.applied ?? 0;
+        toast.success(`Applied "${slot.label}" to ${count} mentee${count === 1 ? '' : 's'}`);
       }
-      setRefreshTick((t) => t + 1); // re-check progress so the editor reflects the new state
-    } catch { toast.error('Could not save'); } finally { setBusy(null); }
+      setRefreshTick((t) => t + 1);
+    } catch { toast.error('Could not save slot config'); } finally { setBusy(null); }
+  };
+
+  // Generate recurring tasks immediately for target mentees.
+  const activateSlot = async (slot: ScheduleSlot, slotId: string) => {
+    if (!slotId) return;
+    try {
+      setBusy(slotId + ':activate');
+      let targetIds: string[] | undefined = undefined;
+      if (scope === 'single') {
+        if (!menteeId) { toast.error('Pick a mentee first'); return; }
+        targetIds = [menteeId];
+      } else if (scope === 'selected') {
+        targetIds = [...selectedMenteeIds];
+        if (targetIds.length === 0) { toast.error('Select at least one mentee'); return; }
+      }
+      const r: any = await scheduleApi.activateSlot(slotId, targetIds);
+      const created = r?.data?.createdTasks ?? 0;
+      const updated = r?.data?.updatedTasks ?? 0;
+      const applied = r?.data?.appliedMentees ?? 0;
+      if (created > 0) {
+        toast.success(`Generated ${created} recurring task(s) for ${applied} mentee(s)`);
+      } else if (updated > 0) {
+        toast.success(`Updated ${updated} recurring task(s) for ${applied} mentee(s)`);
+      } else {
+        toast.info(`Tasks already up-to-date for ${applied} mentee(s)`);
+      }
+    } catch {
+      toast.error('Could not activate recurring tasks');
+    } finally {
+      setBusy(null);
+    }
   };
 
   return (
     <div className="space-y-4">
-      {/* Searchable mentee picker (works for a 40-mentee cohort). */}
-      {!menteeId ? (
-        <div>
-          <div className="relative">
-            <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} autoFocus placeholder="Search a mentee to fill…"
-              className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500" />
+      {/* Target Scope Control Panel */}
+      <div className="bg-card rounded-2xl border border-slate-200 p-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-900">Target Mentees</h3>
+            <p className="text-xs text-slate-500">Choose who to configure and activate schedule slots for.</p>
           </div>
-          <div className="mt-2 max-h-72 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-100">
-            {filteredCohort.length === 0 ? (
-              <p className="py-6 text-center text-sm text-slate-400">{cohort.length === 0 ? 'No mentees.' : 'No matches.'}</p>
-            ) : filteredCohort.map((m: any) => (
-              <button key={m.id} onClick={() => { setMenteeId(m.id); setQ(''); }} className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm text-slate-800">{m.name}</button>
-            ))}
-          </div>
-          <p className="mt-2 text-xs text-slate-400">Tip: configure one mentee, then use <span className="font-medium">Apply to all</span> on a slot to push it to everyone, then tweak individuals.</p>
-        </div>
-      ) : (
-        <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-          <span className="text-sm text-slate-700">Filling <span className="font-semibold">{selectedMentee?.name || 'mentee'}</span></span>
-          <button onClick={() => setMenteeId('')} className="text-xs font-medium text-brand-600 hover:text-brand-700">Change mentee</button>
-        </div>
-      )}
 
-      {!menteeId ? null
+          <div className="inline-flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1">
+            <button
+              onClick={() => { setScope('all'); setMenteeId(''); }}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 ${scope === 'all' ? 'bg-white dark:bg-slate-900 text-brand-600 shadow-sm font-semibold' : 'text-slate-600 hover:text-slate-900'}`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              All Mentees ({cohort.length})
+            </button>
+            <button
+              onClick={() => { setScope('selected'); setMenteeId(''); }}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 ${scope === 'selected' ? 'bg-white dark:bg-slate-900 text-brand-600 shadow-sm font-semibold' : 'text-slate-600 hover:text-slate-900'}`}
+            >
+              <CheckSquare className="w-3.5 h-3.5" />
+              Selected ({selectedMenteeIds.size})
+            </button>
+            <button
+              onClick={() => setScope('single')}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 ${scope === 'single' ? 'bg-white dark:bg-slate-900 text-brand-600 shadow-sm font-semibold' : 'text-slate-600 hover:text-slate-900'}`}
+            >
+              <User className="w-3.5 h-3.5" />
+              Single Mentee
+            </button>
+          </div>
+        </div>
+
+        {/* Selected Mentees Multi-Select Box */}
+        {scope === 'selected' && (
+          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Apply & Activate for selected mentees:</span>
+              <button
+                onClick={() => setSelectedMenteeIds(selectedMenteeIds.size === cohort.length ? new Set() : new Set(cohort.map((m: any) => m.id)))}
+                className="text-xs font-medium text-brand-600 hover:text-brand-700"
+              >
+                {selectedMenteeIds.size === cohort.length ? 'Clear all' : 'Select all'}
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto p-1">
+              {cohort.map((m: any) => {
+                const checked = selectedMenteeIds.has(m.id);
+                return (
+                  <label
+                    key={m.id}
+                    onClick={() => {
+                      const next = new Set(selectedMenteeIds);
+                      checked ? next.delete(m.id) : next.add(m.id);
+                      setSelectedMenteeIds(next);
+                    }}
+                    className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer transition-colors ${checked ? 'border-brand-300 bg-brand-50 text-brand-700 dark:bg-brand-500/15' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    <input type="checkbox" checked={checked} readOnly className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-3.5 h-3.5" />
+                    {m.name}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Single Mentee Picker */}
+        {scope === 'single' && (
+          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2">
+            {!menteeId ? (
+              <div>
+                <div className="relative">
+                  <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                  <input value={q} onChange={(e) => setQ(e.target.value)} autoFocus placeholder="Search a mentee to fill…"
+                    className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                </div>
+                <div className="mt-2 max-h-48 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-100">
+                  {filteredCohort.length === 0 ? (
+                    <p className="py-4 text-center text-sm text-slate-400">{cohort.length === 0 ? 'No mentees.' : 'No matches.'}</p>
+                  ) : filteredCohort.map((m: any) => (
+                    <button key={m.id} onClick={() => { setMenteeId(m.id); setQ(''); }} className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm text-slate-800">{m.name}</button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                <span className="text-sm text-slate-700">Filling individual schedule for <span className="font-semibold">{selectedMentee?.name || 'mentee'}</span></span>
+                <button onClick={() => setMenteeId('')} className="text-xs font-medium text-brand-600 hover:text-brand-700">Change mentee</button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {scope === 'single' && !menteeId ? null
         : loading ? <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-brand-600" /></div>
-        : slots.length === 0 ? <p className="text-sm text-slate-500">No schedule assigned yet. Assign a template first.</p>
+        : slots.length === 0 ? <p className="text-sm text-slate-500">No schedule assigned yet. Assign a template first in the Templates tab.</p>
         : (
           <div className="space-y-3">
-            {slots.map((s) => (
-              <div key={s.id} className="bg-card rounded-2xl border border-slate-200 p-4">
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <div><p className="font-medium text-slate-900">{s.label}</p><p className="text-xs text-slate-500">{s.time} · {s.days}</p></div>
-                  <select value={s.kind} onChange={(e) => patchSlot(s.id, { kind: e.target.value as any })} className={field}>
-                    <option value="empty">Empty</option><option value="roadmap">Roadmap chain</option><option value="recurring">Recurring</option>
-                  </select>
-                </div>
+            {slots.map((s, idx) => {
+              const slotId = s.id || `slot-${idx}`;
+              return (
+                <div key={slotId} className="bg-card rounded-2xl border border-slate-200 p-4">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <div><p className="font-medium text-slate-900">{s.label}</p><p className="text-xs text-slate-500">{s.time} · {s.days}</p></div>
+                    <select value={s.kind} onChange={(e) => patchSlot(slotId, { kind: e.target.value as any })} className={field}>
+                      <option value="empty">Empty</option><option value="roadmap">Roadmap chain</option><option value="recurring">Recurring</option>
+                    </select>
+                  </div>
 
                 {s.kind === 'roadmap' && (
-                  <RoadmapSlotEditor slot={s} menteeId={menteeId} roadmaps={local} onPatch={(p) => patchSlot(s.id, p)} refreshTick={refreshTick} />
+                  <RoadmapSlotEditor slot={s} menteeId={menteeId || cohort[0]?.id || ''} roadmaps={local} onPatch={(p) => patchSlot(s.id, p)} refreshTick={refreshTick} />
                 )}
 
                 {s.kind === 'recurring' && (
-                  <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 space-y-2">
-                    <div className="flex items-center gap-2"><Repeat className="w-4 h-4 text-brand-500" /><span className="text-xs font-medium text-slate-600">Recurring ritual</span></div>
-                    <input value={s.recurring?.title || ''} onChange={(e) => patchSlot(s.id, { recurring: { title: e.target.value, type: s.recurring?.type || 'discussion', recurrence: s.recurring?.recurrence || 'daily' } })} placeholder="Title (e.g. Mindset talk)" className={`${field} w-full`} />
-                    <div className="flex gap-2">
-                      <select value={s.recurring?.type || 'discussion'} onChange={(e) => patchSlot(s.id, { recurring: { title: s.recurring?.title || '', type: e.target.value, recurrence: s.recurring?.recurrence || 'daily' } })} className={`${field} capitalize`}>{TASK_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
-                      <select value={s.recurring?.recurrence || 'daily'} onChange={(e) => patchSlot(s.id, { recurring: { title: s.recurring?.title || '', type: s.recurring?.type || 'discussion', recurrence: e.target.value } })} className={`${field} capitalize`}>{RECURRENCES.map((r) => <option key={r} value={r}>{r}</option>)}</select>
+                  <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Repeat className="w-4 h-4 text-brand-500" />
+                      <span className="text-xs font-medium text-slate-600">Recurring Task Schedule</span>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-500 mb-1">Task Title <span className="text-red-500">*</span></label>
+                      <input
+                        value={s.recurring?.title || ''}
+                        onChange={(e) => patchSlot(s.id, {
+                          recurring: { ...(s.recurring || { title: '', type: 'discussion' }), title: e.target.value }
+                        })}
+                        placeholder="e.g. Weekly Mindset & Goal Reflection"
+                        className={`${field} w-full`}
+                      />
+                    </div>
+
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Task Type</label>
+                        <select
+                          value={s.recurring?.type || 'discussion'}
+                          onChange={(e) => patchSlot(s.id, {
+                            recurring: { ...(s.recurring || { title: '', type: 'discussion' }), type: e.target.value }
+                          })}
+                          className={`${field} w-full capitalize`}
+                        >
+                          {TASK_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-500 mb-1">Repeat On (Days of Week)</label>
+                      <div className="flex flex-wrap gap-1.5 pt-0.5">
+                        {DAYS_LIST.map((d) => {
+                          const activeDays: number[] = Array.isArray(s.recurring?.daysOfWeek) && s.recurring!.daysOfWeek.length > 0
+                            ? s.recurring!.daysOfWeek
+                            : [s.recurring?.dayOfWeek ?? 1];
+                          const isSelected = activeDays.includes(d.value);
+                          return (
+                            <button
+                              type="button"
+                              key={d.value}
+                              onClick={() => {
+                                const nextDays = isSelected
+                                  ? activeDays.filter((v) => v !== d.value)
+                                  : [...activeDays, d.value];
+                                const finalDays = nextDays.length > 0 ? nextDays : [d.value];
+                                patchSlot(s.id, {
+                                  recurring: {
+                                    ...(s.recurring || { title: '', type: 'discussion' }),
+                                    daysOfWeek: finalDays,
+                                    dayOfWeek: finalDays[0]
+                                  }
+                                });
+                              }}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                                isSelected
+                                  ? 'bg-brand-600 border-brand-600 text-white shadow-sm font-semibold'
+                                  : 'bg-white dark:bg-slate-900 border-slate-200 text-slate-600 hover:bg-slate-50'
+                              }`}
+                            >
+                              {d.label.slice(0, 3)}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Time</label>
+                        <input
+                          type="time"
+                          value={s.recurring?.timeLocal || '09:00'}
+                          onChange={(e) => patchSlot(s.id, {
+                            recurring: { ...(s.recurring || { title: '', type: 'discussion' }), timeLocal: e.target.value }
+                          })}
+                          className={`${field} w-full`}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Frequency</label>
+                        <select
+                          value={s.recurring?.intervalWeeks || 1}
+                          onChange={(e) => patchSlot(s.id, {
+                            recurring: { ...(s.recurring || { title: '', type: 'discussion' }), intervalWeeks: Number(e.target.value) }
+                          })}
+                          className={`${field} w-full`}
+                        >
+                          <option value={1}>Every week</option>
+                          <option value={2}>Every 2 weeks</option>
+                          <option value={3}>Every 3 weeks</option>
+                          <option value={4}>Every 4 weeks (Monthly)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Due in (Days)</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={30}
+                          value={s.recurring?.dueOffsetDays || 7}
+                          onChange={(e) => patchSlot(s.id, {
+                            recurring: { ...(s.recurring || { title: '', type: 'discussion' }), dueOffsetDays: Number(e.target.value) }
+                          })}
+                          className={`${field} w-full`}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Starts On</label>
+                        <input
+                          type="date"
+                          value={s.recurring?.startsOn || new Date().toISOString().split('T')[0]}
+                          onChange={(e) => patchSlot(s.id, {
+                            recurring: { ...(s.recurring || { title: '', type: 'discussion' }), startsOn: e.target.value }
+                          })}
+                          className={`${field} w-full`}
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
 
                 <div className="flex justify-end gap-2 mt-3">
-                  <button onClick={() => applyAll(s)} disabled={busy === s.id + ':all'} title="Push this slot's setup to every mentee"
-                    className="px-3 py-1.5 rounded-lg border border-brand-200 bg-brand-50 dark:bg-brand-500/15 text-brand-700 text-sm font-medium hover:bg-brand-100 inline-flex items-center gap-1.5 disabled:opacity-50">
-                    {busy === s.id + ':all' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users className="w-4 h-4" />}Apply to all
+                  {s.kind === 'recurring' && (
+                    <button
+                      onClick={() => activateSlot(s, slotId)}
+                      disabled={busy === slotId + ':activate'}
+                      title="Generate recurring tasks for next occurrence immediately across target mentees"
+                      className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm font-medium inline-flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      {busy === slotId + ':activate' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                      Activate now {scope === 'selected' ? `(${selectedMenteeIds.size})` : scope === 'all' ? `(${cohort.length})` : ''}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => saveSlotConfig(s, slotId)}
+                    disabled={busy === slotId}
+                    className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm font-medium inline-flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    {busy === slotId ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                    {scope === 'single' ? 'Save slot' : `Save & Apply ${scope === 'selected' ? `(${selectedMenteeIds.size})` : `(${cohort.length})`}`}
                   </button>
-                  <button onClick={() => save(s)} disabled={busy === s.id} className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm inline-flex items-center gap-1.5 disabled:opacity-50">{busy === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}Save slot</button>
                 </div>
               </div>
-            ))}
+            );
+          })}
           </div>
         )}
     </div>

@@ -103,6 +103,8 @@ class TaskService {
       menteeId,
       roadmapTaskId, // NEW: If provided, assign existing roadmap task
       trackId, // Optional: personal lane this task belongs to
+      scheduleSlotId, // Optional: schedule slot origin for recurring tasks
+      occurrenceDate, // Optional: specific occurrence date (YYYY-MM-DD)
       title,
       description,
       type,
@@ -219,7 +221,9 @@ class TaskService {
       status: 'assigned',
       dueDate: resolvedDueDate,
       isCustomTask: roadmapTaskId ? false : true, // Roadmap tasks are not custom
-      trackId: trackId || null
+      trackId: trackId || null,
+      scheduleSlotId: scheduleSlotId || null,
+      occurrenceDate: occurrenceDate || null
     });
 
     // Link the interview kit + snapshot the per-assignment options.
