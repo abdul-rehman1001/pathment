@@ -30,6 +30,28 @@ describe('weightedOutput', () => {
     expect(threeHard).toBeGreaterThan(sixEasy);
   });
 
+  it('ranks 1 hard project above 15 easy exercises using 2D matrix', () => {
+    const fifteenEasyExercises = perf.weightedOutput({
+      completedTasks: Array(15).fill({ type: 'exercise', difficulty: 'easy' })
+    });
+    const oneHardProject = perf.weightedOutput({
+      completedTasks: [{ type: 'project', difficulty: 'hard' }]
+    });
+
+    expect(fifteenEasyExercises).toBeCloseTo(3.0); // 15 * 0.2
+    expect(oneHardProject).toBeCloseTo(6.0);       // 1 * 6.0
+    expect(oneHardProject).toBeGreaterThan(fifteenEasyExercises);
+  });
+
+  it('safely handles custom one-off tasks with null roadmapTask', () => {
+    const customTask = perf.weightedOutput({
+      completedTasks: [{ roadmapTask: null }]
+    });
+
+    // Falls back to type 'custom' and difficulty 'medium' -> weight 1.0
+    expect(customTask).toBeCloseTo(1.0);
+  });
+
   it('is zero for somebody who has finished nothing', () => {
     expect(perf.weightedOutput({})).toBe(0);
   });
