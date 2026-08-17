@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Loader2, Plus, X } from 'lucide-react';
 import { Drawer } from '@/components/shared/Drawer';
@@ -9,6 +9,7 @@ import taskApi from '@/lib/services/task-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { cleanHtml } from '@/lib/utils/html';
 import { pointsForDifficulty } from '@/lib/config/points';
+import { useFormDraft, clearFormDraft } from '@/lib/hooks/shared/useFormDraft';
 
 interface ResourceItem { title: string; url: string; resourceType?: string }
 
@@ -45,6 +46,33 @@ export function TaskEditDrawer({
   );
   const [resourcesTouched, setResourcesTouched] = useState(false);
   const [saving, setSaving] = useState(false);
+  const saveRef = useRef<() => Promise<void>>(async () => {});
+  const draftKey = `pathment:edit-task:${task.id}`;
+
+  type EditDraft = {
+    title: string;
+    description: string;
+    deliverable: string;
+    criteria: string;
+    note: string;
+    resources: ResourceItem[];
+    resourcesTouched: boolean;
+  };
+
+  const { flush: flushDraft } = useFormDraft<EditDraft>(draftKey, {
+    title, description, deliverable, criteria, note, resources, resourcesTouched,
+  }, (d) => {
+    if (!d || typeof d !== 'object') return;
+    if (typeof d.title === 'string') setTitle(d.title);
+    if (typeof d.description === 'string') setDescription(d.description);
+    if (typeof d.deliverable === 'string') setDeliverable(d.deliverable);
+    if (typeof d.criteria === 'string') setCriteria(d.criteria);
+    if (typeof d.note === 'string') setNote(d.note);
+    if (Array.isArray(d.resources)) setResources(d.resources);
+    if (typeof d.resourcesTouched === 'boolean') setResourcesTouched(d.resourcesTouched);
+  });
+
+  const closeKeepingDraft = () => { flushDraft(); onClose(); };
 
   const setRes = (i: number, patch: Partial<ResourceItem>) => {
     setResourcesTouched(true);
@@ -67,11 +95,12 @@ export function TaskEditDrawer({
       const arr = resources.filter((r) => r.url.trim()).map((r) => ({ title: r.title.trim() || r.url.trim(), url: r.url.trim(), resourceType: r.resourceType || 'reading' }));
       payload.resourcesOverride = arr.length ? arr : null;
     }
-    if (!Object.keys(payload).length) { toast.info('Nothing changed'); onClose(); return; }
+    if (!Object.keys(payload).length) { toast.info('Nothing changed'); clearFormDraft(draftKey); onClose(); return; }
     setSaving(true);
     try {
       await taskApi.updateTask(task.id, payload as never);
       toast.success('Task updated for this mentee');
+      clearFormDraft(draftKey);
       onSaved();
       onClose();
     } catch (e) {
@@ -80,16 +109,28 @@ export function TaskEditDrawer({
       setSaving(false);
     }
   };
+  saveRef.current = save;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        void saveRef.current();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   const field = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500';
   const label = 'block text-sm font-medium text-slate-700 mb-1';
 
   return (
-    <Drawer open onClose={onClose} title="Edit task for this mentee" subtitle="Changes apply to this mentee only — the roadmap step is untouched"
+    <Drawer open onClose={closeKeepingDraft} title="Edit task for this mentee" subtitle="Changes apply to this mentee only — the roadmap step is untouched"
       footer={
         <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm">Cancel</button>
-          <button onClick={save} disabled={saving} className="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium disabled:opacity-50 inline-flex items-center gap-2">
+          <button onClick={closeKeepingDraft} className="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm">Cancel</button>
+          <button onClick={save} disabled={saving} title="Ctrl+Enter" className="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium disabled:opacity-50 inline-flex items-center gap-2">
             {saving && <Loader2 className="w-4 h-4 animate-spin" />}Save changes
           </button>
         </div>
