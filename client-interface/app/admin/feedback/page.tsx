@@ -42,6 +42,9 @@ function formatReportsForClipboard(reports: FeedbackReport[]): string {
     out.push(`## ${i + 1}. [${(r.typeLabel || r.type).toUpperCase()}] ${r.title}`);
     out.push(`- Status: ${r.statusLabel || r.status} · Priority: ${r.priority}`);
     out.push(`- Reporter: ${who}`);
+    // Where it happened, before anything else about the environment. It is what
+    // decides who picks the report up.
+    out.push(`- Where: ${r.platformLabel || r.platform || 'Web'}${r.appVersion ? ` v${r.appVersion}` : ''}${r.device ? ` · ${r.device}` : ''}`);
     if (r.pageUrl) out.push(`- Page: ${r.pageUrl}`);
     if (r.userAgent) out.push(`- Browser: ${r.userAgent}`);
     out.push(`- Submitted: ${new Date(r.createdAt).toLocaleString()}`);
@@ -207,6 +210,12 @@ function FeedbackDetail({ report, onClose, onSaved }: { report: FeedbackReport; 
 
         {/* Context */}
         <div className="rounded-xl bg-slate-50 border border-slate-100 px-3.5 py-3 space-y-1 text-xs text-slate-500">
+          <p>
+            <span className="font-medium text-slate-600">Where:</span>{' '}
+            {report.platformLabel || report.platform || 'Web'}
+            {report.appVersion ? ` · v${report.appVersion}` : ''}
+            {report.device ? ` · ${report.device}` : ''}
+          </p>
           {report.pageUrl && <p><span className="font-medium text-slate-600">Page:</span> {report.pageUrl}</p>}
           {report.reporter?.email && <p><span className="font-medium text-slate-600">Reporter:</span> {report.reporter.email}</p>}
           {report.userAgent && <p className="truncate"><span className="font-medium text-slate-600">Browser:</span> {report.userAgent}</p>}

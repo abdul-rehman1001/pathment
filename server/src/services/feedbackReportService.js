@@ -11,6 +11,27 @@ const STATUS_LABELS = {
 const VALID_STATUSES = Object.keys(STATUS_LABELS);
 const TYPE_LABELS = { bug: 'Bug', suggestion: 'Suggestion', other: 'Feedback' };
 
+const PLATFORM_LABELS = { web: 'Web', android: 'Android', ios: 'iPhone' };
+const VALID_PLATFORMS = Object.keys(PLATFORM_LABELS);
+
+/**
+ * Where a report came from, believing the client only as far as the whitelist.
+ *
+ * A client that says nothing gets sniffed rather than defaulted, because an
+ * older web build will never send this and guessing 'web' for a phone would be
+ * worse than guessing nothing: it would file mobile bugs in the web pile and
+ * nobody would notice for weeks.
+ */
+function resolvePlatform(claimed, userAgent) {
+  const said = String(claimed || '').trim().toLowerCase();
+  if (VALID_PLATFORMS.includes(said)) return said;
+
+  const ua = String(userAgent || '');
+  if (/android/i.test(ua)) return 'android';
+  if (/iphone|ipad|ipod/i.test(ua)) return 'ios';
+  return 'web';
+}
+
 /**
  * feedbackReportService - in-app feedback / bug reports. Anyone submits (with an
  * optional screenshot/clip + auto-captured page context); admins triage through
@@ -32,6 +53,8 @@ class FeedbackReportService {
       title: r.title, description: r.description,
       status: r.status, statusLabel: STATUS_LABELS[r.status] || r.status,
       priority: r.priority,
+      platform: r.platform, platformLabel: PLATFORM_LABELS[r.platform] || r.platform,
+      appVersion: r.appVersion, device: r.device,
       pageUrl: r.pageUrl, userAgent: r.userAgent,
       attachmentUrl: r.attachmentUrl, attachmentType: r.attachmentType, attachmentName: r.attachmentName,
       resolutionNote: r.resolutionNote,
@@ -55,6 +78,11 @@ class FeedbackReportService {
       description: data.description ? String(data.description).slice(0, 5000) : null,
       status: 'open',
       priority: 'normal',
+      platform: resolvePlatform(data.platform, data.userAgent),
+      appVersion: data.appVersion ? String(data.appVersion).trim().slice(0, 32) : null,
+      device: data.device ? String(data.device).trim().slice(0, 120) : null,
+      // On the phone this is the route the person was on, not a URL. Same
+      // question either way: where were you when it happened.
       pageUrl: data.pageUrl ? String(data.pageUrl).slice(0, 500) : null,
       userAgent: data.userAgent ? String(data.userAgent).slice(0, 500) : null,
       attachmentUrl: data.attachmentUrl || null,
@@ -94,10 +122,13 @@ class FeedbackReportService {
   }
 
   // ── admin triage list ─────────────────────────────────────────────────────
-  async listAll({ status, type, page = 1, limit = 25 } = {}) {
+  async listAll({ status, type, platform, page = 1, limit = 25 } = {}) {
     const where = {};
     if (status && VALID_STATUSES.includes(status)) where.status = status;
     if (type && ['bug', 'suggestion', 'other'].includes(type)) where.type = type;
+    // Triage happens per platform more often than per anything else: a crash on
+    // Android is one person's morning and a web layout bug is another's.
+    if (platform && VALID_PLATFORMS.includes(platform)) where.platform = platform;
     const parsedLimit = Math.min(100, Math.max(1, Number(limit) || 25));
     const parsedPage = Math.max(1, Number(page) || 1);
     const { rows, count } = await models.FeedbackReport.findAndCountAll({
@@ -109,7 +140,19 @@ class FeedbackReportService {
     });
     // Open/unresolved counts for the header chips.
     const openCount = await models.FeedbackReport.count({ where: { status: { [Op.in]: ['open', 'in_review'] } } });
-    return { reports: rows.map((r) => this._shape(r)), total: count, page: parsedPage, limit: parsedLimit, openCount };
+    // Counted per platform so the board can say how the pile splits before
+    // anybody filters it.
+    const byPlatform = {};
+    for (const name of VALID_PLATFORMS) {
+      byPlatform[name] = await models.FeedbackReport.count({
+        where: { platform: name, status: { [Op.in]: ['open', 'in_review'] } },
+      });
+    }
+
+    return {
+      reports: rows.map((r) => this._shape(r)),
+      total: count, page: parsedPage, limit: parsedLimit, openCount, byPlatform,
+    };
   }
 
   // ── admin: update status / reply ──────────────────────────────────────────

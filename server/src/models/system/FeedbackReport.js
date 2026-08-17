@@ -22,6 +22,17 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(10), allowNull: false, defaultValue: 'normal',
       validate: { isIn: [['low', 'normal', 'high']] },
     },
+    // Where it happened. A report that does not say is a report somebody has to
+    // reply to before they can start, and `userAgent` cannot answer it: it is a
+    // browser string, so every report from the phone arrived with it empty.
+    platform: {
+      type: DataTypes.STRING(16), allowNull: false, defaultValue: 'web',
+      validate: { isIn: [['web', 'android', 'ios']] },
+    },
+    /** Which build. The first question on any bug, and old apps live for months. */
+    appVersion: { type: DataTypes.STRING(32), allowNull: true, field: 'app_version' },
+    /** "Pixel 7, Android 14". Free text: nothing queries it, a person reads it. */
+    device: { type: DataTypes.STRING(120), allowNull: true },
     pageUrl: { type: DataTypes.STRING(500), allowNull: true, field: 'page_url' },
     userAgent: { type: DataTypes.STRING(500), allowNull: true, field: 'user_agent' },
     attachmentUrl: { type: DataTypes.TEXT, allowNull: true, field: 'attachment_url' },
@@ -34,7 +45,10 @@ module.exports = (sequelize, DataTypes) => {
     tableName: 'feedback_reports',
     underscored: true,
     timestamps: true,
-    indexes: [{ fields: ['status'] }, { fields: ['reporter_id'] }, { fields: ['type'] }],
+    indexes: [
+      { fields: ['status'] }, { fields: ['reporter_id'] },
+      { fields: ['type'] }, { fields: ['platform'] },
+    ],
   });
 
   FeedbackReport.associate = (models) => {

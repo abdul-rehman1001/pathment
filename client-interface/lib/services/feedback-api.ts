@@ -10,6 +10,9 @@ export interface FeedbackReport {
   title: string; description: string | null;
   status: FeedbackStatus; statusLabel: string;
   priority: 'low' | 'normal' | 'high';
+  /** Where it happened. Without it every report needs a reply before a fix. */
+  platform: 'web' | 'android' | 'ios' | null; platformLabel: string | null;
+  appVersion: string | null; device: string | null;
   pageUrl: string | null; userAgent: string | null;
   attachmentUrl: string | null; attachmentType: 'image' | 'video' | 'file' | null; attachmentName: string | null;
   resolutionNote: string | null;
@@ -26,6 +29,10 @@ export const feedbackApi = {
     if (data.description) fd.append('description', data.description);
     if (data.pageUrl) fd.append('pageUrl', data.pageUrl);
     if (data.userAgent) fd.append('userAgent', data.userAgent);
+    // Said outright rather than left for the server to sniff from the user
+    // agent. The app says the same about itself, and an admin who cannot tell
+    // the two apart has to ask before they can start on anything.
+    fd.append('platform', 'web');
     if (data.file) fd.append('attachment', data.file);
     // Browser sets the multipart boundary; don't pin Content-Type.
     return axiosInstance.post('/feedback', fd);
