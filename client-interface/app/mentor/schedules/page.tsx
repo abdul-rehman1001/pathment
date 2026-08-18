@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
-  CalendarClock, Plus, Trash2, Loader2, Check, X, Clock, User, LayoutGrid, Users, Route, Repeat, Download, Search, Pencil, FileJson, Copy, CalendarRange, Zap, CheckSquare,
+  CalendarClock, Plus, Trash2, Loader2, Check, X, Clock, User, LayoutGrid, Users, Route, Repeat, Download, Search, Pencil, FileJson, Copy, CalendarRange, Zap, CheckSquare, ChevronDown,
 } from 'lucide-react';
 import { useMentorSchedule, useScheduleTemplates, useMentorCohort, useMentorRoadmaps, type ScheduleTemplate } from '@/lib/hooks/mentor';
 import { meetingsApi, type AvailabilityRule } from '@/lib/services/meetings-api';
@@ -14,6 +14,7 @@ import { ScheduleJsonPanel } from '@/components/shared/ScheduleJsonPanel';
 import { downloadScheduleTemplateJson } from '@/lib/utils/schedule-json';
 import { getBrowserTimeZone, formatMeeting } from '@/lib/utils/datetime';
 import { useConfirm } from '@/lib/context/ConfirmContext';
+import { MenteeTargetSelector } from '@/components/mentor/MenteeTargetSelector';
 
 const DURATIONS = [15, 30, 45, 60];
 const SLOT_DAYS = ['everyday', 'weekdays', 'weekends'];
@@ -60,22 +61,37 @@ function TemplatesTab() {
       {loading ? <div className="flex justify-center py-12"><Loader2 className="w-7 h-7 animate-spin text-brand-600" /></div> : (
         <>
           <section>
-            <h3 className="text-slate-900 font-medium mb-3">My schedules</h3>
-            {local.length === 0 ? <p className="text-sm text-slate-500">No schedules yet. Create one to assign to your mentees.</p> : (
+            <h3 className="text-slate-900 dark:text-slate-100 font-semibold mb-3">My schedules</h3>
+            {local.length === 0 ? <p className="text-sm text-slate-500 dark:text-slate-400">No schedules yet. Create one to assign to your mentees.</p> : (
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {local.map((t) => (
-                  <div key={t.id} className="bg-card rounded-2xl border border-slate-200 p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <h4 className="font-medium text-slate-900">{t.name}</h4>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button onClick={() => setEditing(t)} aria-label="Edit schedule" className="p-1.5 text-slate-400 hover:text-brand-600"><Pencil className="w-4 h-4" /></button>
-                        <button onClick={() => downloadScheduleTemplateJson(t)} aria-label="Export as JSON" title="Export as JSON" className="p-1.5 text-slate-400 hover:text-brand-600"><FileJson className="w-4 h-4" /></button>
-                        <button onClick={async () => { if (!(await confirm({ title: `Delete "${t.name}"?`, description: 'This schedule template will be permanently removed.', variant: 'danger', confirmLabel: 'Delete' }))) return; setBusy(t.id); try { await scheduleApi.deleteTemplate(t.id); refetch(); } finally { setBusy(null); } }} aria-label="Delete schedule" className="p-1.5 text-slate-400 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
+                  <div key={t.id} className="bg-card rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs hover:border-brand-300 dark:hover:border-brand-500/40 hover:shadow-sm transition-all flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-start justify-between gap-2">
+                        <h4 className="font-semibold text-slate-900 dark:text-slate-100 text-sm">{t.name}</h4>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button onClick={() => setEditing(t)} aria-label="Edit schedule" className="p-1.5 text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => downloadScheduleTemplateJson(t)} aria-label="Export as JSON" title="Export as JSON" className="p-1.5 text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"><FileJson className="w-3.5 h-3.5" /></button>
+                          <button onClick={async () => { if (!(await confirm({ title: `Delete "${t.name}"?`, description: 'This schedule template will be permanently removed.', variant: 'danger', confirmLabel: 'Delete' }))) return; setBusy(t.id); try { await scheduleApi.deleteTemplate(t.id); refetch(); } finally { setBusy(null); } }} aria-label="Delete schedule" className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                        </div>
                       </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{t.blocks.length} block{t.blocks.length === 1 ? '' : 's'}</p>
+                      
+                      <ol className="mt-3 space-y-1.5">
+                        {t.blocks.slice(0, 5).map((b) => (
+                          <li key={b.id} className="text-xs text-slate-600 dark:text-slate-400 flex items-center gap-2 truncate">
+                            <span className="px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[10px] font-mono text-slate-700 dark:text-slate-300 font-semibold shrink-0">
+                              {b.time || 'Flex'}
+                            </span>
+                            <span className="truncate">{b.label}</span>
+                          </li>
+                        ))}
+                      </ol>
                     </div>
-                    <p className="text-xs text-slate-500 mt-0.5">{t.blocks.length} block{t.blocks.length === 1 ? '' : 's'}</p>
-                    <ol className="mt-2 space-y-0.5">{t.blocks.slice(0, 5).map((b) => <li key={b.id} className="text-xs text-slate-500 truncate">{b.time || 'Flexible'} · {b.label}</li>)}</ol>
-                    <button onClick={() => setAssignFor(t)} className="mt-3 w-full px-3 py-1.5 rounded-lg bg-brand-50 dark:bg-brand-500/15 text-brand-700 text-sm font-medium hover:bg-brand-100 inline-flex items-center justify-center gap-1.5"><Users className="w-4 h-4" />Assign</button>
+
+                    <button onClick={() => setAssignFor(t)} className="mt-4 w-full px-3 py-2 rounded-xl bg-brand-50 dark:bg-brand-500/15 text-brand-700 dark:text-brand-300 text-xs font-semibold hover:bg-brand-100 dark:hover:bg-brand-500/25 transition-colors inline-flex items-center justify-center gap-1.5">
+                      <Users className="w-3.5 h-3.5" />Assign
+                    </button>
                   </div>
                 ))}
               </div>
@@ -84,17 +100,20 @@ function TemplatesTab() {
 
           {org.length > 0 && (
             <section>
-              <h3 className="text-slate-900 font-medium mb-3">From your organization</h3>
+              <h3 className="text-slate-900 dark:text-slate-100 font-semibold mb-3">From your organization</h3>
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {org.map((t) => (
-                  <div key={t.id} className="bg-card rounded-2xl border border-slate-200 p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <h4 className="font-medium text-slate-900">{t.name}</h4>
-                      <button onClick={() => downloadScheduleTemplateJson(t)} aria-label="Export as JSON" title="Export as JSON" className="p-1 text-slate-400 hover:text-brand-600 shrink-0"><FileJson className="w-4 h-4" /></button>
+                  <div key={t.id} className="bg-card rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs hover:border-brand-300 dark:hover:border-brand-500/40 hover:shadow-sm transition-all flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-start justify-between gap-2">
+                        <h4 className="font-semibold text-slate-900 dark:text-slate-100 text-sm">{t.name}</h4>
+                        <button onClick={() => downloadScheduleTemplateJson(t)} aria-label="Export as JSON" title="Export as JSON" className="p-1 text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 shrink-0 transition-colors"><FileJson className="w-3.5 h-3.5" /></button>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{t.blocks.length} blocks</p>
                     </div>
-                    <p className="text-xs text-slate-500 mt-0.5">{t.blocks.length} blocks</p>
+
                     <button onClick={async () => { setBusy(t.id); try { await scheduleApi.importTemplate(t.id); toast.success('Imported - now an editable copy under My schedules'); refetch(); } catch { toast.error('Failed'); } finally { setBusy(null); } }} disabled={busy === t.id}
-                      className="mt-3 w-full px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 text-sm font-medium hover:border-brand-300 inline-flex items-center justify-center gap-1.5">{busy === t.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}Import &amp; edit</button>
+                      className="mt-4 w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:border-brand-300 dark:hover:border-brand-500/40 transition-colors inline-flex items-center justify-center gap-1.5">{busy === t.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}Import &amp; edit</button>
                   </div>
                 ))}
               </div>
@@ -211,24 +230,40 @@ function AssignModal({ template, cohort, onClose }: { template: ScheduleTemplate
       subtitle="Everyone is selected by default - search or uncheck to pick specific mentees. Then fill the slots (and use Apply to all)."
       footer={
         <>
-          <button onClick={onClose} className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm hover:bg-slate-50">Cancel</button>
-          <button onClick={assign} disabled={saving} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50">{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}Assign{sel.size ? ` (${sel.size})` : ''}</button>
+          <button onClick={onClose} className="px-4 py-2 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Cancel</button>
+          <button onClick={assign} disabled={saving} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm font-semibold inline-flex items-center gap-2 disabled:opacity-50 transition-all">{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}Assign{sel.size ? ` (${sel.size})` : ''}</button>
         </>
       }
     >
-      {cohort.length === 0 ? <p className="text-sm text-slate-500">No mentees.</p> : (
-        <div className="space-y-2">
+      {cohort.length === 0 ? <p className="text-sm text-slate-500 dark:text-slate-400">No mentees.</p> : (
+        <div className="space-y-3">
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search mentees…" className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search mentees…" className="w-full pl-9 pr-3 py-2 border border-slate-200 dark:border-slate-800 rounded-xl text-xs bg-card text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500" />
             </div>
-            <button onClick={() => setSel(allSelected ? new Set() : new Set(cohort.map((m: any) => m.id)))} className="text-xs font-medium text-brand-600 hover:text-brand-700 shrink-0">{allSelected ? 'Clear' : 'Select all'}</button>
+            <button onClick={() => setSel(allSelected ? new Set() : new Set(cohort.map((m: any) => m.id)))} className="text-xs font-semibold text-brand-600 dark:text-brand-400 hover:text-brand-700 shrink-0 transition-colors">{allSelected ? 'Clear' : 'Select all'}</button>
           </div>
-          <div className="space-y-1 max-h-80 overflow-y-auto">
-            {filtered.map((m: any) => (
-              <label key={m.id} className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-slate-50 cursor-pointer"><input type="checkbox" checked={sel.has(m.id)} onChange={() => toggle(m.id)} className="rounded border-slate-300 text-brand-600" /><span className="text-sm text-slate-700">{m.name}</span></label>
-            ))}
+          <div className="space-y-1.5 max-h-80 overflow-y-auto p-0.5">
+            {filtered.map((m: any) => {
+              const isChecked = sel.has(m.id);
+              const photo = m.profilePictureUrl || m.avatarUrl;
+              const initials = m.avatar || m.name.slice(0, 2).toUpperCase();
+              return (
+                <label key={m.id} className={`flex items-center gap-3 p-2.5 rounded-xl border text-xs font-medium cursor-pointer transition-all ${isChecked ? 'border-brand-300 dark:border-brand-500/40 bg-brand-50/60 dark:bg-brand-500/10 text-brand-800 dark:text-brand-200 font-semibold' : 'border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'}`}>
+                  <input type="checkbox" checked={isChecked} onChange={() => toggle(m.id)} className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-3.5 h-3.5 shrink-0" />
+                  {photo ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={photo} alt={m.name} className="w-6.5 h-6.5 rounded-full object-cover shrink-0" />
+                  ) : (
+                    <div className="w-6.5 h-6.5 rounded-full bg-brand-100 dark:bg-brand-500/20 text-brand-700 dark:text-brand-300 font-bold text-[10px] flex items-center justify-center shrink-0">
+                      {initials}
+                    </div>
+                  )}
+                  <span className="truncate">{m.name}</span>
+                </label>
+              );
+            })}
           </div>
         </div>
       )}
@@ -286,15 +321,31 @@ function RoadmapSlotEditor({ slot, menteeId, roadmaps, onPatch, refreshTick }: {
   }, [stepStatus]);
 
   return (
-    <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 space-y-2">
-      <div className="flex items-center gap-2"><Route className="w-4 h-4 text-brand-500" /><span className="text-xs font-medium text-slate-600">Roadmap chain (in order)</span></div>
+    <div className="rounded-xl bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800 p-4 space-y-3">
+      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-brand-50 dark:bg-brand-500/15 text-brand-700 dark:text-brand-300 text-xs font-semibold border border-brand-200/60 dark:border-brand-500/30">
+        <Route className="w-3.5 h-3.5" />
+        Roadmap Chain (in order)
+      </div>
+
       <div className="flex flex-wrap gap-1.5">
         {(slot.roadmapChain || []).map((rid, i) => {
           const rm = roadmaps.find((r) => r.id === rid);
-          return <span key={rid} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-100 text-brand-700 text-xs">{i + 1}. {rm?.name || 'Roadmap'}<button onClick={() => onPatch({ roadmapChain: slot.roadmapChain.filter((x) => x !== rid) })}><X className="w-3 h-3" /></button></span>;
+          return (
+            <span key={rid} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-brand-100 dark:bg-brand-500/20 text-brand-800 dark:text-brand-200 text-xs font-semibold shadow-2xs">
+              {i + 1}. {rm?.name || 'Roadmap'}
+              <button type="button" onClick={() => onPatch({ roadmapChain: slot.roadmapChain.filter((x) => x !== rid) })} className="text-brand-600 dark:text-brand-400 hover:text-red-500 transition-colors">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </span>
+          );
         })}
       </div>
-      <select value="" onChange={(e) => { if (e.target.value) onPatch({ roadmapChain: [...(slot.roadmapChain || []), e.target.value] }); }} className={`${field} w-full`}>
+
+      <select
+        value=""
+        onChange={(e) => { if (e.target.value) onPatch({ roadmapChain: [...(slot.roadmapChain || []), e.target.value] }); }}
+        className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2 text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 shadow-2xs cursor-pointer"
+      >
         <option value="">+ Add roadmap to chain</option>
         {roadmaps.filter((r) => !(slot.roadmapChain || []).includes(r.id)).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
       </select>
@@ -303,9 +354,9 @@ function RoadmapSlotEditor({ slot, menteeId, roadmaps, onPatch, refreshTick }: {
       {!headId ? null : statusLoading ? (
         <div className="flex items-center gap-2 text-xs text-slate-400"><Loader2 className="w-3.5 h-3.5 animate-spin" />Checking this mentee&apos;s progress…</div>
       ) : started ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
-          <p className="font-medium">Already started for this mentee</p>
-          <p className="mt-0.5">
+        <div className="rounded-xl border border-amber-200 dark:border-amber-500/30 bg-amber-50/70 dark:bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-300">
+          <p className="font-semibold">Already started for this mentee</p>
+          <p className="mt-0.5 opacity-90">
             {doneCount}/{steps.length} steps done{activeCount > 0 ? `, ${activeCount} in progress` : ''}
             {doneCount < steps.length && nextTitle ? ` · next: ${nextTitle}` : ''}.
             Saving this slot won&apos;t re-assign or reset it — manage progress from the mentee&apos;s roadmap.
@@ -313,14 +364,143 @@ function RoadmapSlotEditor({ slot, menteeId, roadmaps, onPatch, refreshTick }: {
         </div>
       ) : steps.length > 1 ? (
         <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Start &ldquo;{head?.name}&rdquo; at step</label>
-          <select value={String(slot.startStep ?? firstUndone)} onChange={(e) => onPatch({ startStep: Number(e.target.value) })} className={`${field} w-full`}>
+          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Start &ldquo;{head?.name}&rdquo; at step</label>
+          <select
+            value={String(slot.startStep ?? firstUndone)}
+            onChange={(e) => onPatch({ startStep: Number(e.target.value) })}
+            className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2 text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 shadow-2xs cursor-pointer"
+          >
             {steps.map((st, i) => <option key={st.id || i} value={i} disabled={isDone(i)}>{isDone(i) ? '✓ ' : ''}{i + 1}. {st.title}{isDone(i) ? ' (done)' : ''}</option>)}
           </select>
-          <p className="text-xs text-slate-400 mt-1">Skip steps they already know — applies to the first roadmap in the chain. Saving starts it for this mentee.</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Skip steps they already know — applies to the first roadmap in the chain. Saving starts it for this mentee.</p>
         </div>
       ) : (
-        <p className="text-xs text-slate-400">Saving starts this roadmap for the mentee.</p>
+        <p className="text-xs text-slate-400 dark:text-slate-500">Saving starts this roadmap for the mentee.</p>
+      )}
+    </div>
+  );
+}
+
+function MultiDaySelectDropdown({
+  selectedDays,
+  onChange,
+}: {
+  selectedDays: number[];
+  onChange: (days: number[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const isAll = selectedDays.length === 7;
+  const isWeekdays = selectedDays.length === 5 && [1, 2, 3, 4, 5].every((d) => selectedDays.includes(d));
+  const isWeekends = selectedDays.length === 2 && [6, 0].every((d) => selectedDays.includes(d));
+
+  let labelText = '';
+  if (isAll) labelText = 'Every day (Mon-Sun)';
+  else if (isWeekdays) labelText = 'Weekdays (Mon-Fri)';
+  else if (isWeekends) labelText = 'Weekends (Sat-Sun)';
+  else if (selectedDays.length === 0) labelText = 'Select days...';
+  else {
+    const order = [1, 2, 3, 4, 5, 6, 0];
+    const sorted = [...selectedDays].sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    labelText = sorted.map((val) => DAYS_LIST.find((d) => d.value === val)?.label.slice(0, 3)).join(', ');
+  }
+
+  const toggleDay = (val: number) => {
+    const isSelected = selectedDays.includes(val);
+    const next = isSelected ? selectedDays.filter((d) => d !== val) : [...selectedDays, val];
+    onChange(next.length > 0 ? next : [val]);
+  };
+
+  const applyPreset = (preset: 'all' | 'weekdays' | 'weekends' | 'mon-wed-fri') => {
+    if (preset === 'all') onChange([1, 2, 3, 4, 5, 6, 0]);
+    else if (preset === 'weekdays') onChange([1, 2, 3, 4, 5]);
+    else if (preset === 'weekends') onChange([6, 0]);
+    else if (preset === 'mon-wed-fri') onChange([1, 3, 5]);
+  };
+
+  return (
+    <div className="relative inline-block w-full">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between gap-2 px-3 py-2 text-xs font-medium bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-colors"
+      >
+        <span className="truncate flex items-center gap-1.5 font-semibold text-slate-900 dark:text-slate-100">
+          <CalendarRange className="w-3.5 h-3.5 text-brand-600 shrink-0" />
+          {labelText}
+        </span>
+        <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
+
+          <div className="absolute left-0 top-full mt-1.5 w-64 z-30 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg p-2.5 space-y-2.5">
+            <div>
+              <span className="block text-[10px] uppercase font-semibold text-slate-400 tracking-wider mb-1">Quick Presets</span>
+              <div className="flex flex-wrap gap-1">
+                <button
+                  type="button"
+                  onClick={() => applyPreset('weekdays')}
+                  className="px-2 py-1 text-[11px] rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-brand-50 hover:text-brand-600 dark:hover:bg-brand-500/20 dark:hover:text-brand-300 text-slate-600 dark:text-slate-300 font-medium transition-colors"
+                >
+                  Weekdays
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyPreset('mon-wed-fri')}
+                  className="px-2 py-1 text-[11px] rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-brand-50 hover:text-brand-600 dark:hover:bg-brand-500/20 dark:hover:text-brand-300 text-slate-600 dark:text-slate-300 font-medium transition-colors"
+                >
+                  Mon/Wed/Fri
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyPreset('weekends')}
+                  className="px-2 py-1 text-[11px] rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-brand-50 hover:text-brand-600 dark:hover:bg-brand-500/20 dark:hover:text-brand-300 text-slate-600 dark:text-slate-300 font-medium transition-colors"
+                >
+                  Weekends
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyPreset('all')}
+                  className="px-2 py-1 text-[11px] rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-brand-50 hover:text-brand-600 dark:hover:bg-brand-500/20 dark:hover:text-brand-300 text-slate-600 dark:text-slate-300 font-medium transition-colors"
+                >
+                  Every day
+                </button>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-100 dark:border-slate-800 pt-2 space-y-1">
+              <span className="block text-[10px] uppercase font-semibold text-slate-400 tracking-wider mb-1">Select Days</span>
+              {DAYS_LIST.map((d) => {
+                const checked = selectedDays.includes(d.value);
+                return (
+                  <label
+                    key={d.value}
+                    onClick={() => toggleDay(d.value)}
+                    className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors ${
+                      checked
+                        ? 'bg-brand-50/70 dark:bg-brand-500/15 text-brand-700 dark:text-brand-300 font-semibold'
+                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        readOnly
+                        className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-3.5 h-3.5"
+                      />
+                      <span>{d.label}</span>
+                    </div>
+                    {checked && <Check className="w-3.5 h-3.5 text-brand-600 shrink-0" />}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
@@ -431,99 +611,15 @@ function FillTab() {
   return (
     <div className="space-y-4">
       {/* Target Scope Control Panel */}
-      <div className="bg-card rounded-2xl border border-slate-200 p-4 space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h3 className="text-sm font-semibold text-slate-900">Target Mentees</h3>
-            <p className="text-xs text-slate-500">Choose who to configure and activate schedule slots for.</p>
-          </div>
-
-          <div className="inline-flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1">
-            <button
-              onClick={() => { setScope('all'); setMenteeId(''); }}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 ${scope === 'all' ? 'bg-white dark:bg-slate-900 text-brand-600 shadow-sm font-semibold' : 'text-slate-600 hover:text-slate-900'}`}
-            >
-              <Users className="w-3.5 h-3.5" />
-              All Mentees ({cohort.length})
-            </button>
-            <button
-              onClick={() => { setScope('selected'); setMenteeId(''); }}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 ${scope === 'selected' ? 'bg-white dark:bg-slate-900 text-brand-600 shadow-sm font-semibold' : 'text-slate-600 hover:text-slate-900'}`}
-            >
-              <CheckSquare className="w-3.5 h-3.5" />
-              Selected ({selectedMenteeIds.size})
-            </button>
-            <button
-              onClick={() => setScope('single')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 ${scope === 'single' ? 'bg-white dark:bg-slate-900 text-brand-600 shadow-sm font-semibold' : 'text-slate-600 hover:text-slate-900'}`}
-            >
-              <User className="w-3.5 h-3.5" />
-              Single Mentee
-            </button>
-          </div>
-        </div>
-
-        {/* Selected Mentees Multi-Select Box */}
-        {scope === 'selected' && (
-          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Apply & Activate for selected mentees:</span>
-              <button
-                onClick={() => setSelectedMenteeIds(selectedMenteeIds.size === cohort.length ? new Set() : new Set(cohort.map((m: any) => m.id)))}
-                className="text-xs font-medium text-brand-600 hover:text-brand-700"
-              >
-                {selectedMenteeIds.size === cohort.length ? 'Clear all' : 'Select all'}
-              </button>
-            </div>
-            <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto p-1">
-              {cohort.map((m: any) => {
-                const checked = selectedMenteeIds.has(m.id);
-                return (
-                  <label
-                    key={m.id}
-                    onClick={() => {
-                      const next = new Set(selectedMenteeIds);
-                      checked ? next.delete(m.id) : next.add(m.id);
-                      setSelectedMenteeIds(next);
-                    }}
-                    className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer transition-colors ${checked ? 'border-brand-300 bg-brand-50 text-brand-700 dark:bg-brand-500/15' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                  >
-                    <input type="checkbox" checked={checked} readOnly className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-3.5 h-3.5" />
-                    {m.name}
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Single Mentee Picker */}
-        {scope === 'single' && (
-          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2">
-            {!menteeId ? (
-              <div>
-                <div className="relative">
-                  <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-                  <input value={q} onChange={(e) => setQ(e.target.value)} autoFocus placeholder="Search a mentee to fill…"
-                    className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500" />
-                </div>
-                <div className="mt-2 max-h-48 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-100">
-                  {filteredCohort.length === 0 ? (
-                    <p className="py-4 text-center text-sm text-slate-400">{cohort.length === 0 ? 'No mentees.' : 'No matches.'}</p>
-                  ) : filteredCohort.map((m: any) => (
-                    <button key={m.id} onClick={() => { setMenteeId(m.id); setQ(''); }} className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm text-slate-800">{m.name}</button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                <span className="text-sm text-slate-700">Filling individual schedule for <span className="font-semibold">{selectedMentee?.name || 'mentee'}</span></span>
-                <button onClick={() => setMenteeId('')} className="text-xs font-medium text-brand-600 hover:text-brand-700">Change mentee</button>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      <MenteeTargetSelector
+        scope={scope}
+        setScope={setScope}
+        cohort={cohort}
+        selectedMenteeIds={selectedMenteeIds}
+        setSelectedMenteeIds={setSelectedMenteeIds}
+        menteeId={menteeId}
+        setMenteeId={setMenteeId}
+      />
 
       {scope === 'single' && !menteeId ? null
         : loading ? <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-brand-600" /></div>
@@ -533,12 +629,30 @@ function FillTab() {
             {slots.map((s, idx) => {
               const slotId = s.id || `slot-${idx}`;
               return (
-                <div key={slotId} className="bg-card rounded-2xl border border-slate-200 p-4">
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <div><p className="font-medium text-slate-900">{s.label}</p><p className="text-xs text-slate-500">{s.time} · {s.days}</p></div>
-                    <select value={s.kind} onChange={(e) => patchSlot(slotId, { kind: e.target.value as any })} className={field}>
-                      <option value="empty">Empty</option><option value="roadmap">Roadmap chain</option><option value="recurring">Recurring</option>
-                    </select>
+                <div key={slotId} className="bg-card rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs transition-all">
+                  <div className="flex flex-wrap items-center justify-between gap-3 mb-3 pb-3 border-b border-slate-100 dark:border-slate-800/80">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-brand-50 dark:bg-brand-500/15 text-brand-600 dark:text-brand-400 flex items-center justify-center shrink-0">
+                        {s.kind === 'recurring' ? <Repeat className="w-4 h-4" /> : s.kind === 'roadmap' ? <Route className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-slate-900 dark:text-slate-100 text-sm">{s.label}</h4>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">{s.time || 'Flexible'} · {s.days}</p>
+                      </div>
+                    </div>
+
+                    <div className="relative">
+                      <select
+                        value={s.kind}
+                        onChange={(e) => patchSlot(slotId, { kind: e.target.value as any })}
+                        className="appearance-none pl-3 pr-8 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer shadow-2xs"
+                      >
+                        <option value="empty">Empty</option>
+                        <option value="roadmap">Roadmap chain</option>
+                        <option value="recurring">Recurring task</option>
+                      </select>
+                      <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2.5 pointer-events-none" />
+                    </div>
                   </div>
 
                 {s.kind === 'roadmap' && (
@@ -546,98 +660,84 @@ function FillTab() {
                 )}
 
                 {s.kind === 'recurring' && (
-                  <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <Repeat className="w-4 h-4 text-brand-500" />
-                      <span className="text-xs font-medium text-slate-600">Recurring Task Schedule</span>
+                  <div className="rounded-xl bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800 p-4 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-brand-50 dark:bg-brand-500/15 text-brand-700 dark:text-brand-300 text-xs font-semibold border border-brand-200/60 dark:border-brand-500/30">
+                        <Repeat className="w-3.5 h-3.5" />
+                        Recurring Task Schedule
+                      </div>
                     </div>
 
                     <div>
-                      <label className="block text-xs font-medium text-slate-500 mb-1">Task Title <span className="text-red-500">*</span></label>
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                        Task Title <span className="text-red-500">*</span>
+                      </label>
                       <input
                         value={s.recurring?.title || ''}
                         onChange={(e) => patchSlot(s.id, {
                           recurring: { ...(s.recurring || { title: '', type: 'discussion' }), title: e.target.value }
                         })}
                         placeholder="e.g. Weekly Mindset & Goal Reflection"
-                        className={`${field} w-full`}
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2 text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 shadow-2xs"
                       />
                     </div>
 
-                    <div className="grid gap-2 sm:grid-cols-3">
+                    <div className="grid gap-3 sm:grid-cols-3">
                       <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Task Type</label>
+                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Task Type</label>
                         <select
                           value={s.recurring?.type || 'discussion'}
                           onChange={(e) => patchSlot(s.id, {
                             recurring: { ...(s.recurring || { title: '', type: 'discussion' }), type: e.target.value }
                           })}
-                          className={`${field} w-full capitalize`}
+                          className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2 text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 capitalize focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 shadow-2xs cursor-pointer"
                         >
                           {TASK_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
                         </select>
                       </div>
 
-                    <div>
-                      <label className="block text-xs font-medium text-slate-500 mb-1">Repeat On (Days of Week)</label>
-                      <div className="flex flex-wrap gap-1.5 pt-0.5">
-                        {DAYS_LIST.map((d) => {
-                          const activeDays: number[] = Array.isArray(s.recurring?.daysOfWeek) && s.recurring!.daysOfWeek.length > 0
-                            ? s.recurring!.daysOfWeek
-                            : [s.recurring?.dayOfWeek ?? 1];
-                          const isSelected = activeDays.includes(d.value);
-                          return (
-                            <button
-                              type="button"
-                              key={d.value}
-                              onClick={() => {
-                                const nextDays = isSelected
-                                  ? activeDays.filter((v) => v !== d.value)
-                                  : [...activeDays, d.value];
-                                const finalDays = nextDays.length > 0 ? nextDays : [d.value];
-                                patchSlot(s.id, {
-                                  recurring: {
-                                    ...(s.recurring || { title: '', type: 'discussion' }),
-                                    daysOfWeek: finalDays,
-                                    dayOfWeek: finalDays[0]
-                                  }
-                                });
-                              }}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
-                                isSelected
-                                  ? 'bg-brand-600 border-brand-600 text-white shadow-sm font-semibold'
-                                  : 'bg-white dark:bg-slate-900 border-slate-200 text-slate-600 hover:bg-slate-50'
-                              }`}
-                            >
-                              {d.label.slice(0, 3)}
-                            </button>
-                          );
-                        })}
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Repeat On (Days of Week)</label>
+                        <MultiDaySelectDropdown
+                          selectedDays={
+                            Array.isArray(s.recurring?.daysOfWeek) && s.recurring!.daysOfWeek.length > 0
+                              ? s.recurring!.daysOfWeek
+                              : [s.recurring?.dayOfWeek ?? 1]
+                          }
+                          onChange={(finalDays) => {
+                            patchSlot(s.id, {
+                              recurring: {
+                                ...(s.recurring || { title: '', type: 'discussion' }),
+                                daysOfWeek: finalDays,
+                                dayOfWeek: finalDays[0]
+                              }
+                            });
+                          }}
+                        />
                       </div>
-                    </div>
 
                       <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Time</label>
+                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Time</label>
                         <input
                           type="time"
                           value={s.recurring?.timeLocal || '09:00'}
                           onChange={(e) => patchSlot(s.id, {
                             recurring: { ...(s.recurring || { title: '', type: 'discussion' }), timeLocal: e.target.value }
                           })}
-                          className={`${field} w-full`}
+                          className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2 text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 shadow-2xs"
                         />
                       </div>
                     </div>
 
-                    <div className="grid gap-2 sm:grid-cols-3">
+                    <div className="grid gap-3 sm:grid-cols-3">
                       <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Frequency</label>
+                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Frequency</label>
                         <select
                           value={s.recurring?.intervalWeeks || 1}
                           onChange={(e) => patchSlot(s.id, {
                             recurring: { ...(s.recurring || { title: '', type: 'discussion' }), intervalWeeks: Number(e.target.value) }
                           })}
-                          className={`${field} w-full`}
+                          className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2 text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 shadow-2xs cursor-pointer"
                         >
                           <option value={1}>Every week</option>
                           <option value={2}>Every 2 weeks</option>
@@ -647,7 +747,7 @@ function FillTab() {
                       </div>
 
                       <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Due in (Days)</label>
+                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Due in (Days)</label>
                         <input
                           type="number"
                           min={1}
@@ -656,43 +756,45 @@ function FillTab() {
                           onChange={(e) => patchSlot(s.id, {
                             recurring: { ...(s.recurring || { title: '', type: 'discussion' }), dueOffsetDays: Number(e.target.value) }
                           })}
-                          className={`${field} w-full`}
+                          className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2 text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 shadow-2xs"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Starts On</label>
+                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Starts On</label>
                         <input
                           type="date"
                           value={s.recurring?.startsOn || new Date().toISOString().split('T')[0]}
                           onChange={(e) => patchSlot(s.id, {
                             recurring: { ...(s.recurring || { title: '', type: 'discussion' }), startsOn: e.target.value }
                           })}
-                          className={`${field} w-full`}
+                          className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2 text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 shadow-2xs"
                         />
                       </div>
                     </div>
                   </div>
                 )}
 
-                <div className="flex justify-end gap-2 mt-3">
+                <div className="flex items-center justify-end gap-2.5 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
                   {s.kind === 'recurring' && (
                     <button
+                      type="button"
                       onClick={() => activateSlot(s, slotId)}
                       disabled={busy === slotId + ':activate'}
                       title="Generate recurring tasks for next occurrence immediately across target mentees"
-                      className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm font-medium inline-flex items-center gap-1.5 disabled:opacity-50"
+                      className="px-3.5 py-2 bg-brand-50 dark:bg-brand-500/15 border border-brand-200/80 dark:border-brand-500/30 text-brand-700 dark:text-brand-300 hover:bg-brand-100 dark:hover:bg-brand-500/25 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition-colors disabled:opacity-50"
                     >
-                      {busy === slotId + ':activate' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                      {busy === slotId + ':activate' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />}
                       Activate now {scope === 'selected' ? `(${selectedMenteeIds.size})` : scope === 'all' ? `(${cohort.length})` : ''}
                     </button>
                   )}
                   <button
+                    type="button"
                     onClick={() => saveSlotConfig(s, slotId)}
                     disabled={busy === slotId}
-                    className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm font-medium inline-flex items-center gap-1.5 disabled:opacity-50"
+                    className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-semibold shadow-xs inline-flex items-center gap-1.5 transition-all disabled:opacity-50"
                   >
-                    {busy === slotId ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                    {busy === slotId ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                     {scope === 'single' ? 'Save slot' : `Save & Apply ${scope === 'selected' ? `(${selectedMenteeIds.size})` : `(${cohort.length})`}`}
                   </button>
                 </div>
@@ -769,15 +871,24 @@ function RecurringHoursEditor({ onSaved }: { onSaved: () => void }) {
   };
 
   return (
-    <section className="bg-card rounded-2xl border border-slate-200 p-6 space-y-5">
+    <section className="bg-card rounded-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-5 shadow-xs">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-slate-900 font-medium flex items-center gap-2"><CalendarRange className="w-4 h-4 text-brand-500" />Weekly hours</h3>
-          <p className="text-sm text-slate-500 mt-0.5">Set the hours you&apos;re free each week once — they recur, and mentees can book a slot any week.</p>
+          <h3 className="text-slate-900 dark:text-slate-100 font-semibold flex items-center gap-2">
+            <CalendarRange className="w-4 h-4 text-brand-600 dark:text-brand-400" />
+            Weekly hours
+          </h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            Set the hours you&apos;re free each week once — they recur, and mentees can book a slot any week.
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-xs text-slate-500">Slot length</label>
-          <select value={slotMins} onChange={(e) => setSlotMins(Number(e.target.value))} className={field}>
+          <label className="text-xs font-medium text-slate-600 dark:text-slate-400">Slot length</label>
+          <select
+            value={slotMins}
+            onChange={(e) => setSlotMins(Number(e.target.value))}
+            className="rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-1.5 text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer shadow-2xs"
+          >
             {DURATIONS.map((d) => <option key={d} value={d}>{d} min</option>)}
           </select>
         </div>
@@ -786,30 +897,40 @@ function RecurringHoursEditor({ onSaved }: { onSaved: () => void }) {
       {loading ? (
         <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-brand-600" /></div>
       ) : (
-        <div className="divide-y divide-slate-100">
+        <div className="divide-y divide-slate-100 dark:divide-slate-800">
           {DAY_ORDER.map((d) => {
             const day = week[d];
             return (
               <div key={d} className="py-3 flex flex-col sm:flex-row sm:items-start gap-3">
                 <label className="flex items-center gap-2.5 w-32 shrink-0 pt-1.5 cursor-pointer select-none">
                   <input type="checkbox" checked={day.enabled} onChange={() => toggle(d)} className="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500" />
-                  <span className={`text-sm font-medium ${day.enabled ? 'text-slate-900' : 'text-slate-400'}`}>{DAY_LABEL[d]}</span>
+                  <span className={`text-xs font-semibold ${day.enabled ? 'text-slate-900 dark:text-slate-100' : 'text-slate-400 dark:text-slate-600'}`}>{DAY_LABEL[d]}</span>
                 </label>
                 {!day.enabled ? (
-                  <span className="text-sm text-slate-400 pt-1.5">Unavailable</span>
+                  <span className="text-xs text-slate-400 dark:text-slate-600 pt-1.5">Unavailable</span>
                 ) : (
                   <div className="flex-1 space-y-2">
                     {day.ranges.map((r, i) => (
                       <div key={i} className="flex items-center gap-2 flex-wrap">
-                        <input type="time" value={r.start} onChange={(e) => setRange(d, i, 'start', e.target.value)} className={field} />
-                        <span className="text-slate-400 text-sm">–</span>
-                        <input type="time" value={r.end} onChange={(e) => setRange(d, i, 'end', e.target.value)} className={field} />
-                        <button onClick={() => addRange(d)} title="Add another range" className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 text-slate-500 hover:border-brand-300 hover:text-brand-600"><Plus className="w-4 h-4" /></button>
+                        <input
+                          type="time"
+                          value={r.start}
+                          onChange={(e) => setRange(d, i, 'start', e.target.value)}
+                          className="rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-1.5 text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500 shadow-2xs"
+                        />
+                        <span className="text-slate-400 text-xs">–</span>
+                        <input
+                          type="time"
+                          value={r.end}
+                          onChange={(e) => setRange(d, i, 'end', e.target.value)}
+                          className="rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-1.5 text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500 shadow-2xs"
+                        />
+                        <button onClick={() => addRange(d)} title="Add another range" className="grid h-8 w-8 place-items-center rounded-xl border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:border-brand-300 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"><Plus className="w-3.5 h-3.5" /></button>
                         {day.ranges.length > 1 && (
-                          <button onClick={() => removeRange(d, i)} title="Remove this range" className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600"><X className="w-4 h-4" /></button>
+                          <button onClick={() => removeRange(d, i)} title="Remove this range" className="grid h-8 w-8 place-items-center rounded-xl text-slate-400 hover:bg-red-50 dark:hover:bg-red-500/15 hover:text-red-600 transition-colors"><X className="w-3.5 h-3.5" /></button>
                         )}
                         {i === 0 && (
-                          <button onClick={() => applyToAll(d)} title="Copy these hours to every day" className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-brand-600 hover:bg-brand-50"><Copy className="w-3.5 h-3.5" />Apply to all</button>
+                          <button onClick={() => applyToAll(d)} title="Copy these hours to every day" className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-brand-600 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-500/15 transition-colors"><Copy className="w-3.5 h-3.5" />Apply to all</button>
                         )}
                       </div>
                     ))}
@@ -822,7 +943,7 @@ function RecurringHoursEditor({ onSaved }: { onSaved: () => void }) {
       )}
 
       <div className="flex justify-end">
-        <button onClick={save} disabled={saving || loading} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium disabled:opacity-50">
+        <button onClick={save} disabled={saving || loading} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold shadow-xs disabled:opacity-50 transition-all">
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}Save weekly hours
         </button>
       </div>
@@ -866,49 +987,89 @@ function AvailabilityTab() {
   const upcoming = meetings.filter((m) => m.status === 'scheduled');
 
   if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-7 h-7 animate-spin text-brand-600" /></div>;
-  if (error) return <div className="bg-card rounded-2xl border border-slate-200 py-12 text-center"><p className="text-slate-600 mb-3">{error}</p><button onClick={refetch} className="text-brand-600 text-sm font-medium">Try again</button></div>;
+  if (error) return <div className="bg-card rounded-2xl border border-slate-200 dark:border-slate-800 py-12 text-center"><p className="text-slate-600 dark:text-slate-400 mb-3">{error}</p><button onClick={refetch} className="text-brand-600 text-sm font-semibold">Try again</button></div>;
 
   return (
     <div className="space-y-6">
       {/* Recurring weekly hours — the primary way to set availability. */}
       <RecurringHoursEditor onSaved={refetch} />
 
-      <section className="bg-card rounded-2xl border border-slate-200 p-6 space-y-4">
+      <section className="bg-card rounded-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-xs">
         <div>
-          <h3 className="text-slate-900 font-medium flex items-center gap-2"><CalendarClock className="w-4 h-4 text-brand-500" />One-off slot</h3>
-          <p className="text-sm text-slate-500 mt-0.5">Need a single extra time outside your weekly hours? Add it here.</p>
+          <h3 className="text-slate-900 dark:text-slate-100 font-semibold flex items-center gap-2">
+            <CalendarClock className="w-4 h-4 text-brand-600 dark:text-brand-400" />
+            One-off slot
+          </h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Need a single extra time outside your weekly hours? Add it here.</p>
         </div>
         <div className="flex flex-wrap items-end gap-3">
-          <div><label className="block text-xs text-slate-500 mb-1">Date</label><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={field} /></div>
-          <div><label className="block text-xs text-slate-500 mb-1">Time</label><input value={time} onChange={(e) => setTime(e.target.value)} className={`${field} w-28`} /></div>
-          <div><label className="block text-xs text-slate-500 mb-1">Duration</label><select value={duration} onChange={(e) => setDuration(Number(e.target.value))} className={field}>{DURATIONS.map((d) => <option key={d} value={d}>{d} min</option>)}</select></div>
-          <button onClick={publish} disabled={adding} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium disabled:opacity-50">{adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}Publish slot</button>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Date</label>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2 text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500 shadow-2xs" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Time</label>
+            <input value={time} onChange={(e) => setTime(e.target.value)} className="rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2 text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500 shadow-2xs w-28" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Duration</label>
+            <select value={duration} onChange={(e) => setDuration(Number(e.target.value))} className="rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2 text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500 shadow-2xs cursor-pointer">
+              {DURATIONS.map((d) => <option key={d} value={d}>{d} min</option>)}
+            </select>
+          </div>
+          <button onClick={publish} disabled={adding} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold shadow-xs disabled:opacity-50 transition-all">
+            {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}Publish slot
+          </button>
         </div>
-        {availability.length === 0 ? <p className="text-sm text-slate-500">No slots published.</p> : (
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {availability.length === 0 ? <p className="text-xs text-slate-500 dark:text-slate-400">No slots published.</p> : (
+          <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
             {availability.map((s) => (
-              <div key={s.id} className="flex items-center justify-between gap-2 p-3 rounded-xl border border-slate-200 bg-slate-50">
-                <div><p className="text-sm font-medium text-slate-900">{formatMeeting(s.startsAt, s.day, s.time)}</p><p className="text-xs text-slate-500">{s.durationMins} min</p></div>
-                {s.taken ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-xs"><User className="w-3 h-3" />{s.bookedBy ? s.bookedBy.firstName : 'Booked'}</span>
-                  : <button onClick={() => removeSlot(s.id)} disabled={busyId === s.id} className="text-slate-400 hover:text-red-500">{busyId === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}</button>}
+              <div key={s.id} className="flex items-center justify-between gap-2 p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50">
+                <div>
+                  <p className="text-xs font-semibold text-slate-900 dark:text-slate-100">{formatMeeting(s.startsAt, s.day, s.time)}</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">{s.durationMins} min</p>
+                </div>
+                {s.taken ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-xs font-semibold">
+                    <User className="w-3 h-3" />{s.bookedBy ? s.bookedBy.firstName : 'Booked'}
+                  </span>
+                ) : (
+                  <button onClick={() => removeSlot(s.id)} disabled={busyId === s.id} className="text-slate-400 hover:text-red-500 transition-colors p-1">
+                    {busyId === s.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                  </button>
+                )}
               </div>
             ))}
           </div>
         )}
       </section>
 
-      <section className="bg-card rounded-2xl border border-slate-200">
-        <div className="px-6 py-5 border-b border-slate-200"><h3 className="text-slate-900 font-medium">Upcoming 1:1s</h3></div>
+      <section className="bg-card rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
+        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800">
+          <h3 className="text-slate-900 dark:text-slate-100 font-semibold text-sm">Upcoming 1:1s</h3>
+        </div>
         <div className="p-6">
-          {upcoming.length === 0 ? <p className="text-sm text-slate-500">No upcoming 1:1s.</p> : (
-            <div className="space-y-2">
+          {upcoming.length === 0 ? <p className="text-xs text-slate-500 dark:text-slate-400">No upcoming 1:1s.</p> : (
+            <div className="space-y-2.5">
               {upcoming.map((m) => (
-                <div key={m.id} className="flex items-center gap-3 p-3 rounded-xl border border-slate-200">
-                  <div className="w-9 h-9 bg-brand-100 rounded-full flex items-center justify-center shrink-0"><span className="text-brand-700 text-xs font-medium">{m.mentee?.firstName?.[0]}{m.mentee?.lastName?.[0]}</span></div>
-                  <div className="min-w-0 flex-1"><p className="text-sm font-medium text-slate-900">{m.mentee?.firstName} {m.mentee?.lastName}</p><div className="flex items-center gap-2 text-xs text-slate-500"><Clock className="w-3 h-3" />{formatMeeting(m.startsAt, m.day, m.time)} · {m.durationMins}m</div>{m.agenda && <p className="text-xs text-slate-500 mt-0.5 truncate">{m.agenda}</p>}</div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button onClick={() => markDone(m.id)} disabled={busyId === m.id} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-medium hover:bg-emerald-100 disabled:opacity-50"><Check className="w-3.5 h-3.5" />Mark done</button>
-                    <button onClick={() => { setCancelReason(''); setCancelFor({ id: m.id, who: `${m.mentee?.firstName ?? ''} ${m.mentee?.lastName ?? ''}`.trim() || 'your mentee' }); }} disabled={busyId === m.id} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 text-xs font-medium hover:border-red-300 hover:text-red-600 disabled:opacity-50"><X className="w-3.5 h-3.5" />Cancel</button>
+                <div key={m.id} className="flex items-center gap-3 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40">
+                  <div className="w-9 h-9 bg-brand-100 dark:bg-brand-500/20 rounded-full flex items-center justify-center shrink-0">
+                    <span className="text-brand-700 dark:text-brand-300 text-xs font-bold">{m.mentee?.firstName?.[0]}{m.mentee?.lastName?.[0]}</span>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-slate-900 dark:text-slate-100">{m.mentee?.firstName} {m.mentee?.lastName}</p>
+                    <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      <Clock className="w-3 h-3 text-slate-400" />{formatMeeting(m.startsAt, m.day, m.time)} · {m.durationMins}m
+                    </div>
+                    {m.agenda && <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">{m.agenda}</p>}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button onClick={() => markDone(m.id)} disabled={busyId === m.id} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-xs font-semibold hover:bg-emerald-100 transition-colors disabled:opacity-50">
+                      <Check className="w-3.5 h-3.5" />Mark done
+                    </button>
+                    <button onClick={() => { setCancelReason(''); setCancelFor({ id: m.id, who: `${m.mentee?.firstName ?? ''} ${m.mentee?.lastName ?? ''}`.trim() || 'your mentee' }); }} disabled={busyId === m.id} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 text-xs font-semibold hover:border-red-300 hover:text-red-600 transition-colors disabled:opacity-50">
+                      <X className="w-3.5 h-3.5" />Cancel
+                    </button>
                   </div>
                 </div>
               ))}
@@ -924,23 +1085,23 @@ function AvailabilityTab() {
         subtitle={cancelFor ? `with ${cancelFor.who}` : undefined}
         footer={
           <>
-            <button onClick={() => setCancelFor(null)} className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm hover:bg-slate-50">Keep meeting</button>
-            <button onClick={confirmCancel} disabled={busyId === cancelFor?.id} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50">
+            <button onClick={() => setCancelFor(null)} className="px-4 py-2 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Keep meeting</button>
+            <button onClick={confirmCancel} disabled={busyId === cancelFor?.id} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold inline-flex items-center gap-2 disabled:opacity-50 transition-all">
               {busyId === cancelFor?.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}Cancel 1:1
             </button>
           </>
         }
       >
-        <label className="block text-sm font-medium text-slate-700 mb-1.5">Reason <span className="text-slate-400 font-normal">(shared with the mentee)</span></label>
+        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Reason <span className="text-slate-400 font-normal">(shared with the mentee)</span></label>
         <textarea
           value={cancelReason}
           onChange={(e) => setCancelReason(e.target.value)}
           rows={4}
           maxLength={1000}
           placeholder="e.g. Something urgent came up - let's rebook for later this week."
-          className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
+          className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 p-3 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
         />
-        <p className="mt-2 text-xs text-slate-400">A short reason helps your mentee understand and rebook. The slot is freed so they can book again.</p>
+        <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">A short reason helps your mentee understand and rebook. The slot is freed so they can book again.</p>
       </Drawer>
     </div>
   );
@@ -958,15 +1119,28 @@ export default function MentorSchedules() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-slate-900 mb-2">Schedules</h1>
-        <p className="text-slate-600">Shape the day with reusable templates, fill each mentee's slots, and publish your 1:1 times.</p>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight mb-1">Schedules</h1>
+        <p className="text-sm text-slate-600 dark:text-slate-400">Shape the day with reusable templates, fill each mentee&apos;s slots, and publish your 1:1 times.</p>
       </div>
-      <div className="flex flex-wrap items-center gap-0 border-b border-slate-200">
-        {TABS.map((t) => (
-          <button key={t.key} onClick={() => setTab(t.key)} className={`-mb-px border-b-2 px-3.5 py-2 text-sm font-medium transition-colors inline-flex items-center gap-1.5 ${tab === t.key ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
-            <t.icon className="w-4 h-4" />{t.label}
-          </button>
-        ))}
+
+      <div className="flex flex-wrap items-center gap-1 border-b border-slate-200 dark:border-slate-800 pb-px">
+        {TABS.map((t) => {
+          const isActive = tab === t.key;
+          return (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-medium transition-all inline-flex items-center gap-2 rounded-t-xl ${
+                isActive
+                  ? 'border-brand-600 text-brand-700 dark:text-brand-400 bg-brand-50/50 dark:bg-brand-500/10 font-semibold'
+                  : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:border-slate-300 dark:hover:border-slate-700'
+              }`}
+            >
+              <t.icon className={`w-4 h-4 ${isActive ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400'}`} />
+              {t.label}
+            </button>
+          );
+        })}
       </div>
       {tab === 'templates' && <TemplatesTab />}
       {tab === 'fill' && <FillTab />}
