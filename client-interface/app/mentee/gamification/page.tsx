@@ -229,10 +229,10 @@ export default function MenteeGamificationPage() {
             )}
 
             {badges.slice(0, 6).map((badge) => (
-              <div key={badge.id} className="rounded-xl border border-slate-200 p-3">
+              <div key={badge.id} className="rounded-xl border border-slate-200 p-3 bg-slate-50">
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="text-slate-900">{badge.name}</p>
+                    <p className="text-slate-900 font-semibold">{badge.name}</p>
                     <p className="text-slate-600 text-sm mt-1">{badge.description}</p>
                   </div>
                   <Medal className="w-5 h-5 text-amber-500 shrink-0" />

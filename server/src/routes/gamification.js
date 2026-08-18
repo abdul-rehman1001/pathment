@@ -13,11 +13,11 @@ router.get('/leaderboard', gamificationController.getLeaderboard);
 router.get('/badges', gamificationController.getAllBadges);
 router.get('/challenges', gamificationController.getAllChallenges);
 
-// User-centric routes (controller enforces ownership checks when authenticated)
-router.get('/user/:userId/stats', gamificationController.getUserStats);
-router.get('/user/:userId/badges', gamificationController.getUserBadges);
-router.get('/user/:userId/points-history', gamificationController.getUserPointsHistory);
-router.get('/challenges/user/:userId', gamificationController.getUserChallenges);
+// User-centric routes (authenticated; controller enforces ownership / role checks)
+router.get('/user/:userId/stats', authenticate, gamificationController.getUserStats);
+router.get('/user/:userId/badges', authenticate, gamificationController.getUserBadges);
+router.get('/user/:userId/points-history', authenticate, gamificationController.getUserPointsHistory);
+router.get('/challenges/user/:userId', authenticate, gamificationController.getUserChallenges);
 
 // Authenticated challenge participation
 router.post(

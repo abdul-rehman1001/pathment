@@ -68,19 +68,20 @@ export const gamificationApi = {
   },
 
   async getUserBadges(userId: string): Promise<Badge[]> {
-    const response = await apiClient.get<ApiResponse<{ badges: UserBadgeApiItem[] }>>(
+    const response = await apiClient.get<ApiResponse<{ badges: (UserBadgeApiItem | Badge)[] }>>(
       `/gamification/user/${userId}/badges`
     );
 
     const mapped: Badge[] = [];
 
     for (const item of response.data.badges || []) {
-      const nested = item.badge || item.Badge;
-      if (!nested) continue;
+      const isUserBadge = 'badge' in item || 'Badge' in item;
+      const nested = isUserBadge ? (item as UserBadgeApiItem).badge || (item as UserBadgeApiItem).Badge : (item as Badge);
+      if (!nested || !nested.name) continue;
 
       mapped.push({
         ...nested,
-        unlockedAt: item.unlockedAt
+        unlockedAt: (item as UserBadgeApiItem).unlockedAt || nested.unlockedAt
       });
     }
 

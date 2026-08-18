@@ -56,7 +56,42 @@ export const menteeRoadmapApi = {
   mine: () => apiClient.get('/roadmaps/me'),
 };
 
-export interface MenteeRoadmapStep { id: string; title: string; type: string; done: boolean; current: boolean }
+export interface MenteeStepResource {
+  id?: string;
+  title: string;
+  url: string;
+  resourceType?: string;
+  description?: string;
+}
+
+export interface MenteeAssignedTask {
+  id: string;
+  status: 'not_started' | 'assigned' | 'in_progress' | 'submitted' | 'revision_needed' | 'completed' | 'cancelled';
+  dueDate?: string | null;
+  completedAt?: string | null;
+  pointsAwarded?: number;
+}
+
+export interface MenteeRoadmapStep {
+  id: string;
+  title: string;
+  description?: string;
+  type: string;
+  difficulty?: 'easy' | 'medium' | 'hard' | 'expert';
+  effort?: 'xs' | 's' | 'm' | 'l' | 'xl';
+  deliverable?: string;
+  acceptanceCriteria?: string[];
+  estimatedHours?: number;
+  pointsBase?: number;
+  dueOffsetDays?: number;
+  resources?: MenteeStepResource[];
+  done: boolean;
+  current: boolean;
+  status?: 'completed' | 'current' | 'upcoming';
+  assignedTask?: MenteeAssignedTask | null;
+  completedDate?: string;
+}
+
 export interface MenteeRoadmap {
   roadmapId: string;
   name: string;
@@ -67,5 +102,10 @@ export interface MenteeRoadmap {
   completed: boolean;
   percent: number;
   currentStepTitle: string | null;
+  nextMilestoneDueDate?: string | null;
+  mentorCheckInDate?: string | null;
+  earnedRoadmapPoints?: number;
+  totalRoadmapPoints?: number;
   steps: MenteeRoadmapStep[];
 }
+

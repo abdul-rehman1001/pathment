@@ -164,6 +164,7 @@ export const navigationConfig: Record<string, NavLink[]> = {
   mentee: [
     { path: '/mentee/dashboard', icon: LayoutDashboard, label: 'This Week' },
     { path: '/mentee/tasks', icon: ClipboardList, label: 'My Tasks' },
+    { path: '/mentee/roadmap', icon: Route, label: 'My Roadmap' },
     { path: '/mentee/meetings', icon: CalendarClock, label: 'My Mentor' },
     { path: '/mentee/messages', icon: MessageSquare, label: 'Messages', badge: 'messages' },
     {

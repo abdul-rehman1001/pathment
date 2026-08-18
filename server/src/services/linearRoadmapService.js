@@ -478,8 +478,101 @@ class LinearRoadmapService {
       const roadmap = await models.Roadmap.findByPk(p.roadmapId, { attributes: ['id', 'name', 'description', 'skillTags'] });
       if (!roadmap) continue;
       const steps = await this.getSteps(p.roadmapId);
+      const stepIds = steps.map((s) => s.id);
+
+      const assignedTasks = stepIds.length
+        ? await models.AssignedTask.findAll({
+            where: { menteeId, roadmapTaskId: { [Op.in]: stepIds } },
+            attributes: ['id', 'roadmapTaskId', 'status', 'dueDate', 'completedAt', 'pointsAwarded', 'pointsBase'],
+          })
+        : [];
+      const assignedByStepId = new Map(assignedTasks.map((at) => [at.roadmapTaskId, at]));
+
       const total = steps.length;
       const currentStep = Math.min(p.currentStep, total);
+
+      // Find next milestone due date from active assigned task if present
+      const activeAssignedTask = assignedTasks.find((at) => ['assigned', 'in_progress', 'submitted', 'revision_needed'].includes(at.status));
+      const nextMilestoneDueDate = activeAssignedTask?.dueDate || null;
+
+      // Fetch mentee's next upcoming scheduled meeting or cohort review session dynamically
+      let mentorCheckInDate = null;
+      const nextMeeting = await models.ScheduledMeeting.findOne({
+        where: {
+          menteeId,
+          status: 'scheduled',
+          startsAt: { [Op.gte]: new Date() },
+        },
+        order: [['starts_at', 'ASC']],
+      });
+
+      if (nextMeeting?.startsAt) {
+        mentorCheckInDate = new Date(nextMeeting.startsAt).toISOString();
+      }
+
+      if (!mentorCheckInDate && models.CohortReviewSession) {
+        const clanMember = models.ClanMembership
+          ? await models.ClanMembership.findOne({ where: { userId: menteeId, status: 'active' } })
+          : null;
+        const clanId = clanMember?.clanId || null;
+
+        const sessionWhere = clanId
+          ? { clanId, [Op.or]: [{ status: 'in_progress' }, { scheduledAt: { [Op.gte]: new Date() } }] }
+          : { [Op.or]: [{ status: 'in_progress' }, { scheduledAt: { [Op.gte]: new Date() } }] };
+
+        const nextCohortSession = await models.CohortReviewSession.findOne({
+          where: sessionWhere,
+          order: [['scheduled_at', 'ASC']],
+        });
+        if (nextCohortSession?.scheduledAt) {
+          mentorCheckInDate = new Date(nextCohortSession.scheduledAt).toISOString();
+        }
+      }
+
+      // Calculate SSOT total & earned roadmap points for this mentee
+      let earnedRoadmapPoints = 0;
+      let totalRoadmapPoints = 0;
+
+      const stepItems = steps.map((s, i) => {
+        const at = assignedByStepId.get(s.id);
+        const done = i < currentStep || at?.status === 'completed';
+        const isCurrent = !p.completed && i === currentStep;
+        const status = done ? 'completed' : isCurrent ? 'current' : 'upcoming';
+
+        const basePts = s.pointsBase ?? 0;
+        totalRoadmapPoints += basePts;
+        if (done) {
+          earnedRoadmapPoints += at?.pointsAwarded ?? basePts;
+        }
+
+        return {
+          id: s.id,
+          title: s.title,
+          description: s.description || '',
+          type: s.type || 'assignment',
+          difficulty: s.difficulty || 'medium',
+          effort: s.effort || 'm',
+          deliverable: s.deliverable || '',
+          acceptanceCriteria: s.acceptanceCriteria || [],
+          estimatedHours: s.estimatedHours ?? null,
+          pointsBase: s.pointsBase ?? null,
+          dueOffsetDays: s.dueOffsetDays ?? null,
+          resources: s.resources || [],
+          done,
+          current: isCurrent,
+          status,
+          assignedTask: at
+            ? {
+                id: at.id,
+                status: at.status,
+                dueDate: at.dueDate,
+                completedAt: at.completedAt,
+                pointsAwarded: at.pointsAwarded,
+              }
+            : null,
+        };
+      });
+
       out.push({
         roadmapId: roadmap.id,
         name: roadmap.name,
@@ -489,8 +582,12 @@ class LinearRoadmapService {
         totalSteps: total,
         completed: !!p.completed,
         percent: total > 0 ? Math.round((currentStep / total) * 100) : 0,
-        currentStepTitle: !p.completed && steps[currentStep] ? steps[currentStep].title : null,
-        steps: steps.map((s, i) => ({ id: s.id, title: s.title, type: s.type, done: i < currentStep, current: !p.completed && i === currentStep }))
+        currentStepTitle: !p.completed && steps[currentStep] ? steps[currentStep].title : (p.completed ? 'Roadmap Completed 🎉' : null),
+        nextMilestoneDueDate,
+        mentorCheckInDate,
+        earnedRoadmapPoints,
+        totalRoadmapPoints,
+        steps: stepItems,
       });
     }
     return out;
