@@ -9,16 +9,8 @@ const { catchAsync } = require('../middlewares/errorHandler');
 exports.getUserStats = catchAsync(async (req, res) => {
   const { userId } = req.params;
 
-  // If no user authenticated, treat as public but anonymized
-  if (!req.user) {
-    const stats = await gamificationService.getUserGamificationStats(userId);
-    return res.status(200).json(
-      successResponse('Gamification stats retrieved', { stats })
-    );
-  }
-
-  // Security: Users can only view their own stats (or admins can view anyone)
-  if (req.user.role !== 'admin' && req.user.id !== userId) {
+  // Security: Users can view their own stats, or mentors/admins can view mentee stats
+  if (!req.user || (req.user.id !== userId && !['admin', 'mentor'].includes(req.user.role))) {
     return res.status(403).json({ success: false, message: 'Forbidden - cannot view other user stats' });
   }
 
@@ -36,16 +28,7 @@ exports.getUserStats = catchAsync(async (req, res) => {
 exports.getUserBadges = catchAsync(async (req, res) => {
   const { userId } = req.params;
 
-  // If no user authenticated, treat as public
-  if (!req.user) {
-    const badges = await gamificationService.getUserBadges(userId);
-    return res.status(200).json(
-      successResponse('User badges retrieved', { badges })
-    );
-  }
-
-  // Security check for authenticated users
-  if (req.user.role !== 'admin' && req.user.id !== userId) {
+  if (!req.user || (req.user.id !== userId && !['admin', 'mentor'].includes(req.user.role))) {
     return res.status(403).json({ success: false, message: 'Forbidden - cannot view other user badges' });
   }
 
@@ -64,16 +47,7 @@ exports.getUserPointsHistory = catchAsync(async (req, res) => {
   const { userId } = req.params;
   const { limit = 50 } = req.query;
 
-  // If no user authenticated, return empty (for now)
-  if (!req.user) {
-    const history = await gamificationService.getUserPointsHistory(userId, parseInt(limit));
-    return res.status(200).json(
-      successResponse('Points history retrieved', { history })
-    );
-  }
-
-  // Security check for authenticated users
-  if (req.user.role !== 'admin' && req.user.id !== userId) {
+  if (!req.user || (req.user.id !== userId && !['admin', 'mentor'].includes(req.user.role))) {
     return res.status(403).json({ success: false, message: 'Forbidden - cannot view other user points history' });
   }
 
@@ -235,15 +209,8 @@ exports.getUserChallenges = catchAsync(async (req, res) => {
   const { userId } = req.params;
   const { models } = require('../db');
 
-  // If no user authenticated, return empty (for now)
-  if (!req.user) {
-    return res.status(200).json(
-      successResponse('User challenges retrieved', { userChallenges: [] })
-    );
-  }
-
-  // Security check for authenticated users
-  if (req.user.role !== 'admin' && req.user.id !== userId) {
+  // Security: Users can view their own challenges, or mentors/admins can view mentee challenges
+  if (!req.user || (req.user.id !== userId && !['admin', 'mentor'].includes(req.user.role))) {
     return res.status(403).json({ success: false, message: 'Forbidden - cannot view other user challenges' });
   }
 
