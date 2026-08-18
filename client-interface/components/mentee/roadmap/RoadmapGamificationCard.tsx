@@ -97,8 +97,8 @@ export function RoadmapGamificationCard({
       {/* Card Header */}
       <div className="flex items-center justify-between border-b border-slate-100 pb-3">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center">
-            <Trophy className="w-4 h-4 text-amber-600" />
+          <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+            <Trophy className="w-4 h-4 text-amber-500" />
           </div>
           <h3 className="text-sm font-semibold text-slate-900">Points & Achievements</h3>
         </div>
@@ -164,7 +164,7 @@ export function RoadmapGamificationCard({
             <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
               Recent Badges
             </span>
-            <span className="text-[11px] font-semibold text-slate-400">
+            <span className="text-[11px] font-semibold text-slate-500">
               {recentBadges.length} unlocked
             </span>
           </div>
@@ -172,7 +172,7 @@ export function RoadmapGamificationCard({
             {recentBadges.map((badge) => (
               <div
                 key={badge.id}
-                className="flex items-center gap-2.5 p-2.5 bg-amber-50/50 border border-amber-200/60 rounded-xl hover:bg-amber-50 transition-colors"
+                className="flex items-center gap-2.5 p-2.5 bg-slate-50 border border-slate-200/80 rounded-xl hover:bg-slate-100/60 transition-colors"
               >
                 <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
                   <Award className="w-4 h-4" />
@@ -180,11 +180,11 @@ export function RoadmapGamificationCard({
                 <div className="min-w-0 flex-1">
                   <div className="text-xs font-bold text-slate-900 truncate">{badge.name}</div>
                   {badge.description && (
-                    <div className="text-[11px] text-slate-500 truncate">{badge.description}</div>
+                    <div className="text-[11px] font-medium text-slate-600 truncate">{badge.description}</div>
                   )}
                 </div>
                 {badge.pointsReward ? (
-                  <span className="text-[11px] font-bold text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded-md shrink-0">
+                  <span className="text-[11px] font-bold text-amber-500 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md shrink-0">
                     +{badge.pointsReward} pts
                   </span>
                 ) : null}
