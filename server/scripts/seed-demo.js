@@ -39,12 +39,49 @@ const { Op } = require("sequelize");
 
 const DEMO_DOMAIN = "@demo.pathment.com";
 const DEMO_PASSWORD = "Demo@1234";
-const PROGRAM_NAME = "Full-Stack Engineering Fellowship (Demo)";
+const PROGRAM_NAME = "MERN Stack Engineering Fellowship (Demo)";
 
 // Date helpers — everything is relative to "now" so the demo always looks fresh.
 const DAY = 86400000;
 const daysAgo = (n) => new Date(Date.now() - n * DAY);
 const daysAhead = (n) => new Date(Date.now() + n * DAY);
+
+// ── The demo roster ──────────────────────────────────────────────────────────
+// 20 mentees in the hero clan (HERO) + 6 in the second clan (SIDE), so a video
+// walkthrough shows a full cohort rather than a handful of rows. Archetypes are
+// deliberately weighted the way a real cohort skews: mostly fine, a few needing
+// attention, one or two genuinely at risk.
+const MENTEE_SPECS = [
+  // ── Hero clan · MERN Fellows (20) ──────────────────────────────────────────
+  { first: "Maya", last: "Patel", local: "mentee.maya", clan: "HERO", archetype: "star", occupation: "Frontend Developer", active: 0 },
+  { first: "Leo", last: "Nguyen", local: "mentee.leo", clan: "HERO", archetype: "on_track", occupation: "CS Student", active: 1 },
+  { first: "Sara", last: "Ali", local: "mentee.sara", clan: "HERO", archetype: "disengaged", occupation: null, active: 14 },
+  { first: "Tom", last: "Becker", local: "mentee.tom", clan: "HERO", archetype: "new", occupation: null, active: null },
+  { first: "Priya", last: "Sharma", local: "mentee.priya", clan: "HERO", archetype: "review", occupation: "Bootcamp Grad", active: 1 },
+  { first: "Noor", last: "Hassan", local: "mentee.noor", clan: "HERO", archetype: "fighting", occupation: "Junior Backend Engineer", active: 2 },
+  { first: "Ivan", last: "Petrov", local: "mentee.ivan", clan: "HERO", archetype: "watch", occupation: "University Student", active: 6 },
+  { first: "Jack", last: "Owusu", local: "mentee.jack", clan: "HERO", archetype: "average", occupation: "Self-taught", active: 3 },
+  { first: "Lina", last: "Haddad", local: "mentee.lina", clan: "HERO", archetype: "star", occupation: "QA Engineer", active: 0 },
+  { first: "Diego", last: "Morales", local: "mentee.diego", clan: "HERO", archetype: "on_track", occupation: "Support Engineer", active: 1 },
+  { first: "Aya", last: "Tanaka", local: "mentee.aya", clan: "HERO", archetype: "on_track", occupation: "Data Analyst", active: 2 },
+  { first: "Kwame", last: "Mensah", local: "mentee.kwame", clan: "HERO", archetype: "average", occupation: "Career Switcher", active: 4 },
+  { first: "Elif", last: "Demir", local: "mentee.elif", clan: "HERO", archetype: "review", occupation: "CS Student", active: 1 },
+  { first: "Rahul", last: "Verma", local: "mentee.rahul", clan: "HERO", archetype: "watch", occupation: "Freelancer", active: 7 },
+  { first: "Chloe", last: "Dubois", local: "mentee.chloe", clan: "HERO", archetype: "average", occupation: "Bootcamp Grad", active: 3 },
+  { first: "Omar", last: "Siddiqui", local: "mentee.omars", clan: "HERO", archetype: "fighting", occupation: "Night-shift Developer", active: 2 },
+  { first: "Zoe", last: "Anderson", local: "mentee.zoe", clan: "HERO", archetype: "on_track", occupation: "Junior Developer", active: 1 },
+  { first: "Hassan", last: "Iqbal", local: "mentee.hassan", clan: "HERO", archetype: "disengaged", occupation: null, active: 11 },
+  { first: "Mei", last: "Lin", local: "mentee.mei", clan: "HERO", archetype: "star", occupation: "Frontend Developer", active: 0 },
+  { first: "Daniel", last: "Okafor", local: "mentee.daniel", clan: "HERO", archetype: "new", occupation: "Graduate", active: null },
+
+  // ── Second clan · Node Guild (6), so clan comparison has a peer ────────────
+  { first: "Nina", last: "Kovacs", local: "mentee.nina", clan: "SIDE", archetype: "on_track", occupation: "Backend Developer", active: 1 },
+  { first: "Ahmed", last: "Belkacem", local: "mentee.ahmed", clan: "SIDE", archetype: "average", occupation: "CS Student", active: 3 },
+  { first: "Grace", last: "Mwangi", local: "mentee.grace", clan: "SIDE", archetype: "star", occupation: "Platform Engineer", active: 0 },
+  { first: "Pedro", last: "Alves", local: "mentee.pedro", clan: "SIDE", archetype: "watch", occupation: "Self-taught", active: 6 },
+  { first: "Yara", last: "Nasser", local: "mentee.yara", clan: "SIDE", archetype: "review", occupation: "Bootcamp Grad", active: 2 },
+  { first: "Felix", last: "Braun", local: "mentee.felix", clan: "SIDE", archetype: "fighting", occupation: "Part-time Developer", active: 4 },
+];
 
 async function cleanupDemo() {
   console.log("🧹 Clearing any existing demo namespace…");
@@ -56,7 +93,13 @@ async function cleanupDemo() {
     paranoid: false,
   });
   const userIds = demoUsers.map((u) => u.id);
-  const program = await models.Program.findOne({ where: { name: PROGRAM_NAME }, paranoid: false });
+  // Match on the "(Demo)" suffix rather than one exact name: the program has been
+  // renamed before, and keying on the current name silently orphaned the previous
+  // run's clans and roadmaps (they survived the wipe and lingered in the UI).
+  const demoPrograms = await models.Program.findAll({
+    where: { name: { [Op.like]: "%(Demo)" } }, attributes: ["id"], paranoid: false,
+  });
+  const programIds = demoPrograms.map((p) => p.id);
 
   // Child rows first (FK order). Scope strictly to demo users / demo program.
   if (userIds.length) {
@@ -105,6 +148,20 @@ async function cleanupDemo() {
     if (models.RoadmapProgress) await models.RoadmapProgress.destroy(byMentee);
     if (models.PromotionCandidate) await models.PromotionCandidate.destroy({ where: { [Op.or]: [{ menteeId: { [Op.in]: userIds } }, { nominatedBy: { [Op.in]: userIds } }] }, force: true });
     if (models.ClanMemberPermission) await models.ClanMemberPermission.destroy({ where: { userId: { [Op.in]: userIds } }, force: true });
+
+    // RAG tables reference users directly, so they have to go before the users
+    // do — otherwise the re-seed dies on a foreign key. Guarded, because the
+    // feature is optional and these models may not be registered at all.
+    if (models.MentorEditHistory) await models.MentorEditHistory.destroy({ where: { mentorId: { [Op.in]: userIds } }, force: true });
+    if (models.MessageDraft) {
+      await models.MessageDraft.destroy({
+        where: { [Op.or]: [{ mentorId: { [Op.in]: userIds } }, { menteeId: { [Op.in]: userIds } }] }, force: true,
+      });
+    }
+    if (models.KnowledgeChunk) await models.KnowledgeChunk.destroy({ where: { mentorId: { [Op.in]: userIds } }, force: true });
+    if (models.RagIngestionJob) await models.RagIngestionJob.destroy({ where: { mentorId: { [Op.in]: userIds } }, force: true });
+    if (models.MentorStyleProfile) await models.MentorStyleProfile.destroy({ where: { mentorId: { [Op.in]: userIds } }, force: true });
+    if (models.MentorDocument) await models.MentorDocument.destroy({ where: { mentorId: { [Op.in]: userIds } }, force: true });
 
     await models.MeetingNote.destroy({ where: { menteeId: { [Op.in]: userIds } }, force: true });
     await models.MenteeSchedule.destroy(byMentee);
@@ -189,8 +246,9 @@ async function cleanupDemo() {
       await models.Challenge.destroy({ where: { createdBy: userIn }, force: true });
     }
   }
-  if (program) {
-    const roadmaps = await models.Roadmap.findAll({ where: { programId: program.id }, attributes: ["id"], paranoid: false });
+  if (programIds.length) {
+    const inPrograms = { [Op.in]: programIds };
+    const roadmaps = await models.Roadmap.findAll({ where: { programId: inPrograms }, attributes: ["id"], paranoid: false });
     const rmIds = roadmaps.map((r) => r.id);
     if (rmIds.length) {
       // RoadmapProgress references roadmaps (the local copies) — clear any strays.
@@ -199,9 +257,9 @@ async function cleanupDemo() {
       if (models.RoadmapLink) await models.RoadmapLink.destroy({ where: { [Op.or]: [{ fromRoadmapId: { [Op.in]: rmIds } }, { toRoadmapId: { [Op.in]: rmIds } }] }, force: true });
       await models.RoadmapTask.destroy({ where: { roadmapId: { [Op.in]: rmIds } }, force: true });
     }
-    await models.Roadmap.destroy({ where: { programId: program.id }, force: true });
-    await models.Clan.destroy({ where: { programId: program.id }, force: true });
-    const cohorts = await models.Cohort.findAll({ where: { programId: program.id }, attributes: ["id"], paranoid: false });
+    await models.Roadmap.destroy({ where: { programId: inPrograms }, force: true });
+    await models.Clan.destroy({ where: { programId: inPrograms }, force: true });
+    const cohorts = await models.Cohort.findAll({ where: { programId: inPrograms }, attributes: ["id"], paranoid: false });
     const cohortIds = cohorts.map((c) => c.id);
     if (cohortIds.length) {
       if (models.AssessmentSubmission && models.Application) {
@@ -212,8 +270,8 @@ async function cleanupDemo() {
       if (models.Application) await models.Application.destroy({ where: { cohortId: { [Op.in]: cohortIds } }, force: true });
       if (models.CohortAssessment) await models.CohortAssessment.destroy({ where: { cohortId: { [Op.in]: cohortIds } }, force: true });
     }
-    await models.Cohort.destroy({ where: { programId: program.id }, force: true });
-    await models.Program.destroy({ where: { id: program.id }, force: true });
+    await models.Cohort.destroy({ where: { programId: inPrograms }, force: true });
+    await models.Program.destroy({ where: { id: inPrograms }, force: true });
   }
   if (userIds.length) {
     if (models.UserSkill) await models.UserSkill.destroy({ where: { userId: { [Op.in]: userIds } }, force: true });
@@ -285,18 +343,12 @@ async function seed() {
   // (full lead parity by default, with a per-person permission override below).
   const sam = await makeUser({ first: "Sam", last: "Rivera", emailLocal: "mentor.sam", role: "mentor" });
 
-  // 8 mentee archetypes spanning the full risk spectrum.
-  // occupation + lastActivityDate feed the risk/fairness math directly.
-  const menteeSpecs = [
-    { first: "Maya", last: "Patel", local: "mentee.maya", clan: "FE", archetype: "star", occupation: "Frontend Developer", active: 0 },
-    { first: "Leo", last: "Nguyen", local: "mentee.leo", clan: "FE", archetype: "on_track", occupation: "CS Student", active: 1 },
-    { first: "Sara", last: "Ali", local: "mentee.sara", clan: "FE", archetype: "disengaged", occupation: null, active: 14 },
-    { first: "Tom", last: "Becker", local: "mentee.tom", clan: "FE", archetype: "new", occupation: null, active: null },
-    { first: "Noor", last: "Hassan", local: "mentee.noor", clan: "BE", archetype: "fighting", occupation: "Junior Backend Engineer", active: 2 },
-    { first: "Ivan", last: "Petrov", local: "mentee.ivan", clan: "BE", archetype: "watch", occupation: "University Student", active: 6 },
-    { first: "Priya", last: "Sharma", local: "mentee.priya", clan: "BE", archetype: "review", occupation: "Bootcamp Grad", active: 1 },
-    { first: "Jack", last: "Owusu", local: "mentee.jack", clan: "BE", archetype: "average", occupation: "Self-taught", active: 3 },
-  ];
+  // The roster. The hero clan ("MERN Fellows") carries 20 mentees so the cockpit,
+  // review round, leaderboard and clan analytics all have a real cohort to show;
+  // a second, smaller clan exists so clan COMPARISON has something to compare.
+  // occupation + lastActivityDate feed the risk/fairness math directly, and the
+  // archetype decides how far along the 32-step roadmap each person sits.
+  const menteeSpecs = MENTEE_SPECS;
 
   const mentees = {};
   for (const s of menteeSpecs) {
@@ -307,7 +359,7 @@ async function seed() {
     });
     mentees[s.local] = { user: u, spec: s };
   }
-  console.log(`✅ ${1 + 3 + 8} users created (1 admin, 3 mentors, 8 mentees)\n`);
+  console.log(`✅ ${1 + 3 + menteeSpecs.length} users created (1 admin, 3 mentors, ${menteeSpecs.length} mentees)\n`);
 
   // ── Program + cohort ────────────────────────────────────────────────────────
   console.log("📚 Creating program, cohort & clans…");
@@ -315,42 +367,46 @@ async function seed() {
     createdBy: admin.id,
     name: PROGRAM_NAME,
     description:
-      "A 12-week, project-based fellowship taking engineers from fundamentals to a deployed full-stack application, with weekly mentor reviews and clan-based peer support.",
+      "A 16-week, project-based MERN fellowship taking engineers from JavaScript fundamentals to a deployed, tested, production-shaped MongoDB / Express / React / Node application — with weekly mentor reviews, clan-based peer support and a graded capstone.",
     type: "mentorship",
     status: "published",
     visibility: "private",
-    totalDurationWeeks: 12,
+    totalDurationWeeks: 16,
     estimatedHoursPerWeek: 12,
-    startDate: daysAgo(7 * 7), // started ~7 weeks ago
-    endDate: daysAhead(5 * 7),
-    currentEnrollments: 8,
+    startDate: daysAgo(9 * 7), // started ~9 weeks ago, so the cohort is mid-flight
+    endDate: daysAhead(7 * 7),
+    currentEnrollments: MENTEE_SPECS.length,
   });
 
   const cohort = await models.Cohort.create({
     programId: program.id,
     name: "Spring 2026 Cohort",
     status: "running",
-    startDate: daysAgo(7 * 7),
-    endDate: daysAhead(5 * 7),
+    startDate: daysAgo(9 * 7),
+    endDate: daysAhead(7 * 7),
     createdBy: admin.id,
   });
 
   const feClan = await models.Clan.create({
     programId: program.id,
-    name: "Frontend Clan",
+    name: "MERN Fellows",
+    description: "The main clan for the Spring 2026 MERN cohort — 20 fellows, led by Aisha with Sam co-mentoring.",
     leadMentorId: aisha.id,
     maxMentees: 25,
     status: "active",
     healthStatus: "green",
+    tags: ["mern", "react", "node", "mongodb"],
     createdBy: admin.id,
   });
   const beClan = await models.Clan.create({
     programId: program.id,
-    name: "Backend Clan",
+    name: "Node Guild",
+    description: "A smaller second clan on the same program, so clan comparison and fairness analytics have a peer to measure against.",
     leadMentorId: omar.id,
     maxMentees: 25,
     status: "active",
     healthStatus: "amber",
+    tags: ["node", "express", "api"],
     createdBy: admin.id,
   });
 
@@ -358,39 +414,88 @@ async function seed() {
   await models.ClanMembership.create({ clanId: feClan.id, userId: aisha.id, role: "lead_mentor", status: "active" });
   await models.ClanMembership.create({ clanId: beClan.id, userId: omar.id, role: "lead_mentor", status: "active" });
 
-  // Sam joins the Backend clan as a CO-MENTOR (full lead parity by default).
-  await models.ClanMembership.create({ clanId: beClan.id, userId: sam.id, role: "co_mentor", status: "active" });
+  // Sam co-mentors the BIG clan alongside Aisha — that's the pair the demo walks
+  // through, so lead and co-mentor are looking at the same 20 fellows.
+  await models.ClanMembership.create({ clanId: feClan.id, userId: sam.id, role: "co_mentor", status: "active" });
   // …with one permission turned off for him, to demo the per-co-mentor toggle:
   // he can mentor fully but can't see clan-wide analytics.
   if (models.ClanMemberPermission) {
     await models.ClanMemberPermission.create({
-      clanId: beClan.id, userId: sam.id, denied: ["analytics.view"], updatedBy: omar.id,
+      clanId: feClan.id, userId: sam.id, denied: ["analytics.view"], updatedBy: aisha.id,
     });
   }
-  console.log("✅ Program, cohort & 2 clans created (incl. 1 co-mentor)\n");
+  console.log(`✅ Program, cohort & 2 clans created — MERN Fellows (${MENTEE_SPECS.filter((m) => m.clan === "HERO").length} fellows, lead + co-mentor) and Node Guild\n`);
 
   // ── Roadmap + tasks ──────────────────────────────────────────────────────────
   console.log("🗺️  Creating roadmap & tasks…");
   const roadmap = await models.Roadmap.create({
     programId: program.id,
-    name: "Full-Stack Core Roadmap",
-    description: "The shared backbone every fellow follows, week by week.",
+    name: "MERN Stack Mastery Roadmap",
+    description:
+      "The full 16-week spine every fellow follows: foundations, React, Node & Express, MongoDB, full-stack integration, then a shipped capstone. Five phases, 32 steps.",
     isBaseRoadmap: true,
     source: "org", // the shared org library roadmap mentors import + assign
     published: true,
-    totalWeeks: 12,
-    totalTasks: 6,
-    skillTags: ["html", "css", "javascript", "react", "node", "postgres"],
+    totalWeeks: 16,
+    totalTasks: 32,
+    skillTags: ["html", "css", "javascript", "react", "redux", "node", "express", "mongodb", "mongoose", "jwt", "testing", "ci/cd"],
   });
 
+  // A real MERN curriculum: 32 steps across 16 weeks, ordered so the roadmap
+  // reads like a course rather than a list. Every mentee sits somewhere on this
+  // one spine, which is what makes the "where do I stand" view worth showing.
   const taskDefs = [
-    { title: "Semantic HTML & accessible layout", type: "project", difficulty: "easy", week: 1, deliverable: "A responsive, accessible landing page." },
-    { title: "Modern CSS & responsive design", type: "exercise", difficulty: "easy", week: 2, deliverable: "A mobile-first component library." },
-    { title: "JavaScript fundamentals & DOM", type: "practical", difficulty: "medium", week: 3, deliverable: "An interactive to-do app, no frameworks." },
-    { title: "React components & state", type: "project", difficulty: "medium", week: 5, deliverable: "A multi-view React dashboard." },
-    { title: "REST APIs with Node & Express", type: "project", difficulty: "hard", week: 7, deliverable: "A CRUD API with auth." },
-    { title: "Postgres data modeling", type: "assignment", difficulty: "hard", week: 9, deliverable: "A normalized schema + seeded queries." },
+    // ── Phase 1 · Foundations (weeks 1-3) ──────────────────────────────────
+    { title: "Semantic HTML & accessible layout", type: "project", difficulty: "easy", week: 1, deliverable: "A responsive, accessible landing page scoring 95+ on Lighthouse a11y.", phase: "Foundations" },
+    { title: "Modern CSS, Flexbox & Grid", type: "exercise", difficulty: "easy", week: 1, deliverable: "A mobile-first component library: cards, nav, modal, form.", phase: "Foundations" },
+    { title: "JavaScript fundamentals: types, scope & closures", type: "practical", difficulty: "easy", week: 2, deliverable: "20 kata solutions with a written note on why each works.", phase: "Foundations" },
+    { title: "The DOM, events & the event loop", type: "practical", difficulty: "medium", week: 2, deliverable: "An interactive to-do app in vanilla JS — no frameworks.", phase: "Foundations" },
+    { title: "Async JavaScript: promises, async/await, error handling", type: "assignment", difficulty: "medium", week: 3, deliverable: "A weather dashboard consuming a public API with real error states.", phase: "Foundations" },
+    { title: "Git, branching & a reviewable pull request", type: "exercise", difficulty: "easy", week: 3, deliverable: "A feature branch, a clean history and a PR another fellow approves.", phase: "Foundations" },
+
+    // ── Phase 2 · React (weeks 4-7) ────────────────────────────────────────
+    { title: "React fundamentals: JSX, props & rendering", type: "project", difficulty: "medium", week: 4, deliverable: "A product listing built from a static data file.", phase: "React" },
+    { title: "State, effects & the rules of hooks", type: "project", difficulty: "medium", week: 4, deliverable: "A live search with debouncing and a loading state.", phase: "React" },
+    { title: "Forms, validation & controlled inputs", type: "assignment", difficulty: "medium", week: 5, deliverable: "A multi-step signup form with per-field validation.", phase: "React" },
+    { title: "React Router & protected routes", type: "practical", difficulty: "medium", week: 5, deliverable: "A multi-view SPA with an auth-gated area.", phase: "React" },
+    { title: "Custom hooks & composition", type: "exercise", difficulty: "medium", week: 6, deliverable: "Three reusable hooks with tests: useFetch, useDebounce, useLocalStorage.", phase: "React" },
+    { title: "Context, reducers & when to reach for Redux", type: "project", difficulty: "hard", week: 6, deliverable: "A cart with global state, written twice: Context then Redux Toolkit.", phase: "React" },
+    { title: "Performance: memo, lazy loading & profiling", type: "assignment", difficulty: "hard", week: 7, deliverable: "A profiled before/after with the wasted renders removed.", phase: "React" },
+    { title: "Component testing with React Testing Library", type: "practical", difficulty: "medium", week: 7, deliverable: "A tested component suite covering behaviour, not implementation.", phase: "React" },
+
+    // ── Phase 3 · Node & Express (weeks 8-11) ──────────────────────────────
+    { title: "Node fundamentals & the module system", type: "practical", difficulty: "medium", week: 8, deliverable: "A CLI tool that reads, transforms and writes files.", phase: "Node" },
+    { title: "Express routing, middleware & error handling", type: "project", difficulty: "medium", week: 8, deliverable: "A REST API skeleton with a single error envelope.", phase: "Node" },
+    { title: "REST design: resources, status codes & versioning", type: "assignment", difficulty: "medium", week: 9, deliverable: "An OpenAPI spec reviewed by your mentor before you build it.", phase: "Node" },
+    { title: "MongoDB & Mongoose: schemas, refs & indexes", type: "project", difficulty: "hard", week: 9, deliverable: "A modelled blog domain with indexes justified in writing.", phase: "Node" },
+    { title: "Aggregation pipelines & query performance", type: "assignment", difficulty: "hard", week: 10, deliverable: "Three reports built as pipelines, each with explain() output.", phase: "Node" },
+    { title: "Authentication: JWT, refresh tokens & sessions", type: "project", difficulty: "hard", week: 10, deliverable: "Signup, login, refresh and logout — with rotation handled.", phase: "Node" },
+    { title: "Authorization: roles, ownership & guarding routes", type: "assignment", difficulty: "hard", week: 11, deliverable: "Role-scoped endpoints with tests proving the denials.", phase: "Node" },
+    { title: "File uploads, validation & rate limiting", type: "practical", difficulty: "medium", week: 11, deliverable: "A hardened upload endpoint with size, type and rate limits.", phase: "Node" },
+
+    // ── Phase 4 · Full-stack integration (weeks 12-14) ──────────────────────
+    { title: "Wiring React to your API: data fetching & caching", type: "project", difficulty: "hard", week: 12, deliverable: "The frontend consuming your own API with cache invalidation.", phase: "Integration" },
+    { title: "Real-time features with Socket.IO", type: "project", difficulty: "hard", week: 12, deliverable: "Live notifications that survive a reconnect.", phase: "Integration" },
+    { title: "Integration testing the full stack", type: "assignment", difficulty: "hard", week: 13, deliverable: "A test suite hitting a real test database, green in CI.", phase: "Integration" },
+    { title: "Environment config, secrets & the twelve-factor app", type: "exercise", difficulty: "medium", week: 13, deliverable: "A config layer with no secret ever committed.", phase: "Integration" },
+    { title: "Deployment: CI/CD, migrations & rollbacks", type: "project", difficulty: "hard", week: 14, deliverable: "A deployed app with an automated pipeline and a rollback you have practised.", phase: "Integration" },
+    { title: "Observability: structured logs, health checks & alerts", type: "assignment", difficulty: "medium", week: 14, deliverable: "Logs you could debug an incident from at 2am.", phase: "Integration" },
+
+    // ── Phase 5 · Capstone & career (weeks 15-16) ──────────────────────────
+    { title: "System design for the MERN stack", type: "assignment", difficulty: "hard", week: 15, deliverable: "A design doc for your capstone: data model, endpoints, trade-offs.", phase: "Capstone" },
+    { title: "Capstone build: ship it end to end", type: "project", difficulty: "hard", week: 15, deliverable: "A working, deployed product with a README somebody else can run.", phase: "Capstone" },
+    { title: "Code review, refactoring & paying down debt", type: "practical", difficulty: "medium", week: 16, deliverable: "A refactor PR on a peer's capstone, reviewed and merged.", phase: "Capstone" },
+    { title: "Portfolio, README & the technical interview", type: "assignment", difficulty: "medium", week: 16, deliverable: "A portfolio page, a written project story and a mock interview sat.", phase: "Capstone" },
   ];
+  // The step body the mentee actually reads. Written once so the org roadmap and
+  // every imported local copy stay identical — the "complete roadmap" view shows
+  // this for all 32 steps, not just the ones a mentee has been assigned.
+  const stepBody = (d) =>
+    `<p><strong>Phase ${d.phase} · Week ${d.week}</strong></p>` +
+    `<p>${d.title}. Work through the material, build the deliverable, then submit it for mentor review.</p>` +
+    `<p><strong>Deliverable:</strong> ${d.deliverable}</p>` +
+    `<p><strong>Done when:</strong> it runs from a clean clone, the README explains how, and your mentor has signed it off.</p>`;
+
   const roadmapTasks = [];
   for (let i = 0; i < taskDefs.length; i++) {
     const d = taskDefs[i];
@@ -398,13 +503,13 @@ async function seed() {
       await models.RoadmapTask.create({
         roadmapId: roadmap.id,
         title: d.title,
-        description: `Week ${d.week}: ${d.title}. Build the deliverable, then submit for mentor review.`,
+        description: stepBody(d),
         type: d.type,
         difficulty: d.difficulty,
         taskOrder: i + 1,
         deliverable: d.deliverable,
-        estimatedHours: 10,
-        pointsBase: 10 + i * 2,
+        estimatedHours: d.difficulty === "hard" ? 14 : d.difficulty === "medium" ? 10 : 6,
+        pointsBase: d.difficulty === "hard" ? 25 : d.difficulty === "medium" ? 15 : 10,
       })
     );
   }
@@ -424,6 +529,7 @@ async function seed() {
       importedFrom: roadmap.id,
       ownerMentorId: mentorId,
       isBaseRoadmap: false,
+      totalWeeks: 16,
       totalTasks: taskDefs.length,
       skillTags: roadmap.skillTags,
     });
@@ -434,13 +540,13 @@ async function seed() {
         await models.RoadmapTask.create({
           roadmapId: copy.id,
           title: d.title,
-          description: `Week ${d.week}: ${d.title}. Build the deliverable, then submit for mentor review.`,
+          description: stepBody(d),
           type: d.type,
           difficulty: d.difficulty,
           taskOrder: i + 1,
           deliverable: d.deliverable,
-          estimatedHours: 10,
-          pointsBase: 10 + i * 2,
+          estimatedHours: d.difficulty === "hard" ? 14 : d.difficulty === "medium" ? 10 : 6,
+          pointsBase: d.difficulty === "hard" ? 25 : d.difficulty === "medium" ? 15 : 10,
         })
       );
     }
@@ -455,92 +561,106 @@ async function seed() {
 
   // archetype → how many roadmap tasks to assign and in what shape.
   // Returns a list of { idx, status, late, completedDaysAgo, dueDaysFromNow }.
-  function planFor(archetype) {
+  // How far along the 32-step roadmap each archetype sits, and in what shape.
+  // Expressed as a POSITION (how many steps cleared) rather than hand-listed
+  // indexes, so the plan scales with the roadmap instead of breaking when steps
+  // are added. Returns { week, progress, tasks:[{ idx, status, ... }] }.
+  const TOTAL_STEPS = taskDefs.length;
+
+  function planFor(archetype, seed = 0) {
+    // Build a run of `cleared` completed steps, then the live tail.
+    const build = ({ cleared, week, tail, lateAt = [] }) => {
+      const tasks = [];
+      // Completions are spread backwards through time so the activity graph,
+      // streaks and "recently completed" all have a believable slope.
+      for (let i = 0; i < cleared; i++) {
+        const agoBase = Math.round(((cleared - i) / cleared) * 58) + 2;
+        tasks.push({
+          idx: i,
+          status: "completed",
+          completedDaysAgo: Math.max(1, agoBase + ((seed + i) % 3) - 1),
+          late: lateAt.includes(i),
+        });
+      }
+      tail.forEach((t, n) => tasks.push({ idx: cleared + n, ...t }));
+      return {
+        week,
+        progress: Math.round((cleared / TOTAL_STEPS) * 100),
+        tasks: tasks.filter((t) => t.idx < TOTAL_STEPS),
+      };
+    };
+
     switch (archetype) {
-      case "star": // 9th week, flying, recent completions → low risk, momentum up
-        return {
-          week: 9, progress: 82,
-          tasks: [
-            { idx: 0, status: "completed", completedDaysAgo: 50 },
-            { idx: 1, status: "completed", completedDaysAgo: 40 },
-            { idx: 2, status: "completed", completedDaysAgo: 28 },
-            { idx: 3, status: "completed", completedDaysAgo: 5 },
-            { idx: 4, status: "completed", completedDaysAgo: 2 },
-            { idx: 5, status: "in_progress", dueDaysFromNow: 6 },
+      case "star": // deep into phase 4, finishing early → low risk, momentum up
+        return build({
+          cleared: 21, week: 12,
+          tail: [
+            { status: "in_progress", dueDaysFromNow: 4 },
+            { status: "assigned", dueDaysFromNow: 9 },
           ],
-        };
-      case "on_track": // steady, on pace → low
-        return {
-          week: 7, progress: 56,
-          tasks: [
-            { idx: 0, status: "completed", completedDaysAgo: 42 },
-            { idx: 1, status: "completed", completedDaysAgo: 30 },
-            { idx: 2, status: "completed", completedDaysAgo: 18 },
-            { idx: 3, status: "completed", completedDaysAgo: 4 },
-            { idx: 4, status: "in_progress", dueDaysFromNow: 5 },
+        });
+      case "on_track": // steady, on pace with the cohort → low
+        return build({
+          cleared: 16, week: 10,
+          tail: [
+            { status: "in_progress", dueDaysFromNow: 5 },
+            { status: "assigned", dueDaysFromNow: 11 },
           ],
-        };
-      case "disengaged": // has work, never touched it, silent 14 days → HIGH
-        return {
-          week: 7, progress: 8,
-          tasks: [
-            { idx: 0, status: "completed", completedDaysAgo: 38, late: true },
-            { idx: 1, status: "assigned", dueDaysFromNow: -10 },
-            { idx: 2, status: "assigned", dueDaysFromNow: -3 },
-            { idx: 3, status: "assigned", dueDaysFromNow: 4 },
+        });
+      case "disengaged": // stalled in phase 2, silent for two weeks → HIGH
+        return build({
+          cleared: 7, week: 9, lateAt: [5, 6],
+          tail: [
+            { status: "assigned", dueDaysFromNow: -12 },
+            { status: "assigned", dueDaysFromNow: -5 },
+            { status: "assigned", dueDaysFromNow: 3 },
           ],
-        };
-      case "new": // just joined, no work assigned yet → LOW (the risk fix)
+        });
+      case "new": // just joined mid-cohort, nothing assigned yet → LOW
         return { week: 1, progress: 0, tasks: [] };
-      case "fighting": // behind, but real logged friction (job + delays + blocker) → WATCH, softened
-        return {
-          week: 7, progress: 30,
-          tasks: [
-            { idx: 0, status: "completed", completedDaysAgo: 40 },
-            { idx: 1, status: "completed", completedDaysAgo: 25, late: true },
-            { idx: 2, status: "in_progress", dueDaysFromNow: 2 },
-            { idx: 3, status: "assigned", dueDaysFromNow: 6 },
+      case "fighting": // behind, but logging real friction → WATCH, softened
+        return build({
+          cleared: 11, week: 9, lateAt: [8, 10],
+          tail: [
+            { status: "in_progress", dueDaysFromNow: 2 },
+            { status: "assigned", dueDaysFromNow: 7 },
           ],
-        };
-      case "watch": // 1 blocker, quiet 6 days, stalled → WATCH
-        return {
-          week: 7, progress: 45,
-          tasks: [
-            { idx: 0, status: "completed", completedDaysAgo: 44 },
-            { idx: 1, status: "completed", completedDaysAgo: 33 },
-            { idx: 2, status: "completed", completedDaysAgo: 20 },
-            { idx: 3, status: "in_progress", dueDaysFromNow: -2 },
+        });
+      case "watch": // was fine, has gone quiet and slipped a deadline → WATCH
+        return build({
+          cleared: 13, week: 9,
+          tail: [
+            { status: "in_progress", dueDaysFromNow: -3 },
+            { status: "assigned", dueDaysFromNow: 5 },
           ],
-        };
-      case "review": // healthy but has submissions waiting on the mentor → LOW + pending
-        return {
-          week: 6, progress: 50,
-          tasks: [
-            { idx: 0, status: "completed", completedDaysAgo: 35 },
-            { idx: 1, status: "completed", completedDaysAgo: 22 },
-            { idx: 2, status: "submitted" },
-            { idx: 3, status: "submitted" },
+        });
+      case "review": // healthy, with work sitting in the mentor's queue → LOW
+        return build({
+          cleared: 14, week: 10,
+          tail: [
+            { status: "submitted" },
+            { status: "submitted" },
+            { status: "assigned", dueDaysFromNow: 8 },
           ],
-        };
-      case "average": // unremarkable, on pace → LOW
+        });
+      case "average": // unremarkable, mid-pack → LOW
       default:
-        return {
-          week: 5, progress: 40,
-          tasks: [
-            { idx: 0, status: "completed", completedDaysAgo: 30 },
-            { idx: 1, status: "completed", completedDaysAgo: 16 },
-            { idx: 2, status: "in_progress", dueDaysFromNow: 4 },
+        return build({
+          cleared: 12, week: 9,
+          tail: [
+            { status: "in_progress", dueDaysFromNow: 4 },
+            { status: "assigned", dueDaysFromNow: 10 },
           ],
-        };
+        });
     }
   }
 
   for (const s of menteeSpecs) {
     const m = mentees[s.local].user;
-    const clan = s.clan === "FE" ? feClan : beClan;
-    const mentor = s.clan === "FE" ? aisha : omar;
-    const local = s.clan === "FE" ? feRoadmap : beRoadmap;
-    const plan = planFor(s.archetype);
+    const clan = s.clan === "HERO" ? feClan : beClan;
+    const mentor = s.clan === "HERO" ? aisha : omar;
+    const local = s.clan === "HERO" ? feRoadmap : beRoadmap;
+    const plan = planFor(s.archetype, menteeSpecs.indexOf(s));
 
     const enrollment = await models.Enrollment.create({
       menteeId: m.id,
@@ -549,11 +669,11 @@ async function seed() {
       status: "active",
       currentWeek: plan.week,
       tasksCompleted: plan.tasks.filter((t) => t.status === "completed").length,
-      tasksTotal: plan.tasks.length,
+      tasksTotal: taskDefs.length,
       overallProgressPercentage: plan.progress,
-      enrolledAt: daysAgo(7 * 7),
-      startedAt: daysAgo(7 * 7),
-      expectedCompletionDate: daysAhead(5 * 7),
+      enrolledAt: daysAgo(9 * 7),
+      startedAt: daysAgo(9 * 7),
+      expectedCompletionDate: daysAhead(7 * 7),
       avgTaskRating: s.archetype === "star" ? 4.6 : s.archetype === "on_track" ? 4.1 : 3.6,
     });
 
@@ -580,7 +700,7 @@ async function seed() {
         mentorId: mentor.id,
         enrollmentId: enrollment.id,
         status: t.status,
-        assignedAt: daysAgo(50),
+        assignedAt: daysAgo(Math.max(2, 62 - t.idx * 2)),
         dueDate,
         startedAt: ["in_progress", "submitted", "completed"].includes(t.status) ? daysAgo(t.completedDaysAgo != null ? t.completedDaysAgo + 4 : 6) : null,
         submittedAt,
@@ -627,11 +747,11 @@ async function seed() {
         enrollmentId: enrollment.id,
         currentStep: Math.min(cleared, local.tasks.length - 1),
         completed: cleared >= local.tasks.length,
-        startedAt: daysAgo(7 * 7),
+        startedAt: daysAgo(9 * 7),
       });
     }
   }
-  console.log("✅ Enrollments, assigned tasks, submissions & feedback created\n");
+  console.log(`✅ ${menteeSpecs.length} enrollments, assigned tasks, submissions & feedback created across a ${taskDefs.length}-step roadmap\n`);
 
   // ── Blockers + accepted delays (drive watch/fighting + fairness credit) ───────
   console.log("🚧 Adding blockers, delays, notes & schedules…");
@@ -811,11 +931,11 @@ async function seed() {
     user: mentees[s.local].user,
     spec: s,
     enrollmentId: mentees[s.local].enrollment.id,
-    clan: s.clan === "FE" ? feClan : beClan,
-    mentor: s.clan === "FE" ? aisha : omar,
+    clan: s.clan === "HERO" ? feClan : beClan,
+    mentor: s.clan === "HERO" ? aisha : omar,
   }));
-  const feMentees = menteeList.filter((m) => m.spec.clan === "FE");
-  const beMentees = menteeList.filter((m) => m.spec.clan === "BE");
+  const feMentees = menteeList.filter((m) => m.spec.clan === "HERO");
+  const beMentees = menteeList.filter((m) => m.spec.clan === "SIDE");
   const byLocal = (l) => mentees[l].user;
 
   // ── Cohort review sessions + attendance ──────────────────────────────────────
@@ -926,20 +1046,77 @@ async function seed() {
       }
       if (last) await convo.update({ lastMessageId: last.id, lastMessageAt: last.createdAt }, { silent: true });
     }
+    // Long-running threads, so the messaging screen has real history to scroll
+    // rather than three lines. Ordered oldest → newest by `ago`.
     await thread(byLocal("mentee.maya"), aisha, [
-      { from: "a", text: "Hi Aisha! I finished the React dashboard early — could I get a stretch goal?", ago: 4, read: true },
-      { from: "b", text: "Love the energy 🙌 Take a look at the Express auth task and let's pair on testing Friday.", ago: 4, read: true },
+      { from: "a", text: "Hi Aisha! Just finished the custom hooks step. useDebounce was the one that finally made hooks click for me.", ago: 21, read: true },
+      { from: "b", text: "That's exactly the step where it lands for most people 🙌 Did you write tests for all three?", ago: 21, read: true },
+      { from: "a", text: "All three, yeah. useLocalStorage was fiddly because of the JSON parse throwing on bad data.", ago: 20, read: true },
+      { from: "b", text: "Good catch — that's a real bug most people ship. Wrap it and return a default.", ago: 20, read: true },
+      { from: "a", text: "Done. Moving on to the Redux vs Context task now.", ago: 18, read: true },
+      { from: "b", text: "Write the Context version first and let it get painful. The Redux version means more once you have felt why.", ago: 18, read: true },
+      { from: "a", text: "That was good advice. Prop drilling through four levels made the point 😅", ago: 14, read: true },
+      { from: "a", text: "I finished the React performance step early — could I get a stretch goal?", ago: 4, read: true },
+      { from: "b", text: "Love the energy. Take a look at the JWT refresh-token task and let's pair on testing Friday.", ago: 4, read: true },
       { from: "a", text: "On it. Thank you!", ago: 3, read: true },
+      { from: "b", text: "Also — I've nominated you for co-mentor. You've been helping the others all cohort.", ago: 1, read: false },
     ]);
-    await thread(byLocal("mentee.noor"), omar, [
-      { from: "a", text: "Omar, work's been brutal this week. I logged the delays but I'm stuck on the JWT refresh flow.", ago: 3, read: true },
-      { from: "b", text: "No worries Noor — you've been honest and consistent. Let's break the API task into smaller chunks on our 1:1.", ago: 2, read: true },
-      { from: "b", text: "Also dropped a couple of links in your task feedback. Shout if they don't help.", ago: 1, read: false },
+    await thread(byLocal("mentee.noor"), aisha, [
+      { from: "a", text: "Aisha, work has been brutal this month. I logged the delays but I am stuck on the JWT refresh flow.", ago: 12, read: true },
+      { from: "b", text: "No worries Noor — you have been honest and consistent, that counts. Let's break the auth task into smaller chunks on our 1:1.", ago: 12, read: true },
+      { from: "a", text: "That would help. The part I can't get is what happens when two tabs refresh at the same time.", ago: 11, read: true },
+      { from: "b", text: "Great question, and the answer is most production apps get it wrong. Look up refresh-token rotation with reuse detection.", ago: 11, read: true },
+      { from: "a", text: "Read that twice and I think I have it. Single-flight the refresh so only one request goes out.", ago: 9, read: true },
+      { from: "b", text: "Exactly right. That is a senior-level answer.", ago: 9, read: true },
+      { from: "a", text: "Submitted the auth task. Late, but it works and the tests pass.", ago: 3, read: true },
+      { from: "b", text: "Late and working beats on-time and broken. Reviewing tonight.", ago: 2, read: true },
+      { from: "b", text: "Dropped a couple of links in your task feedback. Shout if they don't help.", ago: 1, read: false },
     ]);
-    await thread(byLocal("mentee.priya"), omar, [
-      { from: "a", text: "Submitted both tasks for review — keen to hear your thoughts whenever you get a sec!", ago: 1, read: false },
+    await thread(byLocal("mentee.priya"), sam, [
+      { from: "a", text: "Hi Sam — submitted both the aggregation and the auth tasks for review, keen to hear your thoughts!", ago: 6, read: true },
+      { from: "b", text: "Got them. The aggregation pipelines look strong, I especially liked that you attached the explain() output without being asked.", ago: 5, read: true },
+      { from: "a", text: "That was the bit I found most interesting honestly — watching an index take a query from 400ms to 3ms.", ago: 5, read: true },
+      { from: "b", text: "That feeling is why people end up liking databases. One note on the auth task coming in the feedback.", ago: 4, read: true },
+      { from: "a", text: "Anything I should read before the capstone design doc?", ago: 2, read: false },
     ]);
-    console.log("✅ Direct message threads created\n");
+    await thread(byLocal("mentee.sara"), aisha, [
+      { from: "b", text: "Hi Sara — noticed it has been a couple of weeks. No pressure at all, just checking you are OK.", ago: 9, read: true },
+      { from: "b", text: "Your spot is not going anywhere. If the pace is wrong we can change the pace.", ago: 5, read: false },
+      { from: "b", text: "Still here whenever you want to pick it back up. Even 20 minutes counts.", ago: 2, read: false },
+    ]);
+    await thread(byLocal("mentee.lina"), aisha, [
+      { from: "a", text: "Quick one — for the integration testing step, should I be spinning up a real Mongo or mocking it?", ago: 7, read: true },
+      { from: "b", text: "Real one, in a test database. Mocking your own datastore tests the mock, not the app.", ago: 7, read: true },
+      { from: "a", text: "That's what I hoped you'd say. Docker compose it is.", ago: 6, read: true },
+      { from: "b", text: "Add it to the CI pipeline too while you are in there — that step is coming up anyway.", ago: 6, read: true },
+      { from: "a", text: "Pipeline is green ✅ Screenshot in the submission.", ago: 3, read: true },
+    ]);
+    await thread(byLocal("mentee.diego"), sam, [
+      { from: "a", text: "Sam, my React Router protected routes flash the login page for a second before redirecting. Is that normal?", ago: 8, read: true },
+      { from: "b", text: "Not normal, but very common. You are rendering before the auth check resolves — you need a loading state between 'unknown' and 'logged out'.", ago: 8, read: true },
+      { from: "a", text: "Ahh. Three states not two. Fixed it, thank you!", ago: 7, read: true },
+    ]);
+    await thread(byLocal("mentee.ivan"), aisha, [
+      { from: "b", text: "Ivan, the Context/Redux task went past its due date — anything blocking you?", ago: 4, read: true },
+      { from: "a", text: "Exams. I should have flagged it earlier, sorry.", ago: 3, read: true },
+      { from: "b", text: "Log it as a delay and I will move the deadline. Flagging early is the whole point, not a failure.", ago: 3, read: false },
+    ]);
+    await thread(byLocal("mentee.tom"), aisha, [
+      { from: "b", text: "Welcome to the clan, Tom! I have not assigned anything yet — let's talk on Thursday and start you at the right step.", ago: 2, read: false },
+    ]);
+    await thread(aisha, sam, [
+      { from: "a", text: "Sam, can you take the review queue for the back half of the clan this week? I have 11 waiting.", ago: 5, read: true },
+      { from: "b", text: "Yep, I will take everyone from Kwame onwards. Anything I should know?", ago: 5, read: true },
+      { from: "a", text: "Hassan has gone quiet — second week now. Worth a gentle nudge rather than a task.", ago: 5, read: true },
+      { from: "b", text: "Will do. Also Priya's aggregation work is the best I have seen this cohort, worth calling out in review.", ago: 4, read: true },
+      { from: "a", text: "Agreed. I will put her up on the leaderboard shout-out.", ago: 4, read: true },
+    ]);
+    await thread(aisha, omar, [
+      { from: "a", text: "How is Node Guild tracking? Mine are averaging week 10 of 16.", ago: 6, read: true },
+      { from: "b", text: "Similar, maybe half a week behind. The aggregation step is where everyone slows down.", ago: 6, read: true },
+      { from: "a", text: "Same here. Might be worth splitting it into two steps next cohort.", ago: 5, read: true },
+    ]);
+    console.log("✅ Direct message threads created (10 threads, mentor↔mentee and mentor↔mentor, with real history)\n");
   }
 
   // ── Notifications (the bell — varied types, read + unread) ────────────────────
@@ -1250,6 +1427,59 @@ async function seed() {
         author: "Omar Farooq", readMins: 2,
       },
       {
+        title: "The MERN stack, end to end",
+        category: "guidance",
+        summary: "How MongoDB, Express, React and Node actually fit together — and where each one stops.",
+        content: "<p>React owns what the user sees and nothing else. The moment it knows about your database schema, you have coupled two things that change for different reasons.</p><p>Express owns the boundary: validation, auth, shaping. Business rules live behind it in services, not in route handlers.</p><p>Mongo is not a relational database with a different accent. Model for how you read, not for how the data looks on a whiteboard.</p>",
+        author: "Aisha Khan", readMins: 8, pinned: true,
+      },
+      {
+        title: "Mongoose schema design: the four mistakes",
+        category: "guidance",
+        summary: "Embedding when you should reference, referencing when you should embed, and the two index errors after that.",
+        content: "<p><strong>1. Embedding unbounded arrays.</strong> Comments inside a post document works until a post gets 4,000 comments and every read drags them along.</p><p><strong>2. Referencing what you always read together.</strong> Two round trips to render one card is a schema problem, not a caching problem.</p><p><strong>3. No compound index for your commonest query.</strong> Run explain(). If it says COLLSCAN, you have found this week's work.</p><p><strong>4. Indexing everything.</strong> Every index is a write you pay for forever.</p>",
+        author: "Omar Farooq", readMins: 9,
+      },
+      {
+        title: "React hooks: the rules and why they exist",
+        category: "reading",
+        summary: "Not just what the linter shouts about, but the reason the rule is there.",
+        url: "https://react.dev/reference/rules/rules-of-hooks", author: "React docs", readMins: 10,
+      },
+      {
+        title: "MongoDB aggregation pipeline reference",
+        category: "reading",
+        summary: "The stages you will actually use, in the order you will actually use them.",
+        url: "https://www.mongodb.com/docs/manual/core/aggregation-pipeline/", author: "MongoDB", readMins: 25,
+      },
+      {
+        title: "JWT handbook: what a token can and cannot do for you",
+        category: "reading",
+        summary: "Read this before you build auth, not after your first incident.",
+        url: "https://auth0.com/resources/ebooks/jwt-handbook", author: "Auth0", readMins: 30,
+      },
+      {
+        title: "Capstone project brief",
+        category: "template",
+        summary: "The shape of a capstone that is worth putting on a CV.",
+        content: "<p><strong>The problem</strong><br/>One paragraph. Who has it, and what they do today instead.</p><p><strong>The data model</strong><br/>Your collections, your relationships, and one sentence per index explaining why it exists.</p><p><strong>The API</strong><br/>Endpoints, auth rules, and the error envelope.</p><p><strong>What you will NOT build</strong><br/>Scope you deliberately cut. This section is the one reviewers respect most.</p><p><strong>How to run it</strong><br/>Clone, install, seed, start. If somebody cannot do it in four commands, keep working.</p>",
+        author: "Aisha Khan", readMins: 5,
+      },
+      {
+        title: "Weekly check-in template",
+        category: "template",
+        summary: "Fifteen minutes of writing that makes your 1:1 worth having.",
+        content: "<p><strong>Shipped this week</strong> — links, not adjectives.</p><p><strong>Stuck on</strong> — what you tried, and what happened.</p><p><strong>Next week</strong> — one commitment, not five.</p><p><strong>How I am doing</strong> — honestly. Your mentor cannot help with what they cannot see.</p>",
+        author: "Pathment", readMins: 2,
+      },
+      {
+        title: "Deployment checklist",
+        category: "template",
+        summary: "What to confirm before you tell anyone the URL.",
+        content: "<p>Secrets in environment variables, not in the repo. Check the git history too.</p><p>A health endpoint that touches the database, not one that returns 200 unconditionally.</p><p>Migrations run before the new code starts, and you have practised the rollback at least once.</p><p>Logs you could debug from at 2am: structured, with a request id.</p>",
+        author: "Omar Farooq", readMins: 4,
+      },
+      {
         title: "Code of conduct",
         category: "policy",
         summary: "What is expected of everybody here, and what happens when it is not met.",
@@ -1408,6 +1638,114 @@ async function seed() {
       await assignQuiz(quizWaiting, { taken: false });
       console.log("✅ Quiz assigned: one graded attempt (5 of 6 right) + one waiting to be opened\n");
     }
+
+    // Two more published kits so the mentor's quiz library isn't a single row —
+    // a walkthrough should show a shelf, not one book.
+    const EXTRA_QUIZ_KITS = [
+      {
+        title: "React & hooks check",
+        description: "Rendering, state and the rules of hooks. Twenty-five minutes, one attempt.",
+        timeLimitSeconds: 25 * 60, passScore: 65,
+        questions: [
+          {
+            kind: "single", points: 5,
+            prompt: "When does a `useEffect` with an empty dependency array run?",
+            options: [
+              { id: "a", label: "On every render" }, { id: "b", label: "Once after the first render" },
+              { id: "c", label: "Only when props change" }, { id: "d", label: "Before the first render" },
+            ],
+            correctOptionIds: ["b"],
+            explanation: "An empty array means it has no dependencies to react to, so it runs once after mount.",
+          },
+          {
+            kind: "multi", points: 10,
+            prompt: "Which of these will cause an unnecessary re-render?",
+            options: [
+              { id: "a", label: "Passing a new object literal as a prop each render" },
+              { id: "b", label: "Passing a stable primitive" },
+              { id: "c", label: "Defining a function inline and passing it to a memoized child" },
+              { id: "d", label: "Reading from a ref" },
+            ],
+            correctOptionIds: ["a", "c"],
+            explanation: "New object and function identities defeat memoization, because the child sees a different prop every time.",
+          },
+          {
+            kind: "boolean", points: 5,
+            prompt: "You may call a hook inside an `if` block as long as the condition is stable.",
+            options: [{ id: "true", label: "True" }, { id: "false", label: "False" }],
+            correctOptionIds: ["false"],
+            explanation: "Hooks are matched by call order. A conditional call breaks that order even if the condition rarely changes.",
+          },
+          {
+            kind: "short", points: 10, matchMode: "keyword",
+            prompt: "Name the hook you would reach for to keep a value between renders WITHOUT causing a re-render when it changes.",
+            acceptedAnswers: ["useRef", "ref"],
+            explanation: "useRef gives you a mutable box whose changes are invisible to the render cycle.",
+          },
+        ],
+      },
+      {
+        title: "MongoDB & data modelling check",
+        description: "Schemas, indexes and aggregation. Thirty minutes, one attempt.",
+        timeLimitSeconds: 30 * 60, passScore: 60,
+        questions: [
+          {
+            kind: "single", points: 5,
+            prompt: "You always render a post together with its author's name. What is usually the right call?",
+            options: [
+              { id: "a", label: "Reference the author and populate on every read" },
+              { id: "b", label: "Embed the author's name on the post" },
+              { id: "c", label: "Duplicate the whole author document" },
+              { id: "d", label: "Use a join collection" },
+            ],
+            correctOptionIds: ["b"],
+            explanation: "Model for how you read. Embedding the small piece you always need beats a second round trip.",
+          },
+          {
+            kind: "multi", points: 10,
+            prompt: "Which are real costs of adding an index?",
+            options: [
+              { id: "a", label: "Slower writes" }, { id: "b", label: "Slower reads on that field" },
+              { id: "c", label: "More storage" }, { id: "d", label: "More memory held resident" },
+            ],
+            correctOptionIds: ["a", "c", "d"],
+            explanation: "Indexes buy read speed and are paid for on every write, in storage and in RAM.",
+          },
+          {
+            kind: "boolean", points: 5,
+            prompt: "`$match` should be placed as early as possible in an aggregation pipeline.",
+            options: [{ id: "true", label: "True" }, { id: "false", label: "False" }],
+            correctOptionIds: ["true"],
+            explanation: "Filter first so every later stage does less work — and an early $match can use an index.",
+          },
+          {
+            kind: "short", points: 10, matchMode: "keyword",
+            prompt: "Which method shows you whether a query used an index or scanned the collection?",
+            acceptedAnswers: ["explain", "explain()"],
+            explanation: "explain() is the difference between guessing about performance and knowing.",
+          },
+        ],
+      },
+    ];
+
+    for (const kit of EXTRA_QUIZ_KITS) {
+      const created = await models.QuizKit.create({
+        title: kit.title, description: kit.description,
+        createdBy: aisha.id, programId: program.id,
+        timeLimitSeconds: kit.timeLimitSeconds, passScore: kit.passScore,
+        shuffleQuestions: false, showAnswers: true, allowRetakeDefault: false,
+        evaluationDefault: "auto", status: "published",
+      });
+      for (let i = 0; i < kit.questions.length; i++) {
+        const q = kit.questions[i];
+        await models.QuizQuestion.create({
+          kitId: created.id, position: i, required: true,
+          options: [], correctOptionIds: [], acceptedAnswers: [], matchMode: "exact",
+          ...q,
+        });
+      }
+    }
+    console.log(`✅ ${EXTRA_QUIZ_KITS.length} more quiz kits published (React, MongoDB)\n`);
   }
 
   // ── An interview kit, assigned, sat and awaiting review ──────────────────────
@@ -1452,6 +1790,43 @@ async function seed() {
       }));
     }
     console.log(`✅ Interview kit "${interviewKit.title}" with ${iQuestions.length} questions (voice / code / text)\n`);
+
+    // A second, MERN-specific kit so the interview library shows a shelf too.
+    const reactKit = await models.InterviewKit.create({
+      title: "React & MERN technical screen",
+      description: "Four questions on the stack itself: state, data modelling, auth and a system you have to reason about out loud.",
+      createdBy: aisha.id, programId: program.id,
+      timingMode: "per_question", cameraDefault: false,
+      aiGradingDefault: true, allowRetakeDefault: false, status: "published",
+    });
+    const REACT_IQ = [
+      {
+        kind: "voice", points: 10, timeLimitSeconds: 180,
+        prompt: "Explain the difference between local state, lifted state and global state — and how you decide which one a piece of data belongs in.",
+        referenceAnswer: "Looking for: start local, lift only when two siblings need it, reach for global only when it is genuinely app-wide. A candidate who reaches for Redux first has not thought about it.",
+      },
+      {
+        kind: "code", points: 15, timeLimitSeconds: 900,
+        prompt: "This component refetches on every keystroke and floods the API. Fix it, and explain what your fix does when the user types quickly then deletes everything.",
+        starterCode: "function Search() {\n  const [q, setQ] = useState('');\n  const [results, setResults] = useState([]);\n\n  useEffect(() => {\n    fetch(`/api/search?q=${q}`)\n      .then((r) => r.json())\n      .then(setResults);\n  });\n\n  return <input value={q} onChange={(e) => setQ(e.target.value)} />;\n}",
+        referenceAnswer: "Missing dependency array plus no debounce and no cancellation. A strong answer handles the out-of-order response too — an earlier slow request landing after a later fast one.",
+      },
+      {
+        kind: "code", points: 15, timeLimitSeconds: 600,
+        prompt: "Model a 'course with lessons and student progress' in Mongoose. Say which parts you embed, which you reference, and which indexes you add.",
+        starterCode: "// Sketch the schemas. Comments explaining the trade-offs count for as much as the code.",
+        referenceAnswer: "Lessons embedded in a course is defensible (bounded, always read together). Progress must be its own collection keyed on (studentId, courseId) — it is unbounded and written constantly.",
+      },
+      {
+        kind: "text", points: 10, timeLimitSeconds: 420,
+        prompt: "Your API returns 401 for an expired access token. Describe what the frontend should do — and what it should NOT do.",
+        referenceAnswer: "Should: refresh once, single-flight, replay the request. Should not: log the user out on any failed refresh, which is the mistake that boots people mid-session on a flaky network.",
+      },
+    ];
+    for (let i = 0; i < REACT_IQ.length; i++) {
+      await models.InterviewQuestion.create({ kitId: reactKit.id, position: i, required: true, ...REACT_IQ[i] });
+    }
+    console.log(`✅ Interview kit "${reactKit.title}" with ${REACT_IQ.length} questions\n`);
 
     if (models.InterviewAssignment) {
       console.log("🎤 Assigning the interview…");
@@ -1690,31 +2065,35 @@ async function seed() {
   console.log("🎉 Demo data ready!  All accounts use password:  " + DEMO_PASSWORD);
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   console.log("  Admin    admin" + DEMO_DOMAIN);
-  console.log("  Mentor   mentor.aisha" + DEMO_DOMAIN + "   (Frontend Clan — lead)");
-  console.log("  Mentor   mentor.omar" + DEMO_DOMAIN + "    (Backend Clan — lead)");
-  console.log("  Mentor   mentor.sam" + DEMO_DOMAIN + "     (Backend Clan — co-mentor, analytics off)");
-  console.log("  Mentee   mentee.maya" + DEMO_DOMAIN + "    (star · nominated for co-mentor)");
-  console.log("  Mentee   mentee.sara" + DEMO_DOMAIN + "    (at risk)");
-  console.log("  Mentee   mentee.noor" + DEMO_DOMAIN + "    (struggling, fighting)");
+  console.log("  Mentor   mentor.aisha" + DEMO_DOMAIN + "   ← START HERE (MERN Fellows, lead, 20 fellows)");
+  console.log("  Mentor   mentor.sam" + DEMO_DOMAIN + "     (MERN Fellows, CO-MENTOR, analytics off)");
+  console.log("  Mentor   mentor.omar" + DEMO_DOMAIN + "    (Node Guild — lead, 6 fellows)");
+  console.log("  Mentee   mentee.maya" + DEMO_DOMAIN + "    (star · 21/32 steps · nominated for co-mentor)");
   console.log("  Mentee   mentee.priya" + DEMO_DOMAIN + "   (submissions awaiting review)");
-  console.log("  …+ 4 more mentees spanning on-track / watch / new");
+  console.log("  Mentee   mentee.noor" + DEMO_DOMAIN + "    (struggling but fighting · long chat history)");
+  console.log("  Mentee   mentee.sara" + DEMO_DOMAIN + "    (at risk · silent 14 days)");
+  console.log("  Mentee   mentee.tom" + DEMO_DOMAIN + "     (brand new · nothing assigned yet)");
+  console.log("  …and " + (MENTEE_SPECS.length - 5) + " more spanning on-track / watch / average / new");
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log("  Scale:  " + MENTEE_SPECS.length + " mentees · 20 in the hero clan · 32-step MERN roadmap");
+  console.log("          16-week program, cohort is ~9 weeks in (mid-flight)");
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log("  For the video — worth opening, in this order:");
+  console.log("   1 Cockpit    20 fellows, risk spread, momentum, fairness signals");
+  console.log("   2 Roadmap    32 steps in 5 phases — mentees see the WHOLE map");
+  console.log("   3 Review     today's round is in progress, last week's is finished");
+  console.log("   4 Approvals  several submissions genuinely waiting on the mentor");
+  console.log("   5 Messages   10 threads with real history (incl. mentor↔co-mentor)");
+  console.log("   6 Quizzes    3 kits (JS, React, MongoDB) + a graded attempt");
+  console.log("   7 Interviews 2 kits (full-stack, React/MERN) + one awaiting review");
+  console.log("   8 Library    14 items across guidance / reading / template / policy");
+  console.log("   9 Community  questions, kudos and a win across clan/program/global");
+  console.log("  10 Analytics  clan comparison needs 2 clans — that's why Node Guild exists");
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   console.log("  Also seeded: cohort-review sessions + attendance, 1:1 slots &");
-  console.log("  meetings, DM threads, notifications, community posts, anonymous");
-  console.log("  mentor feedback, daily streaks, badges/points/leaderboard, roadmap");
-  console.log("  chaining (Core → Advanced) and a sample bug report.");
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log("  Things to open first:");
-  console.log("   • Quiz      maya has a graded attempt (5 of 6); noor has one waiting");
-  console.log("   • Interview priya has one sat and awaiting review; ivan has one to sit");
-  console.log("   • Library   6 items, one pinned, across all four categories");
-  console.log("   • Rewards   5 gifts (one retired) + 2 redemptions already made");
-  console.log("   • Invites   pending, expired and revoked, so resend has something to do");
-  console.log("   • Intake    7 applications, incl. one accepted but not yet placed");
-  console.log("   • Challenge 30 day logging streak, 4 entrants, 1 finished");
-  console.log("   • Tracks    3 personal lanes each on the first 3 mentees");
-  console.log("   • Settings  every account carries a timezone (" + TZ + "), which the");
-  console.log("               streak is counted in");
+  console.log("  meetings, notifications, anonymous mentor feedback, daily streaks,");
+  console.log("  badges/points/leaderboard, roadmap chaining, rewards, invites,");
+  console.log("  intake applications, a challenge, personal tracks and a bug report.");
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 }
 

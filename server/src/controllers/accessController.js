@@ -2,6 +2,17 @@ const { catchAsync } = require('../middlewares/errorHandler');
 const { successResponse } = require('../utils/responses');
 const accessService = require('../services/accessService');
 const authzService = require('../services/authzService');
+const { PERMISSION_GROUPS } = require('../config/permissions');
+
+/**
+ * The permission vocabulary, grouped and in words.
+ *
+ * Behind access.manage like everything else here: it describes the shape of the
+ * authorisation system, which is not something an ordinary account needs.
+ */
+const getPermissionCatalogue = catchAsync(async (req, res) => {
+  res.status(200).json(successResponse('Permission catalogue', { groups: PERMISSION_GROUPS }));
+});
 
 const getRoleCatalog = catchAsync(async (req, res) => {
   const roles = await accessService.listRoleCatalog();
@@ -76,6 +87,6 @@ const getAuditLogs = catchAsync(async (req, res) => {
 });
 
 module.exports = {
-  getRoleCatalog, getUserAccess, getDirectory, grantRole, revokeRole, myPermissions, inviteWithRole,
+  getPermissionCatalogue, getRoleCatalog, getUserAccess, getDirectory, grantRole, revokeRole, myPermissions, inviteWithRole,
   listCustomRoles, createCustomRole, updateCustomRole, deleteCustomRole, getAuditLogs
 };

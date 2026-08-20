@@ -53,4 +53,80 @@ const PERMISSIONS = {
 
 const ALL_PERMISSIONS = Object.values(PERMISSIONS);
 
-module.exports = { PERMISSIONS, ALL_PERMISSIONS };
+const P = PERMISSIONS;
+
+/**
+ * The same vocabulary, grouped and in words, for anything that has to show it
+ * to a person choosing what a role may do.
+ *
+ * It lives here because it was living in the admin web page instead, hardcoded,
+ * and had already fallen behind: `mentee.transfer` and `feedback.manage` were
+ * missing from it, so neither could be granted to a custom role through the
+ * only screen that grants them. A list of permissions kept next to a screen
+ * drifts from the list of permissions kept next to the code. This one cannot,
+ * and a test asserts every permission appears exactly once.
+ *
+ * The labels are what somebody choosing sees, so they are written as the thing
+ * being allowed rather than as the key with the dots taken out.
+ */
+const PERMISSION_GROUPS = [
+  {
+    label: 'Programmes and curriculum',
+    permissions: [
+      { key: P.PROGRAM_CREATE, label: 'Create programmes' },
+      { key: P.PROGRAM_MANAGE, label: 'Edit programmes' },
+      { key: P.PROGRAM_PUBLISH, label: 'Publish a programme' },
+      { key: P.COHORT_MANAGE, label: 'Run cohorts' },
+      { key: P.ROADMAP_AUTHOR, label: 'Write org roadmaps' },
+      { key: P.ROADMAP_PUBLISH_LOCAL, label: 'Publish their own roadmap' },
+      { key: P.ASSESSMENT_AUTHOR, label: 'Write quizzes and interviews' }
+    ]
+  },
+  {
+    label: 'Getting people in',
+    permissions: [
+      { key: P.INTAKE_MANAGE, label: 'Run intake and applications' },
+      { key: P.INVITE_CREATE, label: 'Send invites' }
+    ]
+  },
+  {
+    label: 'People and clans',
+    permissions: [
+      { key: P.CLAN_CREATE, label: 'Create clans' },
+      { key: P.CLAN_MANAGE_MEMBERS, label: 'Change who is in a clan' },
+      { key: P.MENTEE_VIEW, label: 'See mentee records' },
+      { key: P.MENTEE_MANAGE, label: 'Edit mentee records' },
+      { key: P.MENTEE_ADD, label: 'Add a mentee' },
+      { key: P.MENTEE_TRANSFER, label: 'Move a mentee between clans' },
+      { key: P.USER_MANAGE, label: 'Manage any account' }
+    ]
+  },
+  {
+    label: 'The work itself',
+    permissions: [
+      { key: P.TASK_ASSIGN, label: 'Set work' },
+      { key: P.TASK_REVIEW, label: 'Mark work' },
+      { key: P.LIBRARY_MANAGE, label: 'Manage the library' }
+    ]
+  },
+  {
+    label: 'Community and rewards',
+    permissions: [
+      { key: P.COMMUNITY_POST, label: 'Post to the community' },
+      { key: P.COMMUNITY_MODERATE, label: 'Moderate the community' },
+      { key: P.ANNOUNCEMENT_POST, label: 'Make announcements' },
+      { key: P.GAMIFICATION_MANAGE, label: 'Manage points and rewards' }
+    ]
+  },
+  {
+    label: 'Running Pathment',
+    permissions: [
+      { key: P.ANALYTICS_VIEW, label: 'See the numbers' },
+      { key: P.ACCESS_MANAGE, label: 'Give and take roles' },
+      { key: P.SYSTEM_SETTINGS, label: 'Change system settings' },
+      { key: P.FEEDBACK_MANAGE, label: 'Triage reported problems' }
+    ]
+  }
+];
+
+module.exports = { PERMISSIONS, ALL_PERMISSIONS, PERMISSION_GROUPS };
