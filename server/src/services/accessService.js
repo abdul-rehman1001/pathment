@@ -226,7 +226,10 @@ class AccessService {
           ? { id: l.user.id, name: `${l.user.firstName} ${l.user.lastName}`.trim(), email: l.user.email, role: l.user.role }
           : null,
         status: l.newValues?.status ?? null,
-        details: l.newValues || null,
+        // Falls back to oldValues so a REVOKE says what was taken away. A
+        // revoke records only the snapshot it removed, so mapping newValues
+        // alone left every removal in the feed with no detail at all.
+        details: l.newValues || l.oldValues || null,
         ipAddress: l.ipAddress,
         createdAt: l.createdAt
       }))
