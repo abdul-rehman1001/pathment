@@ -140,4 +140,115 @@ describe('Mentor Task Management', () => {
     expect(res.status).toBe(403);
     expect(res.body.success).toBe(false);
   });
+
+  it('TC-MR16: materializes assigned tasks from a recurring schedule slot idempotently', async () => {
+    const { models } = require('../../src/db');
+    const recurringMaterializer = require('../../src/services/recurringSlotMaterializer');
+    const todayStr = new Date().toISOString().split('T')[0];
+    const dayOfWeek = new Date().getDay();
+
+    await models.MenteeSchedule.create({
+      menteeId: mentee.id,
+      assignedBy: mentor.id,
+      schedule: [
+        {
+          id: 'slot-recurring-1',
+          label: 'Weekly Standup',
+          time: '09:00',
+          days: 'everyday',
+          kind: 'recurring',
+          roadmapChain: [],
+          bookable: false,
+          recurring: {
+            title: 'Weekly Standup Reflection',
+            type: 'discussion',
+            recurrence: 'weekly',
+            dayOfWeek,
+            timeLocal: '09:00',
+            timezone: 'UTC',
+            startsOn: todayStr,
+            dueOffsetDays: 3,
+            intervalWeeks: 1
+          }
+        }
+      ]
+    });
+
+    const res1 = await recurringMaterializer.tick();
+    expect(res1.createdCount).toBeGreaterThanOrEqual(1);
+
+    const tasksAfterFirstTick = await models.AssignedTask.findAll({
+      where: { menteeId: mentee.id, scheduleSlotId: 'slot-recurring-1' }
+    });
+    expect(tasksAfterFirstTick.length).toBe(res1.createdCount);
+
+    // Second tick - should materialize 0 additional tasks due to idempotency
+    const res2 = await recurringMaterializer.tick();
+    expect(res2.createdCount).toBe(0);
+
+    const tasksAfterSecondTick = await models.AssignedTask.findAll({
+      where: { menteeId: mentee.id, scheduleSlotId: 'slot-recurring-1' }
+    });
+    expect(tasksAfterSecondTick.length).toBe(tasksAfterFirstTick.length);
+  });
+
+  it('TC-MR17: allows mentor to activate a recurring slot via API endpoint', async () => {
+    const { models } = require('../../src/db');
+    const todayStr = new Date().toISOString().split('T')[0];
+    const dayOfWeek = new Date().getDay();
+
+    await models.MenteeSchedule.create({
+      menteeId: mentee.id,
+      assignedBy: mentor.id,
+      schedule: [
+        {
+          id: 'slot-recurring-api-1',
+          label: 'Mentor Checkin',
+          time: '10:00',
+          days: 'everyday',
+          kind: 'recurring',
+          roadmapChain: [],
+          bookable: false,
+          recurring: {
+            title: 'Weekly Mentor Checkin Task',
+            type: 'discussion',
+            recurrence: 'weekly',
+            dayOfWeek,
+            timeLocal: '10:00',
+            timezone: 'UTC',
+            startsOn: todayStr,
+            dueOffsetDays: 5,
+            intervalWeeks: 1
+          }
+        }
+      ]
+    });
+
+    const res = await request(app)
+      .post('/api/schedules/slot/slot-recurring-api-1/activate')
+      .set('Authorization', authHeader(mentor));
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.appliedMentees).toBe(1);
+    expect(res.body.data.createdTasks).toBeGreaterThanOrEqual(1);
+
+    const createdTasks = await models.AssignedTask.findAll({
+      where: { menteeId: mentee.id, scheduleSlotId: 'slot-recurring-api-1' }
+    });
+    expect(createdTasks.length).toBe(res.body.data.createdTasks);
+  });
+
+  it('TC-MR18: prevents mentor from activating recurring slots for unassigned mentees', async () => {
+    const { v4: uuidv4 } = require('uuid');
+    const fakeMenteeId = uuidv4();
+
+    const res = await request(app)
+      .post('/api/schedules/slot/slot-recurring-api-1/activate')
+      .set('Authorization', authHeader(mentor))
+      .send({ menteeIds: [fakeMenteeId] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.appliedMentees).toBe(0);
+  });
 });

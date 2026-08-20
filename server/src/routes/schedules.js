@@ -27,5 +27,6 @@ router.get('/me', authenticate, c.getMySchedule);                 // mentee's ow
 router.get('/mentee/:id', mentorOnly, c.getMenteeSchedule);       // mentor viewing a mentee
 router.patch('/mentee/:id/slot/:slotId', mentorOnly, c.updateSlot); // fill a slot
 router.post('/slot/:slotId/apply-all', mentorOnly, c.applySlotToAll); // push one slot config to all mentees
+router.post('/slot/:slotId/activate', mentorOnly, c.activateSlot); // generate recurring tasks now for all mentees
 
 module.exports = router;

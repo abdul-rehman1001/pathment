@@ -27,6 +27,16 @@ class NotificationScheduler {
     await this.sendReengagementReminders();
     await this.runReviewSchedules();
     await this.runAdminMeetings();
+    await this.runRecurringScheduleTasks();
+  }
+
+  /** Recurring schedule tasks: materialize upcoming occurrences from mentee schedule slots. */
+  async runRecurringScheduleTasks() {
+    try {
+      await require('./recurringSlotMaterializer').tick();
+    } catch (error) {
+      console.error('[scheduler] recurring schedule task tick failed:', error.message);
+    }
   }
 
   /** Recurring cohort reviews: materialise upcoming occurrences + send invites/reminders. */

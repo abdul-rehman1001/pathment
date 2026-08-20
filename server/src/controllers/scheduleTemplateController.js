@@ -47,8 +47,15 @@ const updateSlot = catchAsync(async (req, res) => {
 });
 
 const applySlotToAll = catchAsync(async (req, res) => {
-  const result = await svc.applySlotToAll(req.user.id, req.params.slotId, req.body);
-  res.status(200).json(successResponse('Slot applied to all mentees', result));
+  const menteeIds = req.body && Array.isArray(req.body.menteeIds) ? req.body.menteeIds : null;
+  const result = await svc.applySlotToAll(req.user.id, req.params.slotId, req.body, menteeIds);
+  res.status(200).json(successResponse('Slot applied to mentees', result));
+});
+
+const activateSlot = catchAsync(async (req, res) => {
+  const menteeIds = req.body && Array.isArray(req.body.menteeIds) ? req.body.menteeIds : null;
+  const result = await svc.activateSlot(req.user.id, req.params.slotId, menteeIds);
+  res.status(200).json(successResponse('Recurring tasks activated for mentees', result));
 });
 
 // ── Admin org templates ──────────────────────────────────────────────────────
@@ -73,6 +80,6 @@ const deleteOrg = catchAsync(async (req, res) => {
 
 module.exports = {
   listTemplates, createTemplate, updateTemplate, deleteTemplate, importTemplate,
-  assign, getMenteeSchedule, getMySchedule, updateSlot, applySlotToAll,
+  assign, getMenteeSchedule, getMySchedule, updateSlot, applySlotToAll, activateSlot,
   listOrg, createOrg, updateOrg, deleteOrg
 };

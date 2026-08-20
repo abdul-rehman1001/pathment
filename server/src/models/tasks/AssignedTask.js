@@ -113,6 +113,16 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       field: 'track_id'
     },
+    scheduleSlotId: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      field: 'schedule_slot_id'
+    },
+    occurrenceDate: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+      field: 'occurrence_date'
+    },
     // ── Per-mentee overrides (null = use the RoadmapTask default) ────────────
     titleOverride: { type: DataTypes.STRING(255), allowNull: true, field: 'title_override' },
     descriptionOverride: { type: DataTypes.TEXT, allowNull: true, field: 'description_override' },
@@ -130,7 +140,8 @@ module.exports = (sequelize, DataTypes) => {
       { fields: ['status'] },
       { fields: ['due_date'] },
       { fields: ['roadmap_task_id'] },
-      { fields: ['track_id'] }
+      { fields: ['track_id'] },
+      { fields: ['schedule_slot_id'] }
     ]
   });
 

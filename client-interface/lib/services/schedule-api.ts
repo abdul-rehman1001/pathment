@@ -6,13 +6,27 @@ export interface ChainRoadmapDetail {
   id: string; name: string; started: boolean; completed: boolean;
   currentStep: number; totalSteps: number; percent: number;
 }
+export interface RecurringSlotConfig {
+  title: string;
+  type: string;
+  recurrence?: string;
+  dayOfWeek?: number;
+  daysOfWeek?: number[];
+  timeLocal?: string;
+  timezone?: string;
+  startsOn?: string;
+  endsOn?: string | null;
+  dueOffsetDays?: number;
+  intervalWeeks?: number;
+}
+
 export interface ScheduleSlot {
   id: string; label: string; time: string; days: string;
   kind: 'roadmap' | 'recurring' | 'empty';
   roadmapChain: string[];
   /** Step index of the chain's FIRST roadmap to start the mentee at (skip known steps). */
   startStep?: number;
-  recurring: { title: string; type: string; recurrence: string } | null;
+  recurring: RecurringSlotConfig | null;
   bookable: boolean;
   /** Server-enriched: each chained roadmap's name + this mentee's live progress. */
   chainDetails?: ChainRoadmapDetail[];
@@ -48,10 +62,13 @@ export const scheduleApi = {
     apiClient.get<{ data: { schedule: MenteeScheduleResult | null } }>(`/schedules/mentee/${menteeId}`),
   getMySchedule: () => apiClient.get<{ data: { schedule: MenteeScheduleResult | null } }>('/schedules/me'),
   updateSlot: (menteeId: string, slotId: string, patch: {
-    kind?: string; roadmapChain?: string[]; startStep?: number; recurring?: { title: string; type: string; recurrence: string } | null; bookable?: boolean;
+    kind?: string; roadmapChain?: string[]; startStep?: number; recurring?: Partial<RecurringSlotConfig> | null; bookable?: boolean;
   }) => apiClient.patch(`/schedules/mentee/${menteeId}/slot/${slotId}`, patch),
-  // Push one slot's config to ALL the mentor's mentees who have that slot.
+  // Push one slot's config to ALL (or selected) the mentor's mentees who have that slot.
   applySlotToAll: (slotId: string, patch: {
-    kind?: string; roadmapChain?: string[]; startStep?: number; recurring?: { title: string; type: string; recurrence: string } | null;
-  }) => apiClient.post<{ data: { applied: number } }>(`/schedules/slot/${slotId}/apply-all`, patch),
+    kind?: string; roadmapChain?: string[]; startStep?: number; recurring?: Partial<RecurringSlotConfig> | null;
+  }, menteeIds?: string[]) => apiClient.post<{ data: { applied: number } }>(`/schedules/slot/${slotId}/apply-all`, { ...patch, menteeIds }),
+  // Materialize recurring slot tasks immediately for all (or selected) assigned mentees.
+  activateSlot: (slotId: string, menteeIds?: string[]) =>
+    apiClient.post<{ data: { appliedMentees: number; createdTasks: number } }>(`/schedules/slot/${slotId}/activate`, { menteeIds }),
 };
