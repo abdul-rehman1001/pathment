@@ -358,3 +358,40 @@ describe('a scoped role grant', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('an invite', () => {
+  test('will not go out without the placement its role needs', async () => {
+    // A mentee is invited into a programme and a mentor is invited to lead a
+    // clan. The phone's invite sheet asked which programme for a mentee and
+    // asked a mentor nothing, so every mentor invite came back naming a field
+    // the screen had never offered.
+    const noClan = await request(app)
+      .post('/api/admin/invites')
+      .set('Authorization', authHeader(admin))
+      .send({ email: 'lead@test.com', role: 'mentor' });
+
+    expect(noClan.status).toBe(400);
+    expect(noClan.body.message).toMatch(/clan/i);
+
+    const noProgramme = await request(app)
+      .post('/api/admin/invites')
+      .set('Authorization', authHeader(admin))
+      .send({ email: 'learner@test.com', role: 'mentee' });
+
+    expect(noProgramme.status).toBe(400);
+    expect(noProgramme.body.message).toMatch(/program/i);
+  });
+
+  test('goes out once the placement is named', async () => {
+    const clan = await models.Clan.create({
+      programId: program.id, name: 'Falcons', status: 'active', createdBy: admin.id,
+    });
+
+    const res = await request(app)
+      .post('/api/admin/invites')
+      .set('Authorization', authHeader(admin))
+      .send({ email: 'lead@test.com', role: 'mentor', clanId: clan.id });
+
+    expect(res.status).toBe(201);
+  });
+});
