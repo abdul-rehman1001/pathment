@@ -29,6 +29,7 @@ if (!_dbUrl.includes('test')) {
 async function cleanDb() {
   await sequelize.query('SET session_replication_role = replica');  // disable FK checks temporarily
   const tableOrder = [
+    'clan_join_requests',
     'task_feedback',
     'task_submission_files',
     'task_submissions',
