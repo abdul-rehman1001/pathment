@@ -105,4 +105,37 @@ export const publicApi = {
       .post<any>(`/public/applications/${encodeURIComponent(token)}/upload`, fd)
       .then((r) => r.data as { url: string; fileName: string; fileSizeBytes: number });
   },
+
+  /** Public clan joining page (opaque token). Works with optional auth. */
+  getClanJoin: (token: string) =>
+    apiClient.get<any>(`/public/clans/join/${encodeURIComponent(token)}`).then((r) => r.data as PublicClanJoinInfo),
+
+  /** Authenticated join request via public clan token. */
+  submitClanJoinRequest: (token: string, message?: string) =>
+    apiClient.post<any>(
+      `/public/clans/join/${encodeURIComponent(token)}/request`,
+      message ? { message } : {}
+    ).then((r) => r.data as { request: { id: string; status: string } }),
 };
+
+export type ClanJoinViewerStatus =
+  | 'anonymous'
+  | 'eligible'
+  | 'already_member'
+  | 'pending'
+  | 'member_elsewhere'
+  | 'mentor_of_clan';
+
+export interface PublicClanJoinInfo {
+  token: string;
+  clan: {
+    name: string;
+    description?: string | null;
+    maxMentees?: number | null;
+    menteeCount?: number;
+    seatsRemaining?: number | null;
+  };
+  program: { name: string } | null;
+  joining: { requiresApproval: boolean; message: string };
+  viewerStatus: ClanJoinViewerStatus;
+}

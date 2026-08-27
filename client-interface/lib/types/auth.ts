@@ -66,7 +66,10 @@ export interface RegisterData {
   email: string;
   password: string;
   confirmPassword: string;
-  inviteToken: string;
+  /** Classic email-locked invite (mutually exclusive with clanJoinSlug). */
+  inviteToken?: string;
+  /** Public clan join slug (mutually exclusive with inviteToken). */
+  clanJoinSlug?: string;
 }
 
 export interface tokens {

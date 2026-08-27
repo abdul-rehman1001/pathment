@@ -52,4 +52,46 @@ export const clanApi = {
   /** Move a mentee to a different clan (admin). Same program keeps progress; a
    *  different program wipes the old enrollment + tasks (clean transfer). */
   reassign: (menteeId: string, toClanId: string) => apiClient.post('/clans/reassign', { menteeId, toClanId }),
+
+  // ── Public clan joining link ─────────────────────────────────────────────
+  getPublicJoinState: (id: string) =>
+    apiClient.get<any>(`/clans/${id}/public-join`).then((r) => r.data as PublicJoinState),
+  setPublicJoinAccess: (id: string, allowed: boolean) =>
+    apiClient.patch<any>(`/clans/${id}/public-join/access`, { allowed }).then((r) => r.data as PublicJoinState),
+  generatePublicJoinLink: (id: string) =>
+    apiClient.post<any>(`/clans/${id}/public-join/link`, {}).then((r) => r.data as PublicJoinState),
+  disablePublicJoinLink: (id: string) =>
+    apiClient.delete<any>(`/clans/${id}/public-join/link`).then((r) => r.data as PublicJoinState),
+  regeneratePublicJoinLink: (id: string) =>
+    apiClient.post<any>(`/clans/${id}/public-join/regenerate`, {}).then((r) => r.data as PublicJoinState),
+  listJoinRequests: (id: string, status?: string) =>
+    apiClient.get<any>(`/clans/${id}/join-requests`, { params: status ? { status } : {} })
+      .then((r) => (r.data?.requests || []) as ClanJoinRequestRow[]),
+  approveJoinRequest: (id: string, requestId: string) =>
+    apiClient.post<any>(`/clans/${id}/join-requests/${requestId}/approve`, {}),
+  rejectJoinRequest: (id: string, requestId: string, note?: string) =>
+    apiClient.post<any>(`/clans/${id}/join-requests/${requestId}/reject`, note ? { note } : {}),
 };
+
+export interface PublicJoinState {
+  clanId?: string;
+  clanName?: string;
+  publicJoinAllowed: boolean;
+  publicJoinEnabled: boolean;
+  publicJoinLinkExists: boolean;
+  publicJoinUsable?: boolean;
+  publicJoinUrl: string | null;
+}
+
+export interface ClanJoinRequestRow {
+  id: string;
+  clanId: string;
+  userId: string;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  source: string;
+  message?: string | null;
+  resolutionNote?: string | null;
+  reviewedAt?: string | null;
+  createdAt: string;
+  user?: { id: string; firstName: string; lastName: string; email: string } | null;
+}
