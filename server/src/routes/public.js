@@ -1,8 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const publicController = require('../controllers/publicController');
+const clanPublicJoinController = require('../controllers/clanPublicJoinController');
 const upload = require('../middlewares/upload');
 const { publicIntakeLimiter } = require('../middlewares/rateLimiter');
+const { authenticate, optionalAuth } = require('../middlewares/auth');
+const { validateBody } = require('../middlewares/validate');
+const clanSchemas = require('../validations/clanValidation');
 
 /**
  * Public, UNAUTHENTICATED intake surface. Nothing here requires a login - it
@@ -34,6 +38,21 @@ router.post(
   publicIntakeLimiter,
   upload.singleSafe('file'),
   publicController.uploadFile
+);
+
+// Public clan joining link (opaque token). GET may include optional auth so an
+// already-logged-in visitor sees membership/pending state. POST requires auth.
+router.get(
+  '/clans/join/:token',
+  optionalAuth,
+  clanPublicJoinController.getPublicClanJoin
+);
+router.post(
+  '/clans/join/:token/request',
+  publicIntakeLimiter,
+  authenticate,
+  validateBody(clanSchemas.publicJoinRequestBody),
+  clanPublicJoinController.submitPublicJoinRequest
 );
 
 module.exports = router;

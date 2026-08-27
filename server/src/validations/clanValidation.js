@@ -11,5 +11,30 @@ module.exports = {
     search: Joi.string().trim().max(120).optional().allow(''),
     page: Joi.number().integer().min(1).optional(),
     limit: Joi.number().integer().min(1).max(100).optional()
+  }),
+
+  idParams: Joi.object({
+    id: Joi.string().uuid().required()
+  }),
+
+  publicJoinAccess: Joi.object({
+    allowed: Joi.boolean().required()
+  }),
+
+  joinRequestQuery: Joi.object({
+    status: Joi.string().valid('pending', 'approved', 'rejected', 'cancelled').optional()
+  }),
+
+  joinRequestParams: Joi.object({
+    id: Joi.string().uuid().required(),
+    requestId: Joi.string().uuid().required()
+  }),
+
+  rejectJoinRequest: Joi.object({
+    note: Joi.string().trim().max(2000).allow('', null).optional()
+  }),
+
+  publicJoinRequestBody: Joi.object({
+    message: Joi.string().trim().max(2000).allow('', null).optional()
   })
 };
