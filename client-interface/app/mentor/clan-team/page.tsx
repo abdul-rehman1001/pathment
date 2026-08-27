@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Check, Crown, HeartHandshake, Loader2, Search, Shield, SlidersHorizontal, Trash2, UserPlus, Users2, X } from 'lucide-react';
+import { Check, Crown, HeartHandshake, Link2, Loader2, Search, Shield, SlidersHorizontal, Trash2, UserPlus, Users2, X, Copy, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { apiClient } from '@/lib/services/api-client';
@@ -239,11 +239,234 @@ function ClanTeamCard({ clanId, myRole }: { clanId: string; myRole: string }) {
         )}
       </div>
 
+      {myRole === 'lead_mentor' && <PublicJoinLeadPanel clanId={clanId} />}
+
       {canManageTeam && <CrossClanSection clanId={clanId} clanName={clan.name} />}
 
       {canManageTeam && adding && <AddTeamMemberDrawer clanId={clanId} onClose={() => setAdding(false)} onAdded={() => { setAdding(false); load(); }} />}
       {canAddMentees && addingMentees && <AddMenteesDrawer clanId={clanId} clanName={clan.name} onClose={() => setAddingMentees(false)} onChanged={() => load()} />}
       {canManageTeam && permMember && <CoMentorPermissionsDrawer clanId={clanId} userId={permMember.user.id} name={name(permMember.user)} onClose={() => setPermMember(null)} onSaved={load} />}
+    </div>
+  );
+}
+
+/** Lead-mentor public joining link + pending join requests. */
+function PublicJoinLeadPanel({ clanId }: { clanId: string }) {
+  const confirm = useConfirm();
+  const [state, setState] = useState<Awaited<ReturnType<typeof clanApi.getPublicJoinState>> | null>(null);
+  const [requests, setRequests] = useState<Awaited<ReturnType<typeof clanApi.listJoinRequests>>>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [actingId, setActingId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [joinState, pending] = await Promise.all([
+        clanApi.getPublicJoinState(clanId),
+        clanApi.listJoinRequests(clanId, 'pending').catch(() => []),
+      ]);
+      setState(joinState);
+      setRequests(pending);
+    } catch (e) {
+      toast.error(extractApiErrorMessage(e, 'Could not load public joining settings'));
+      setState(null);
+      setRequests([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [clanId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const copyLink = async () => {
+    if (!state?.publicJoinUrl) return;
+    try {
+      await navigator.clipboard.writeText(state.publicJoinUrl);
+      toast.success('Link copied');
+    } catch {
+      toast.error('Could not copy link');
+    }
+  };
+
+  const generate = async () => {
+    setBusy(true);
+    try {
+      const next = await clanApi.generatePublicJoinLink(clanId);
+      setState(next);
+      toast.success('Public joining link is ready');
+    } catch (e) {
+      toast.error(extractApiErrorMessage(e, 'Could not generate link'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const disable = async () => {
+    setBusy(true);
+    try {
+      const next = await clanApi.disablePublicJoinLink(clanId);
+      setState(next);
+      toast.success('Public joining link disabled');
+    } catch (e) {
+      toast.error(extractApiErrorMessage(e, 'Could not disable link'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const regenerate = async () => {
+    if (!(await confirm({
+      title: 'Regenerate joining link?',
+      description: 'The previously shared link will stop working immediately. Existing join requests and members are not affected.',
+      confirmLabel: 'Regenerate',
+      variant: 'danger',
+    }))) return;
+    setBusy(true);
+    try {
+      const next = await clanApi.regeneratePublicJoinLink(clanId);
+      setState(next);
+      toast.success('New joining link generated');
+    } catch (e) {
+      toast.error(extractApiErrorMessage(e, 'Could not regenerate link'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const approve = async (requestId: string) => {
+    setActingId(requestId);
+    try {
+      await clanApi.approveJoinRequest(clanId, requestId);
+      toast.success('Join request approved');
+      await load();
+    } catch (e) {
+      toast.error(extractApiErrorMessage(e, 'Could not approve'));
+    } finally {
+      setActingId(null);
+    }
+  };
+
+  const reject = async (requestId: string) => {
+    if (!(await confirm({
+      title: 'Reject this join request?',
+      description: 'The person can request again later unless you leave the link disabled.',
+      confirmLabel: 'Reject',
+      variant: 'danger',
+    }))) return;
+    setActingId(requestId);
+    try {
+      await clanApi.rejectJoinRequest(clanId, requestId);
+      toast.success('Join request rejected');
+      await load();
+    } catch (e) {
+      toast.error(extractApiErrorMessage(e, 'Could not reject'));
+    } finally {
+      setActingId(null);
+    }
+  };
+
+  return (
+    <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50/80 p-4 space-y-4">
+      <div>
+        <p className="text-sm font-semibold text-slate-900 inline-flex items-center gap-2">
+          <Link2 className="w-4 h-4 text-brand-600" /> Public clan joining
+        </p>
+        <p className="text-xs text-slate-500 mt-1">
+          Anyone with the link can request to join. Membership still requires your approval.
+        </p>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin text-brand-600" /></div>
+      ) : !state?.publicJoinAllowed ? (
+        <p className="text-sm text-slate-600 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+          Public joining has not been enabled for this clan by an administrator.
+          Contact an administrator if this clan should use a public joining link.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {state.publicJoinEnabled && state.publicJoinUrl ? (
+            <>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  readOnly
+                  value={state.publicJoinUrl}
+                  className="flex-1 rounded-lg border border-slate-200 bg-card px-3 py-2 text-xs text-slate-700"
+                />
+                <div className="flex gap-2">
+                  <button type="button" onClick={copyLink} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-card px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    <Copy className="w-4 h-4" /> Copy
+                  </button>
+                  <button type="button" disabled={busy} onClick={regenerate} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-card px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+                    <RefreshCw className="w-4 h-4" /> Regenerate
+                  </button>
+                  <button type="button" disabled={busy} onClick={disable} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50">
+                    Disable
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-sm text-slate-600">
+                {state.publicJoinLinkExists
+                  ? 'Public joining is currently disabled.'
+                  : 'No public joining link has been generated yet.'}
+              </p>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={generate}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+              >
+                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
+                {state.publicJoinLinkExists ? 'Enable link' : 'Generate public joining link'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="border-t border-slate-200 pt-3 space-y-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Pending join requests</p>
+        {requests.length === 0 ? (
+          <p className="text-sm text-slate-500">No pending requests.</p>
+        ) : (
+          requests.map((req) => {
+            const label = req.user
+              ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || req.user.email
+              : 'Unknown user';
+            return (
+              <div key={req.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-card px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-900 truncate">{label}</p>
+                  <p className="text-xs text-slate-500 truncate">{req.user?.email}</p>
+                  {req.message ? <p className="text-xs text-slate-500 mt-0.5">“{req.message}”</p> : null}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    disabled={actingId === req.id}
+                    onClick={() => reject(req.id)}
+                    className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    Reject
+                  </button>
+                  <button
+                    type="button"
+                    disabled={actingId === req.id}
+                    onClick={() => approve(req.id)}
+                    className="rounded-lg bg-brand-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+                  >
+                    {actingId === req.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Approve'}
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 }

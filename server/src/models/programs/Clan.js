@@ -84,6 +84,31 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.UUID,
       allowNull: false,
       field: 'created_by'
+    },
+    // ── Public clan joining link ───────────────────────────────────────────
+    // Admin permission (default off). Lead may only generate/activate a link
+    // when this is true. Removing access immediately makes any slug unusable.
+    publicJoinAllowed: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      field: 'public_join_allowed'
+    },
+    // Lead activation switch. Link is usable only when allowed AND enabled
+    // AND a slug exists AND the clan is active.
+    publicJoinEnabled: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      field: 'public_join_enabled'
+    },
+    // Opaque shareable token for `/clan/join/<slug>`. Only the current value
+    // is valid; regeneration replaces it and invalidates old URLs.
+    publicJoinSlug: {
+      type: DataTypes.STRING(64),
+      allowNull: true,
+      unique: true,
+      field: 'public_join_slug'
     }
   }, {
     tableName: 'clans',
@@ -92,7 +117,9 @@ module.exports = (sequelize, DataTypes) => {
     indexes: [
       { fields: ['program_id'] },
       { fields: ['lead_mentor_id'] },
-      { fields: ['status'] }
+      { fields: ['status'] },
+      { fields: ['public_join_slug'], unique: true, name: 'clans_public_join_slug_uniq' },
+      { fields: ['public_join_allowed'] }
     ]
   });
 
@@ -101,6 +128,9 @@ module.exports = (sequelize, DataTypes) => {
     Clan.belongsTo(models.User, { foreignKey: 'lead_mentor_id', as: 'leadMentor' });
     Clan.belongsTo(models.User, { foreignKey: 'created_by', as: 'creator' });
     Clan.hasMany(models.ClanMembership, { foreignKey: 'clan_id', as: 'memberships' });
+    if (models.ClanJoinRequest) {
+      Clan.hasMany(models.ClanJoinRequest, { foreignKey: 'clan_id', as: 'joinRequests' });
+    }
 
     // Reverse side (kept here to avoid editing the live Program/User wiring).
     models.Program.hasMany(Clan, { foreignKey: 'program_id', as: 'clans' });
