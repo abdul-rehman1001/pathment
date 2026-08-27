@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
-import { Users2, Plus, X, Loader2, Trash2, UserPlus, Crown, GraduationCap, Search, ArrowRightLeft, SlidersHorizontal, PauseCircle, PlayCircle } from 'lucide-react';
+import { Users2, Plus, X, Loader2, Trash2, UserPlus, Crown, GraduationCap, Search, ArrowRightLeft, SlidersHorizontal, PauseCircle, PlayCircle, Link2 } from 'lucide-react';
 import { SelectMenu, type SelectOption } from '@/components/shared/SelectMenu';
 import { TablePagination } from '@/components/shared/TablePagination';
 import { Avatar } from '@/components/shared/Avatar';
@@ -11,11 +11,12 @@ import { CoMentorPermissionsDrawer } from '@/components/shared/CoMentorPermissio
 import { ReassignClanModal } from '@/components/admin/ReassignClanModal';
 import { ClanLevelsField } from '@/components/admin/ClanLevelsField';
 import { useAdminClans, type Clan, type ClanMembershipRow } from '@/lib/hooks/admin';
-import { clanApi } from '@/lib/services/clan-api';
+import { clanApi, type PublicJoinState } from '@/lib/services/clan-api';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 import { programsApi } from '@/lib/services/program-api';
 import { mentorApi } from '@/lib/services/mentor-api';
 import { menteeApi } from '@/lib/services/mentee-api';
+import { extractApiErrorMessage } from '@/lib/utils/api-error';
 
 interface Person {
   id: string; firstName: string; lastName: string; email?: string; role?: string;
@@ -133,6 +134,8 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
   const [levelsDraft, setLevelsDraft] = useState<string[]>([]);
   const [savingLevels, setSavingLevels] = useState(false);
   const [details, setDetails] = useState({ name: '', description: '', whatsappGroupLink: '', leadMentorId: '', maxMentees: '25', status: 'active', tags: '', countries: '' });
+  const [publicJoin, setPublicJoin] = useState<PublicJoinState | null>(null);
+  const [publicJoinBusy, setPublicJoinBusy] = useState(false);
 
   // Searchable person picker (server-backed) so ANYONE is findable — not just the
   // first 20 of a base-role directory. This is how a removed/re-roled person
@@ -146,7 +149,12 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await clanApi.get(clanId); const c = res?.data?.clan ?? null; setClan(c);
+      const [res, joinState] = await Promise.all([
+        clanApi.get(clanId),
+        clanApi.getPublicJoinState(clanId).catch(() => null),
+      ]);
+      const c = res?.data?.clan ?? null; setClan(c);
+      setPublicJoin(joinState);
       setLevelsDraft(Array.isArray(c?.levels) ? c.levels : []);
       setDetails({
         name: c?.name ?? '', description: c?.description ?? '', whatsappGroupLink: c?.whatsappGroupLink ?? '', leadMentorId: c?.leadMentor?.id ?? '',
@@ -334,6 +342,56 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
                   <label className="block text-xs font-medium text-slate-500 mb-1">Tags <span className="text-slate-400 font-normal">(comma-separated)</span></label>
                   <input value={details.tags} onChange={(e) => setDetails((d) => ({ ...d, tags: e.target.value }))} placeholder="e.g. frontend, react" className={`w-full ${field}`} />
                 </div>
+              </div>
+
+              {/* Public clan joining — admin permission only (lead generates the link). */}
+              <div className="rounded-xl border border-slate-200 p-4 space-y-3">
+                <h3 className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
+                  <Link2 className="w-4 h-4 text-brand-500" /> Public clan joining access
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Disabled by default. When allowed, the Clan Lead Mentor can generate a shareable link.
+                  Visitors request to join; membership still requires Lead Mentor approval.
+                </p>
+                {publicJoin ? (
+                  <>
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="mt-1 rounded border-slate-300"
+                        checked={Boolean(publicJoin.publicJoinAllowed)}
+                        disabled={publicJoinBusy}
+                        onChange={async (e) => {
+                          const allowed = e.target.checked;
+                          setPublicJoinBusy(true);
+                          try {
+                            const next = await clanApi.setPublicJoinAccess(clanId, allowed);
+                            setPublicJoin(next);
+                            toast.success(allowed ? 'Public joining access granted' : 'Public joining access removed');
+                          } catch (err) {
+                            toast.error(extractApiErrorMessage(err, 'Could not update public joining access'));
+                          } finally {
+                            setPublicJoinBusy(false);
+                          }
+                        }}
+                      />
+                      <span className="text-sm text-slate-700">
+                        Allow this clan to use public joining links
+                      </span>
+                    </label>
+                    <p className="text-xs text-slate-500">
+                      {publicJoin.publicJoinAllowed
+                        ? publicJoin.publicJoinEnabled
+                          ? 'Access granted · Lead Mentor has an active public joining link.'
+                          : publicJoin.publicJoinLinkExists
+                            ? 'Access granted · Link exists but is currently disabled by the Lead Mentor.'
+                            : 'Access granted · The Clan Lead Mentor may generate and share the link.'
+                        : 'This clan is not authorized to generate or use a public joining link. Any existing link is inactive.'}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-xs text-slate-400">Could not load public joining state.</p>
+                )}
               </div>
 
               {/* Add member */}
