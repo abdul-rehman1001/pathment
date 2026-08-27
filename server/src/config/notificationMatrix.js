@@ -27,6 +27,8 @@ EXTENSION_HANDLED: 'extension_handled',
   MEETING_BOOKED: 'meeting_booked',
   CROSS_CLAN_ASSIGNED: 'cross_clan_assigned',
   NEW_MENTEE_IN_CLAN: 'new_mentee_in_clan',
+  CLAN_JOIN_REQUEST_RECEIVED: 'clan_join_request_received',
+  CLAN_JOIN_REQUEST_DECIDED: 'clan_join_request_decided',
   MENTEE_TRANSFER_REQUESTED: 'mentee_transfer_requested',
   MENTEE_TRANSFER_DECIDED: 'mentee_transfer_decided',
   PROMOTION_NOMINATED: 'promotion_nominated',
@@ -256,6 +258,18 @@ const NOTIFICATION_MATRIX = {
     type: 'system',
     audience: 'mentor',
     preferenceKey: 'new_mentee_in_clan',
+    channels: { inApp: true, email: true, chat: false }
+  },
+  [NOTIFICATION_EVENTS.CLAN_JOIN_REQUEST_RECEIVED]: {
+    type: 'system',
+    audience: 'mentor',
+    preferenceKey: 'clan_join_request_received',
+    channels: { inApp: true, email: true, chat: false }
+  },
+  [NOTIFICATION_EVENTS.CLAN_JOIN_REQUEST_DECIDED]: {
+    type: 'system',
+    audience: 'mentee',
+    preferenceKey: 'clan_join_request_decided',
     channels: { inApp: true, email: true, chat: false }
   },
   // Another mentor asks THIS clan to take one of their mentees. Always in-app;
