@@ -87,6 +87,15 @@ class AuthService {
   }
 
   /**
+   * Public clan join slug → registration context (email not locked; membership
+   * still requires a later join request + lead approval).
+   */
+  async getClanJoinRegistrationDetails(clanJoinSlug) {
+    const clanPublicJoinService = require('./clanPublicJoinService');
+    return clanPublicJoinService.getRegistrationDetailsForSlug(clanJoinSlug);
+  }
+
+  /**
    * Register a new user
    */
   async register(userData) {
@@ -96,10 +105,23 @@ class AuthService {
       email,
       password,
       inviteToken,
+      clanJoinSlug,
       phoneNumber,
       dateOfBirth,
       bio
     } = userData;
+
+    if (clanJoinSlug && !inviteToken) {
+      return this._registerViaClanJoinSlug({
+        firstName,
+        lastName,
+        email,
+        password,
+        clanJoinSlug,
+        phoneNumber,
+        dateOfBirth
+      });
+    }
 
     if (!inviteToken) {
       throw new ValidationError('Invite token is required');
@@ -268,6 +290,93 @@ class AuthService {
     delete userResponse.passwordHash;
 
     return { user: userResponse };
+  }
+
+  /**
+   * Register via a public clan joining slug. Creates a mentee account + program
+   * enrollment (pending_match). Does NOT create ClanMembership — the user must
+   * still submit a join request and get Lead Mentor approval.
+   */
+  async _registerViaClanJoinSlug({
+    firstName,
+    lastName,
+    email,
+    password,
+    clanJoinSlug,
+    phoneNumber,
+    dateOfBirth
+  }) {
+    const clanPublicJoinService = require('./clanPublicJoinService');
+    const { clan } = await clanPublicJoinService.requireOpenBySlug(clanJoinSlug);
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const hashedPassword = await bcrypt.hash(password, 12);
+
+    const result = await sequelize.transaction(async (transaction) => {
+      const existingUser = await models.User.findOne({ where: { email: normalizedEmail }, transaction });
+      if (existingUser) {
+        throw new ConflictError(AUTH_MESSAGES.EMAIL_ALREADY_EXISTS);
+      }
+
+      const user = await models.User.create({
+        firstName,
+        lastName,
+        email: normalizedEmail,
+        passwordHash: hashedPassword,
+        role: 'mentee',
+        phoneNumber,
+        dateOfBirth,
+        onboardingStep: 0,
+        // Possession of an admin-authorized, enabled join link is the invite gate.
+        emailVerified: true,
+        emailVerifiedAt: new Date(),
+        status: 'active'
+      }, { transaction });
+
+      await models.MenteeProfile.create({
+        userId: user.id,
+        interests: [],
+        currentEducation: null,
+        currentOccupation: null,
+        priorExperience: null,
+        preferredLearningStyle: 'visual',
+        learningGoals: [],
+        currentLevel: 1,
+        totalPoints: 0
+      }, { transaction });
+
+      await models.UserSettings.create({ userId: user.id }, { transaction });
+
+      if (clan.programId) {
+        const program = await models.Program.findByPk(clan.programId, { transaction });
+        if (program) {
+          await models.Enrollment.create({
+            menteeId: user.id,
+            programId: clan.programId,
+            status: 'pending_match',
+            enrolledAt: new Date()
+          }, { transaction });
+        }
+      }
+
+      return { user, clanJoinSlug: clan.publicJoinSlug };
+    });
+
+    notificationOrchestrator.sendWelcomeEmail(result.user).catch((error) => {
+      console.warn('welcome email failed:', error.message);
+    });
+
+    const userResponse = result.user.toJSON();
+    delete userResponse.passwordHash;
+
+    return {
+      user: userResponse,
+      clanJoin: {
+        slug: result.clanJoinSlug,
+        joinPath: `/clan/join/${result.clanJoinSlug}`,
+        requiresApproval: true
+      }
+    };
   }
 
   /** Notify a clan's mentors (lead + co) that a new mentee has joined their clan. */
