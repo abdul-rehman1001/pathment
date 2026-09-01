@@ -29,7 +29,7 @@ Distinct from `RegistrationInvite` (email-locked register/placement) and
 `096_clan_public_join.js`.
 
 ## Backend
-Service: `clanPublicJoinService`. Controller: `clanPublicJoinController`. Approving a
+Service: `clanPublicJoinService`. HTTP handlers live in `clanController`. Approving a
 request calls existing **`clanService.addMember(clanId, { userId, role: 'mentee' })`** —
 same membership path as manual add.
 

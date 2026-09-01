@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const publicController = require('../controllers/publicController');
-const clanPublicJoinController = require('../controllers/clanPublicJoinController');
+const clanController = require('../controllers/clanController');
 const upload = require('../middlewares/upload');
 const { publicIntakeLimiter } = require('../middlewares/rateLimiter');
 const { authenticate, optionalAuth } = require('../middlewares/auth');
@@ -45,14 +45,14 @@ router.post(
 router.get(
   '/clans/join/:token',
   optionalAuth,
-  clanPublicJoinController.getPublicClanJoin
+  clanController.getPublicClanJoin
 );
 router.post(
   '/clans/join/:token/request',
   publicIntakeLimiter,
   authenticate,
   validateBody(clanSchemas.publicJoinRequestBody),
-  clanPublicJoinController.submitPublicJoinRequest
+  clanController.submitPublicJoinRequest
 );
 
 module.exports = router;

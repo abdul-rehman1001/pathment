@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const clanController = require('../controllers/clanController');
-const clanPublicJoinController = require('../controllers/clanPublicJoinController');
 const { authenticate, authorize } = require('../middlewares/auth');
 const { requirePermission, requireAnyPermission, requireAddClanMember, requirePermissionMinScope, scope } = require('../middlewares/authz');
 const { validateQuery, validateBody, validateParams } = require('../middlewares/validate');
@@ -57,7 +56,7 @@ router.get(
   '/:id/public-join',
   authenticate,
   validateParams(clanSchemas.idParams),
-  clanPublicJoinController.getPublicJoinState
+  clanController.getPublicJoinState
 );
 router.patch(
   '/:id/public-join/access',
@@ -65,45 +64,45 @@ router.patch(
   requirePermissionMinScope(PERMISSIONS.CLAN_MANAGE_MEMBERS, 'program'),
   validateParams(clanSchemas.idParams),
   validateBody(clanSchemas.publicJoinAccess),
-  clanPublicJoinController.setPublicJoinAccess
+  clanController.setPublicJoinAccess
 );
 router.post(
   '/:id/public-join/link',
   authenticate,
   validateParams(clanSchemas.idParams),
-  clanPublicJoinController.generatePublicJoinLink
+  clanController.generatePublicJoinLink
 );
 router.delete(
   '/:id/public-join/link',
   authenticate,
   validateParams(clanSchemas.idParams),
-  clanPublicJoinController.disablePublicJoinLink
+  clanController.disablePublicJoinLink
 );
 router.post(
   '/:id/public-join/regenerate',
   authenticate,
   validateParams(clanSchemas.idParams),
-  clanPublicJoinController.regeneratePublicJoinLink
+  clanController.regeneratePublicJoinLink
 );
 router.get(
   '/:id/join-requests',
   authenticate,
   validateParams(clanSchemas.idParams),
   validateQuery(clanSchemas.joinRequestQuery),
-  clanPublicJoinController.listJoinRequests
+  clanController.listJoinRequests
 );
 router.post(
   '/:id/join-requests/:requestId/approve',
   authenticate,
   validateParams(clanSchemas.joinRequestParams),
-  clanPublicJoinController.approveJoinRequest
+  clanController.approveJoinRequest
 );
 router.post(
   '/:id/join-requests/:requestId/reject',
   authenticate,
   validateParams(clanSchemas.joinRequestParams),
   validateBody(clanSchemas.rejectJoinRequest),
-  clanPublicJoinController.rejectJoinRequest
+  clanController.rejectJoinRequest
 );
 
 // Candidates for co-mentor / core-team (anyone active, not already in the clan).
