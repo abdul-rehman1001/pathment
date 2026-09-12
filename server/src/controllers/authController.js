@@ -17,7 +17,8 @@ class AuthController {
       successResponse(
         AUTH_MESSAGES.REGISTER_SUCCESS,
         {
-          user: result.user
+          user: result.user,
+          ...(result.clanJoin ? { clanJoin: result.clanJoin } : {})
         },
         201
       )
@@ -35,6 +36,15 @@ class AuthController {
     res.status(200).json(
       successResponse('Invite is valid', { invite })
     );
+  });
+
+  /**
+   * Validate a public clan join slug for registration
+   * GET /api/auth/clan-join/:token
+   */
+  validateClanJoin = catchAsync(async (req, res) => {
+    const details = await authService.getClanJoinRegistrationDetails(req.params.token);
+    res.status(200).json(successResponse('Clan join link is valid', { clanJoin: details }));
   });
 
   /**

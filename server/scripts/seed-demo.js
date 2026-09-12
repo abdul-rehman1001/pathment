@@ -174,6 +174,12 @@ async function cleanupDemo() {
     }
     await models.Enrollment.destroy(byMentee);
     await models.ClanMembership.destroy({ where: { userId: { [Op.in]: userIds } }, force: true });
+    if (models.ClanJoinRequest) {
+      await models.ClanJoinRequest.destroy({
+        where: { [Op.or]: [{ userId: { [Op.in]: userIds } }, { reviewedBy: { [Op.in]: userIds } }] },
+        force: true,
+      });
+    }
     await models.Announcement.destroy({ where: { authorId: { [Op.in]: userIds } }, force: true });
 
     // ── Newer feature tables (added after the original seeder) ────────────────
@@ -267,6 +273,7 @@ async function cleanupDemo() {
       const clanIds = clanRows.map((c) => c.id);
       if (clanIds.length) {
         const inClans = { [Op.in]: clanIds };
+        if (models.ClanJoinRequest) await models.ClanJoinRequest.destroy({ where: { clanId: inClans }, force: true });
         if (models.ReviewSchedule) await models.ReviewSchedule.destroy({ where: { clanId: inClans }, force: true });
         if (models.AdminMeeting) await models.AdminMeeting.destroy({ where: { clanId: inClans }, force: true });
         if (models.CrossClanAssignment) {
@@ -444,6 +451,42 @@ async function seed() {
     });
   }
   console.log(`✅ Program, cohort & 2 clans created — MERN Fellows (${MENTEE_SPECS.filter((m) => m.clan === "HERO").length} fellows, lead + co-mentor) and Node Guild\n`);
+
+  // ── Public clan join link (MERN Fellows) ────────────────────────────────────
+  // Admin has allowed it; Lead has enabled the link. One pending request lets
+  // mentor.aisha exercise approve/reject without touching real mentees.
+  const DEMO_PUBLIC_JOIN_SLUG = "DemoMERNJoin";
+  if (models.ClanJoinRequest) {
+    console.log("🔗 Seeding public clan join link…");
+    await feClan.update({
+      publicJoinAllowed: true,
+      publicJoinEnabled: true,
+      publicJoinSlug: DEMO_PUBLIC_JOIN_SLUG,
+    });
+
+    const joinTester = await makeUser({
+      first: "Jordan",
+      last: "Tester",
+      emailLocal: "join.tester",
+      role: "mentee",
+      occupation: "Aspiring Developer",
+      lastActivityDate: daysAgo(1),
+    });
+    await models.Enrollment.create({
+      menteeId: joinTester.id,
+      programId: program.id,
+      status: "pending_match",
+      enrolledAt: daysAgo(2),
+    });
+    await models.ClanJoinRequest.create({
+      clanId: feClan.id,
+      userId: joinTester.id,
+      status: "pending",
+      source: "public_link",
+      message: "Found the link on Slack — would love to join MERN Fellows.",
+    });
+    console.log(`✅ Public join enabled (/clan/join/${DEMO_PUBLIC_JOIN_SLUG}) with 1 pending request\n`);
+  }
 
   // ── Roadmap + tasks ──────────────────────────────────────────────────────────
   console.log("🗺️  Creating roadmap & tasks…");
@@ -2276,7 +2319,8 @@ async function seed() {
   console.log("  Also seeded: cohort-review sessions + attendance, 1:1 slots &");
   console.log("  meetings, notifications, anonymous mentor feedback, daily streaks,");
   console.log("  badges/points/leaderboard, roadmap chaining, rewards, invites,");
-  console.log("  intake applications, a challenge, personal tracks and a bug report.");
+  console.log("  public clan join (join.tester pending on MERN Fellows), intake");
+  console.log("  applications, a challenge, personal tracks and a bug report.");
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 }
 

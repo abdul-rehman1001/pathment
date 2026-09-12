@@ -85,3 +85,11 @@ export type {
   MentorProfessionalProfile,
   MentorAvailabilitySettings,
 } from './useMentorSettings';
+
+export {
+  useClanPublicJoin,
+  publicJoinRequestLabel,
+  publicJoinBlockedMessage,
+  publicJoinRequesterLocation,
+} from './useClanPublicJoin';
+export type { UseClanPublicJoinReturn, PublicJoinWindowDraft } from './useClanPublicJoin';

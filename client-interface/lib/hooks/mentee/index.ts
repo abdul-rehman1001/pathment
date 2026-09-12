@@ -32,3 +32,6 @@ export type { UseTaskDetailReturn } from './useTaskDetail';
 
 export { useProgramEnroll } from './useProgramEnroll';
 export type { UseProgramEnrollReturn } from './useProgramEnroll';
+
+export { usePublicClanJoinPage } from './usePublicClanJoinPage';
+export type { UsePublicClanJoinPageReturn } from './usePublicClanJoinPage';

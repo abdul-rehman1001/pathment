@@ -22,6 +22,9 @@ export const qk = {
     all: ['clan'] as const,
     memberships: ['clan', 'memberships'] as const,
     detail: (clanId: string) => ['clan', 'detail', clanId] as const,
+    publicJoin: (clanId: string) => ['clan', 'public-join', clanId] as const,
+    joinRequests: (clanId: string, status = 'pending') =>
+      ['clan', 'join-requests', clanId, status] as const,
   },
 
   changelog: {
@@ -146,6 +149,7 @@ export const qk = {
 
   public: {
     program: (id: string) => ['public', 'program', id] as const,
+    clanJoin: (token: string, viewer: string) => ['public', 'clan-join', token, viewer] as const,
   },
 
   announcements: ['announcements'] as const,
