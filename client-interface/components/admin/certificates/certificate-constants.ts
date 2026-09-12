@@ -38,7 +38,12 @@ export const DYNAMIC_SHORTCUTS = [
   { key: 'program_name', label: 'Program Name', tag: '{{program_name}}' },
   { key: 'date_issued', label: 'Date', tag: '{{date}}' },
   { key: 'issuer_name', label: 'Issuer Name', tag: '{{issuer_name}}' },
-  { key: 'issuer_title', label: 'Issuer Title', tag: '{{issuer_title}}' }
+  { key: 'issuer_title', label: 'Issuer Title', tag: '{{issuer_title}}' },
+  // The name of the certificate type the recipient earned ("Gold Certificate").
+  // The one-line version of per-type wording: drop it in and the title reads
+  // correctly on every tier without authoring each one by hand. When the wording
+  // needs to differ by more than the name, use the layer's "Wording per type".
+  { key: 'tier_name', label: 'Certificate Type', tag: '{{tier_name}}' }
 ] as const;
 
 

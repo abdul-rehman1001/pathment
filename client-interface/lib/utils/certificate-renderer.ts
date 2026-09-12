@@ -8,7 +8,7 @@
  * 4. Export via canvas.toBlob() is 100% clean, fast, and offline-safe.
  */
 
-import type { CertificateTemplate } from '@/lib/services/certificates-api';
+import type { CertificateElement, CertificateTemplate } from '@/lib/services/certificates-api';
 
 export interface CertificateRenderData {
   menteeName:      string;
@@ -17,6 +17,10 @@ export interface CertificateRenderData {
   dateIssued:      string;
   issuerName:      string;
   issuerTitle:     string;
+  /** The tier this certificate was awarded at — what tier-aware elements resolve against. */
+  tier?:           string;
+  /** That tier's display name, for the {{tier_name}} variable. */
+  tierName?:       string;
 }
 
 // ==================== ASSET PRE-FETCHING ====================
@@ -47,8 +51,21 @@ async function prefetchTemplateAssets(
   if (template.logoUrl)     urls.add(template.logoUrl);
 
   for (const el of template.config ?? []) {
-    if (el.type === 'badge' && (el as any).badgeUrl) urls.add((el as any).badgeUrl);
-    if (el.type === 'image' && (el as any).imageUrl) urls.add((el as any).imageUrl);
+    if (el.type === 'badge' && el.badgeUrl) urls.add(el.badgeUrl);
+    if (el.type === 'image' && el.imageUrl) urls.add(el.imageUrl);
+    // Per-tier badge art. Every tier's URL is fetched, not just the one being
+    // rendered, because prefetching happens before we know which element
+    // resolves to what and the set is small (one image per tier at most).
+    if (el.type === 'badge' && el.tierValues) {
+      for (const url of Object.values(el.tierValues)) {
+        if (typeof url === 'string' && url.trim()) urls.add(url);
+      }
+    }
+  }
+  // Tier badges declared on the criteria, which is where a badge element falls
+  // back to when it carries no art of its own.
+  for (const tier of template.criteria ?? []) {
+    if (tier.badgeUrl) urls.add(tier.badgeUrl);
   }
   if (badgeUrlOverride) urls.add(badgeUrlOverride);
 
@@ -125,10 +142,90 @@ async function ensureFontsLoaded(): Promise<void> {
   return fontLoadPromise;
 }
 
+// ==================== TIER-AWARE RESOLUTION ====================
+
+/**
+ * One design, several outcomes.
+ *
+ * A certificate template is authored once but issued at whichever tier the
+ * recipient earned, and the parts that should differ between a gold and a
+ * participation award are usually small: a line of text, a badge, a seal that
+ * only the top tier gets. Splitting the template per tier would mean four
+ * near-identical designs that drift apart the first time somebody moves the
+ * signature line. So the *element* carries the variation instead:
+ *
+ *   tierValues       what this element says (text) or shows (badge) per tier
+ *   visibleForTiers  which tiers see it at all
+ *
+ * Both are optional and both are absent on every element authored before they
+ * existed, so an untouched template renders exactly as it always did.
+ */
+
+/** The tier a certificate is being rendered for. Empty string = none stated. */
+const tierOf = (data: CertificateRenderData): string => data.tier || '';
+
+/**
+ * Is this element part of THIS tier's certificate?
+ *
+ * An empty or missing list means "every tier" rather than "no tier" — the field
+ * is opt-in, and the alternative reading would make every existing element
+ * disappear the moment the field was introduced.
+ */
+export function isElementVisibleForTier(el: CertificateElement, data: CertificateRenderData): boolean {
+  const only = el.visibleForTiers;
+  if (!Array.isArray(only) || only.length === 0) return true;
+  const tier = tierOf(data);
+  // Rendering without a stated tier (the editor canvas, a legacy caller) shows
+  // everything: hiding layers somebody is trying to position would be worse
+  // than showing one too many.
+  if (!tier) return true;
+  return only.includes(tier);
+}
+
+/** This element's per-tier value, or undefined when it does not vary here. */
+export function resolveTierValue(el: CertificateElement, data: CertificateRenderData): string | undefined {
+  const tier = tierOf(data);
+  if (!tier) return undefined;
+  const value = el.tierValues?.[tier];
+  // A blank entry is "nothing special for this tier", not "render an empty
+  // string" — otherwise filling in two tiers would silently blank the rest.
+  return typeof value === 'string' && value.trim() !== '' ? value : undefined;
+}
+
+/**
+ * The artwork a badge element should draw, most specific source first:
+ *   1. this element's own art for this tier   (tierValues)
+ *   2. the caller's explicit override         (badgeUrlOverride — legacy path)
+ *   3. this element's own fixed art           (badgeUrl)
+ *   4. the tier's badge from the criteria     (the default every template gets)
+ *
+ * The override sits above `badgeUrl` because that is the order the single-badge
+ * implementation used, and templates were authored against it.
+ */
+export function resolveBadgeUrl(
+  el: CertificateElement,
+  data: CertificateRenderData,
+  criteria?: Array<{ id: string; badgeUrl?: string }> | null,
+  badgeUrlOverride?: string | null,
+): string {
+  const perTier = resolveTierValue(el, data);
+  if (perTier) return perTier;
+  if (badgeUrlOverride) return badgeUrlOverride;
+  if (el.badgeUrl) return el.badgeUrl;
+  const tier = tierOf(data);
+  if (tier && Array.isArray(criteria)) {
+    return criteria.find(c => c.id === tier)?.badgeUrl || '';
+  }
+  return '';
+}
+
 // ==================== TEXT RESOLVER ====================
 
-export function resolveText(el: Record<string, any>, data: CertificateRenderData): string {
-  let text = el.text || '';
+export function resolveText(el: CertificateElement, data: CertificateRenderData): string {
+  // Per-tier wording replaces the base text, then variables are substituted into
+  // it as usual — so "Awarded to {{mentee_name}} with Distinction" works as a
+  // gold-only line without giving up the variables.
+  let text = resolveTierValue(el, data) ?? (el.text || '');
 
   if (el.dynamicKey) {
     switch (el.dynamicKey) {
@@ -149,6 +246,9 @@ export function resolveText(el: Record<string, any>, data: CertificateRenderData
       case 'issuer_title':
         text = data.issuerTitle || text;
         break;
+      case 'tier_name':
+        text = data.tierName || text;
+        break;
     }
   }
 
@@ -160,7 +260,8 @@ export function resolveText(el: Record<string, any>, data: CertificateRenderData
       .replace(/\{\{\s*date_issued\s*\}\}/gi, data.dateIssued || '')
       .replace(/\{\{\s*issuer_name\s*\}\}/gi, data.issuerName || '')
       .replace(/\{\{\s*mentor_name\s*\}\}/gi, data.issuerName || '')
-      .replace(/\{\{\s*issuer_title\s*\}\}/gi, data.issuerTitle || '');
+      .replace(/\{\{\s*issuer_title\s*\}\}/gi, data.issuerTitle || '')
+      .replace(/\{\{\s*tier_name\s*\}\}/gi, data.tierName || '');
   }
 
   return text;
@@ -218,12 +319,15 @@ export async function renderCertificateToBlobUrl(
   const elements = Array.isArray(template.config) ? template.config : [];
 
   for (const el of elements) {
+    // A layer this tier does not get is simply not drawn.
+    if (!isElementVisibleForTier(el, data)) continue;
+
     const left  = ((el.xPercent  ?? 50) / 100) * WIDTH;
     const top   = ((el.yPercent  ?? 50) / 100) * HEIGHT;
     const width = ((el.widthPercent || 15) / 100) * WIDTH;
 
     if (el.type === 'badge') {
-      const rawUrl = badgeUrlOverride || (el as any).badgeUrl || '';
+      const rawUrl = resolveBadgeUrl(el, data, template.criteria, badgeUrlOverride);
       const badgeImg = imageMap.get(rawUrl);
       if (badgeImg) {
         const height = badgeImg.naturalWidth ? (width / badgeImg.naturalWidth) * badgeImg.naturalHeight : width;
@@ -233,7 +337,7 @@ export async function renderCertificateToBlobUrl(
     }
 
     if (el.type === 'image') {
-      const rawUrl = (el as any).imageUrl || '';
+      const rawUrl = el.imageUrl || '';
       const customImg = imageMap.get(rawUrl);
       if (customImg) {
         const height = customImg.naturalWidth ? (width / customImg.naturalWidth) * customImg.naturalHeight : width;
@@ -243,7 +347,7 @@ export async function renderCertificateToBlobUrl(
     }
 
     // Text (dynamic or static)
-    const text = resolveText(el as any, data);
+    const text = resolveText(el, data);
     if (!text) continue;
 
     const fontSize   = el.fontSizePercent ? (el.fontSizePercent / 100) * HEIGHT : 24;

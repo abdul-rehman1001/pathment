@@ -4,7 +4,7 @@ export interface CertificateElement {
   id: string;
   text: string;
   type: 'static' | 'dynamic' | 'badge' | 'image';
-  dynamicKey?: 'mentee_name' | 'mentor_name' | 'date_issued' | 'program_name' | 'fellowship_name' | 'issuer_name' | 'issuer_title';
+  dynamicKey?: 'mentee_name' | 'mentor_name' | 'date_issued' | 'program_name' | 'fellowship_name' | 'issuer_name' | 'issuer_title' | 'tier_name';
   xPercent: number;
   yPercent: number;
   fontSizePercent: number;
@@ -14,6 +14,30 @@ export interface CertificateElement {
   fontStyle?: string;
   widthPercent?: number;
   imageUrl?: string;
+  /** A badge element's own artwork, when it does not vary by tier. */
+  badgeUrl?: string;
+
+  // ── Tier-aware content ────────────────────────────────────────────────────
+  // One certificate design, several outcomes. These two fields let a single
+  // element say something different — or nothing at all — depending on which
+  // tier the recipient was awarded, so gold and participation can share a
+  // layout without becoming two templates that drift apart.
+
+  /**
+   * Content keyed by tier id (the ids in `template.criteria`).
+   *   text elements  → the string to render for that tier
+   *   badge elements → the image URL to render for that tier
+   * A tier with no entry here falls back: text to `text`, a badge to that
+   * tier's own `criteria[].badgeUrl`. So filling in only the tiers that differ
+   * is a valid and normal way to use it.
+   */
+  tierValues?: Record<string, string>;
+
+  /**
+   * Render this element ONLY for these tiers. Absent or empty means every
+   * tier, which is what every element written before this field existed means.
+   */
+  visibleForTiers?: string[];
 }
 
 export interface CertificateTemplate {

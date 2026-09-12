@@ -1,7 +1,12 @@
 'use client';
 
 import type { CertificateTemplate } from '@/lib/services/certificates-api';
-import { resolveText, type CertificateRenderData } from '@/lib/utils/certificate-renderer';
+import {
+  resolveText,
+  resolveBadgeUrl,
+  isElementVisibleForTier,
+  type CertificateRenderData,
+} from '@/lib/utils/certificate-renderer';
 export type { CertificateRenderData };
 
 interface CertificatePreviewProps {
@@ -64,12 +69,17 @@ export function CertificatePreview({
 
       {/* Elements */}
       {elements.map((el, idx) => {
+        // Tier-aware layers: skip the ones this tier does not get. Kept in step
+        // with the canvas renderer (lib/utils/certificate-renderer) — the two
+        // must agree or the preview lies about what downloads.
+        if (!isElementVisibleForTier(el, recipientData)) return null;
+
         const left = el.xPercent ?? 50;
         const top = el.yPercent ?? 50;
         const width = el.widthPercent || 15;
 
         if (el.type === 'badge') {
-          const url = badgeUrlOverride || (el as any).badgeUrl || '';
+          const url = resolveBadgeUrl(el, recipientData, template.criteria, badgeUrlOverride);
           if (!url) return null;
           return (
             <div
@@ -89,7 +99,7 @@ export function CertificatePreview({
         }
 
         if (el.type === 'image') {
-          const url = (el as any).imageUrl || '';
+          const url = el.imageUrl || '';
           if (!url) return null;
           return (
             <div
@@ -109,7 +119,7 @@ export function CertificatePreview({
         }
 
         // static / dynamic text
-        const text = resolveText(el as any, recipientData);
+        const text = resolveText(el, recipientData);
         const fontSizeNum = el.fontSizePercent ?? 2.0;
         const fontSize = `${(fontSizeNum * 0.7067).toFixed(3)}cqw`;
         const color = el.color || '#1e293b';

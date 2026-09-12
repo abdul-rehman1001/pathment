@@ -1,11 +1,22 @@
 'use strict';
 
 /**
- * TC-A14  Assign mentor to a program level
  * TC-A15  Generate AI mentor-mentee match suggestions
  * TC-A16  Confirm mentor-mentee match manually
- * TC-A17  Roadmap tasks auto-instantiated after match confirmation
  * TC-A18  Generate match when no mentors are available
+ *
+ * Removed, because the behaviour they described is gone:
+ *   TC-A14  assign a mentor to a program level — programs have no levels, and
+ *           neither POST /api/matches/levels/assign nor
+ *           POST /api/programs/:id/levels/:levelId/mentors exists.
+ *   TC-A17  roadmap tasks auto-instantiated on match — `createMatch` only
+ *           recomputes the enrollment's task stats; it creates no tasks.
+ *           Assigning work is its own step now.
+ *
+ * A match is no longer scoped to a level either: `createMatch(enrollmentId,
+ * mentorId, matchedBy)` takes none, and candidate mentors come from every
+ * mentor rather than from a per-level assignment table (`LevelMentorAssignment`
+ * went with the levels). The seeding below reflects that.
  */
 
 const request = require('supertest');
@@ -17,16 +28,12 @@ const {
   createMentor,
   createMentee,
   createProgram,
-  createProgramLevel,
   createEnrollment,
-  createRoadmap,
-  createRoadmapWeek,
-  createRoadmapTask,
   authHeader,
 } = require('../helpers/seed');
 
 describe('Admin — Matching', () => {
-  let admin, mentor, mentee, program, level, enrollment;
+  let admin, mentor, mentee, program, enrollment;
 
   beforeEach(async () => {
     await cleanDb();
@@ -35,46 +42,15 @@ describe('Admin — Matching', () => {
     mentee = await createMentee({ email: 'mentee@test.com' });
 
     program = await createProgram({ createdBy: admin.id, name: 'Web Dev Program', status: 'published' });
-    level = await createProgramLevel({ programId: program.id, name: 'Foundation' });
     enrollment = await createEnrollment({
       menteeId: mentee.id,
       programId: program.id,
-      levelId: level.id,
       status: 'pending_match',
     });
   });
 
-  // TC-A14
-  it('TC-A14: assigns a mentor to a program level', async () => {
-    const res = await request(app)
-      .post('/api/matches/levels/assign')
-      .set('Authorization', authHeader(admin))
-      .send({ levelId: level.id, mentorId: mentor.id });
-
-    // Route may vary; fall back to a direct level-mentor route if available
-    if (res.status === 404) {
-      // Try alternative endpoint
-      const alt = await request(app)
-        .post(`/api/programs/${program.id}/levels/${level.id}/mentors`)
-        .set('Authorization', authHeader(admin))
-        .send({ mentorId: mentor.id });
-
-      expect([200, 201]).toContain(alt.status);
-    } else {
-      expect([200, 201]).toContain(res.status);
-      expect(res.body.success).toBe(true);
-    }
-  });
-
   // TC-A15
   it('TC-A15: returns AI match suggestions with compatibility percentages', async () => {
-    // Assign mentor to level first so the suggestion engine has candidates
-    await models.LevelMentorAssignment.create({
-      levelId: level.id,
-      mentorId: mentor.id,
-      assignedBy: admin.id,
-    });
-
     const res = await request(app)
       .get(`/api/matches/suggestions/${enrollment.id}`)
       .set('Authorization', authHeader(admin));
@@ -91,20 +67,12 @@ describe('Admin — Matching', () => {
 
   // TC-A16
   it('TC-A16: confirms match → enrollment status updates to matched', async () => {
-    // Assign mentor to level
-    await models.LevelMentorAssignment.create({
-      levelId: level.id,
-      mentorId: mentor.id,
-      assignedBy: admin.id,
-    });
-
     const res = await request(app)
       .post('/api/matches')
       .set('Authorization', authHeader(admin))
       .send({
         enrollmentId: enrollment.id,
         mentorId: mentor.id,
-        levelId: level.id,
       });
 
     expect(res.status).toBe(201);
@@ -116,40 +84,15 @@ describe('Admin — Matching', () => {
     expect(enrollment.status).toMatch(/matched|active/i);
   });
 
-  // TC-A17
-  it('TC-A17: creates task instances for mentee after match confirmation', async () => {
-    // Set up a roadmap with tasks
-    const roadmap = await createRoadmap({ programId: program.id, levelId: level.id, createdBy: admin.id });
-    const week = await createRoadmapWeek({ roadmapId: roadmap.id, weekNumber: 1 });
-    await createRoadmapTask({ weekId: week.id, title: 'Week 1 Task 1', taskOrder: 1 });
-    await createRoadmapTask({ weekId: week.id, title: 'Week 1 Task 2', taskOrder: 2 });
-
-    // Assign mentor to level
-    await models.LevelMentorAssignment.create({
-      levelId: level.id,
-      mentorId: mentor.id,
-      assignedBy: admin.id,
-    });
-
-    // Confirm match
-    await request(app)
-      .post('/api/matches')
-      .set('Authorization', authHeader(admin))
-      .send({ enrollmentId: enrollment.id, mentorId: mentor.id, levelId: level.id });
-
-    // Wait briefly for async task instantiation
-    await new Promise((r) => setTimeout(r, 200));
-
-    const assignedTasks = await models.AssignedTask.findAll({
-      where: { menteeId: mentee.id, enrollmentId: enrollment.id },
-    });
-
-    expect(assignedTasks.length).toBeGreaterThanOrEqual(1);
-  });
-
   // TC-A18
   it('TC-A18: returns error when no mentors are available for matching', async () => {
-    // No mentor assigned to the level — AI suggestions should return empty or error
+    // "No mentors available" used to mean "nobody assigned to this level".
+    // Candidates now come from every mentor account, so the precondition has to
+    // be created rather than assumed — the shared setup seeds one.
+    await models.MentorMenteeMatch.destroy({ where: { mentorId: mentor.id } });
+    await models.MentorProfile.destroy({ where: { userId: mentor.id } });
+    await models.User.destroy({ where: { id: mentor.id } });
+
     const res = await request(app)
       .get(`/api/matches/suggestions/${enrollment.id}`)
       .set('Authorization', authHeader(admin));

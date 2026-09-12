@@ -25,6 +25,13 @@ import {
   DEFAULT_CRITERIA, GOOGLE_FONTS_URL
 } from './certificate-constants';
 import { TierCriteriaModal } from './TierCriteriaModal';
+import { TierVariantPanel, TierPreviewSwitcher } from './TierVariantPanel';
+import {
+  resolveText,
+  resolveBadgeUrl,
+  isElementVisibleForTier,
+  type CertificateRenderData,
+} from '@/lib/utils/certificate-renderer';
 import { useAIEvaluationProgress, useRecipientSelection } from './hooks';
 
 
@@ -58,6 +65,11 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
   const [activeDragId, setActiveDragId] = useState<string | 'logo' | null>(null);
 
   const [criteria, setCriteria] = useState<TierCriteria[]>(DEFAULT_CRITERIA);
+
+  // Which certificate type the canvas is showing. `null` = show every layer at
+  // once, which is the right default while positioning things; picking a type
+  // renders exactly what that recipient would receive.
+  const [previewTierId, setPreviewTierId] = useState<string | null>(null);
 
   const [qualifiedData, setQualifiedData] = useState<Record<string, any[]>>({});
   const [loadingQualifications, setLoadingQualifications] = useState(false);
@@ -444,11 +456,11 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
     setSelectedId(id);
   };
 
+  // Several badges on one certificate is the point: a template can carry the
+  // earned-tier badge plus, say, a distinction seal only gold receives. Each
+  // badge decides for itself which types it appears on and what it shows there
+  // (see TierVariantPanel), so the old one-per-template guard is gone.
   const addBadgeElement = () => {
-    if (elements.some(el => el.type === 'badge')) {
-      toast.warning('A dynamic badge element is already added to canvas layout.');
-      return;
-    }
     const id = `badge-${Date.now()}`;
     const newEl: CertificateElement = {
       id,
@@ -679,10 +691,40 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
 
   const deleteTier = (tierId: string) => {
     setCriteria(prev => prev.filter(t => t.id !== tierId));
+    // Drop the departed type from every layer too. The renderer tolerates a key
+    // for a type that no longer exists, but leaving them means a tier id
+    // re-used later silently inherits wording nobody wrote for it.
+    setElements(prev => prev.map(el => {
+      const tierValues = el.tierValues ? { ...el.tierValues } : undefined;
+      if (tierValues) delete tierValues[tierId];
+      const visibleForTiers = el.visibleForTiers?.filter(id => id !== tierId);
+      return {
+        ...el,
+        tierValues: tierValues && Object.keys(tierValues).length ? tierValues : undefined,
+        visibleForTiers: visibleForTiers?.length ? visibleForTiers : undefined,
+      };
+    }));
+    if (previewTierId === tierId) setPreviewTierId(null);
     toast.success('Certificate type removed.');
   };
 
   const selectedElement = elements.find(el => el.id === selectedId) || null;
+
+  /**
+   * What the canvas resolves tier-aware layers against. The placeholder strings
+   * are only ever shown in the builder — a real certificate gets the recipient's
+   * own values — but they have to be present so per-tier wording that embeds a
+   * variable renders as wording rather than as a raw {{tag}}.
+   */
+  const canvasRenderData = useMemo<CertificateRenderData>(() => ({
+    menteeName:  'Member Name',
+    programName: programs.find(p => p.id === selectedProgramId)?.name || 'Program Name',
+    dateIssued:  new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+    issuerName:  'Issuer Name',
+    issuerTitle: 'Issuer Title',
+    tier:        previewTierId ?? undefined,
+    tierName:    criteria.find(t => t.id === previewTierId)?.name || undefined,
+  }), [previewTierId, criteria, programs, selectedProgramId]);
 
 
   if (fetching) {
@@ -790,6 +832,12 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
               </button>
             </div>
 
+            {/* See what each certificate type actually produces. Without this,
+                per-type wording and badges are authored blind. */}
+            <div className="w-full">
+              <TierPreviewSwitcher criteria={criteria} value={previewTierId} onChange={setPreviewTierId} />
+            </div>
+
             {}
             <div className="w-full bg-muted/30 border border-border rounded-3xl p-6 flex items-center justify-center overflow-auto min-h-[480px]">
               <div
@@ -812,8 +860,17 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                 {elements.map((el) => {
                   const isSelected = selectedId === el.id;
 
+                  // While previewing one certificate type, layers that type does
+                  // not get are dimmed rather than removed — they still need to
+                  // be selectable and draggable, and a layer that vanished on
+                  // the wrong click would be maddening to lay out.
+                  const offThisTier = !isElementVisibleForTier(el, canvasRenderData);
+
                   if (el.type === 'badge') {
-                    const badgePreview = criteria.find(t => t.badgeUrl)?.badgeUrl || 'https://res.cloudinary.com/djctfho31/image/upload/v1724716800/pathment/placeholders/default-badge.png';
+                    const badgePreview =
+                      resolveBadgeUrl(el, canvasRenderData, criteria) ||
+                      criteria.find(t => t.badgeUrl)?.badgeUrl ||
+                      'https://res.cloudinary.com/djctfho31/image/upload/v1724716800/pathment/placeholders/default-badge.png';
                     return (
                       <div
                         key={el.id}
@@ -833,7 +890,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                         className={`group cursor-move p-1 border transition-all rounded ${isSelected
                           ? 'border-brand-500 bg-brand-500/5 ring-1 ring-brand-500 shadow-md'
                           : 'border-transparent hover:border-brand-500/30'
-                          }`}
+                          } ${offThisTier ? 'opacity-25' : ''}`}
                       >
                         <img src={badgePreview} className="w-full h-auto pointer-events-none" alt="Badge Preview" />
                         <div className="hidden group-hover:flex absolute -top-5 left-1/2 -translate-x-1/2 bg-brand-600 text-[8px] text-white px-1 py-0.5 rounded shadow-sm gap-1 items-center font-bold whitespace-nowrap">
@@ -863,7 +920,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                         className={`group cursor-move p-1 border transition-all rounded ${isSelected
                           ? 'border-brand-500 bg-brand-500/5 ring-1 ring-brand-500 shadow-md'
                           : 'border-transparent hover:border-brand-500/30'
-                          }`}
+                          } ${offThisTier ? 'opacity-25' : ''}`}
                       >
                         <img src={el.imageUrl} className="w-full h-auto pointer-events-none" alt={el.text} />
                         <div className="hidden group-hover:flex absolute -top-5 left-1/2 -translate-x-1/2 bg-brand-600 text-[8px] text-white px-1 py-0.5 rounded shadow-sm gap-1 items-center font-bold whitespace-nowrap">
@@ -901,9 +958,14 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                       className={`cursor-move p-2 border transition-all rounded ${isSelected
                         ? 'border-brand-500 bg-brand-500/5 ring-1 ring-brand-500'
                         : 'border-transparent hover:border-brand-500/30 hover:bg-brand-500/2'
-                        }`}
+                        } ${offThisTier ? 'opacity-25' : ''}`}
                     >
-                      {el.type === 'dynamic' ? `{{${el.dynamicKey}}}` : el.text}
+                      {/* With a type selected the canvas shows the real wording
+                          for it; with none selected the raw {{tag}} stays, which
+                          is the more useful thing to see while positioning. */}
+                      {previewTierId
+                        ? (resolveText(el, canvasRenderData) || el.text)
+                        : (el.type === 'dynamic' ? `{{${el.dynamicKey}}}` : (el.tierValues && Object.values(el.tierValues).find(Boolean)) || el.text)}
                     </div>
                   );
                 })}
@@ -1130,6 +1192,17 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                       </div>
                     </div>
                   </>
+                )}
+
+                {/* Per-type wording / badge art for this layer. Images stay out:
+                    a fixed image is fixed on purpose — a layer that should vary
+                    by type is a badge. */}
+                {selectedElement.type !== 'image' && (
+                  <TierVariantPanel
+                    element={selectedElement}
+                    criteria={criteria}
+                    onChange={updateSelectedElement}
+                  />
                 )}
               </div>
             ) : (

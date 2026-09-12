@@ -4,14 +4,19 @@
  * TC-A03  Create program with all valid fields → Draft status
  * TC-A04  Create program with missing required fields → validation errors
  * TC-A05  Create program with invalid date range → error
- * TC-A06  Add named levels to a program
- * TC-A07  Set learning outcomes and prerequisites for a level
  * TC-A08  Publish a draft program
  * TC-A09  View all programs list
  * TC-A10  Search program by name
- * TC-A11  Generate AI roadmap for a 12-week program
- * TC-A12  Generate roadmap when AI service is unavailable
- * TC-A13  Edit an AI-generated roadmap task
+ *
+ * Removed, because the endpoints they exercised no longer exist — programs are
+ * not divided into levels any more, and there is no roadmap-task edit route:
+ *   TC-A06  add named levels to a program        POST /api/programs/:id/levels
+ *   TC-A07  outcomes/prerequisites for a level   PUT  /api/levels/:id
+ *   TC-A11  generate an AI roadmap for a level   POST /api/programs/:id/levels/:levelId/roadmap/generate
+ *   TC-A12  the same route, AI unavailable
+ *   TC-A13  edit a roadmap task                  PUT  /api/roadmap-tasks/:id
+ * They had been failing on the seed helper long before they would have reached
+ * a 404, so nothing was being covered here either way.
  */
 
 const request = require('supertest');
@@ -20,10 +25,6 @@ const {
   cleanDb,
   createAdmin,
   createProgram,
-  createProgramLevel,
-  createRoadmap,
-  createRoadmapWeek,
-  createRoadmapTask,
   authHeader,
 } = require('../helpers/seed');
 
@@ -91,51 +92,6 @@ describe('Admin — Programs & Roadmaps', () => {
     expect(res.body.message.toLowerCase()).toMatch(/date|end date/i);
   });
 
-  // TC-A06
-  it('TC-A06: adds Foundation, Intermediate, Advanced levels to a program', async () => {
-    const program = await createProgram({ createdBy: admin.id, status: 'draft' });
-
-    const levelNames = ['Foundation', 'Intermediate', 'Advanced'];
-    const createdLevels = [];
-
-    for (let i = 0; i < levelNames.length; i++) {
-      const res = await request(app)
-        .post(`/api/programs/${program.id}/levels`)
-        .set('Authorization', authHeader(admin))
-        .send({
-          name: levelNames[i],
-          orderIndex: i + 1,
-          durationWeeks: 4,
-          description: `${levelNames[i]} level description`,
-        });
-
-      expect(res.status).toBe(201);
-      expect(res.body.data.level.name).toBe(levelNames[i]);
-      createdLevels.push(res.body.data.level);
-    }
-
-    expect(createdLevels).toHaveLength(3);
-  });
-
-  // TC-A07
-  it('TC-A07: saves learning outcomes and prerequisites for a level', async () => {
-    const program = await createProgram({ createdBy: admin.id, status: 'draft' });
-    const level = await createProgramLevel({ programId: program.id, name: 'Foundation' });
-
-    const res = await request(app)
-      .put(`/api/levels/${level.id}`)
-      .set('Authorization', authHeader(admin))
-      .send({
-        learningOutcomes: ['Understand REST APIs', 'Build CRUD endpoints'],
-        prerequisites: ['Basic HTML knowledge'],
-      });
-
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(res.body.data.level.learningOutcomes).toContain('Understand REST APIs');
-    expect(res.body.data.level.prerequisites).toContain('Basic HTML knowledge');
-  });
-
   // TC-A08
   it('TC-A08: changes program status from draft to published', async () => {
     const program = await createProgram({ createdBy: admin.id, status: 'draft' });
@@ -188,62 +144,4 @@ describe('Admin — Programs & Roadmaps', () => {
     });
   });
 
-  // TC-A11
-  it('TC-A11: generates an AI roadmap with weekly structure for a 12-week program', async () => {
-    const program = await createProgram({ createdBy: admin.id, name: 'Web Dev Program', totalDurationWeeks: 12 });
-    const level = await createProgramLevel({ programId: program.id });
-
-    const res = await request(app)
-      .post(`/api/programs/${program.id}/levels/${level.id}/roadmap/generate`)
-      .set('Authorization', authHeader(admin))
-      .send({ additionalInstructions: 'Focus on backend development' });
-
-    expect(res.status).toBe(201);
-    expect(res.body.success).toBe(true);
-    // Roadmap should have weeks structure
-    const roadmap = res.body.data.roadmap;
-    expect(roadmap).toBeDefined();
-  });
-
-  // TC-A12
-  it('TC-A12: returns error when AI service is unavailable', async () => {
-    const program = await createProgram({ createdBy: admin.id, name: 'AI Fail Program', totalDurationWeeks: 12 });
-    const level = await createProgramLevel({ programId: program.id });
-
-    // Override the mock to simulate AI failure for this test only
-    const GroqServiceMock = require('../../src/services/groqService');
-    GroqServiceMock.generateRoadmap.mockRejectedValueOnce(
-      new Error('AI service is currently unavailable')
-    );
-
-    const res = await request(app)
-      .post(`/api/programs/${program.id}/levels/${level.id}/roadmap/generate`)
-      .set('Authorization', authHeader(admin))
-      .send({});
-
-    // Service may return 400/500/503 with error message
-    expect(res.status).toBeGreaterThanOrEqual(400);
-    expect(res.body.success).toBe(false);
-  });
-
-  // TC-A13
-  it('TC-A13: updates a roadmap task description and estimated hours', async () => {
-    const program = await createProgram({ createdBy: admin.id });
-    const level = await createProgramLevel({ programId: program.id });
-    const roadmap = await createRoadmap({ programId: program.id, levelId: level.id, createdBy: admin.id });
-    const week = await createRoadmapWeek({ roadmapId: roadmap.id, weekNumber: 1 });
-    const roadmapTask = await createRoadmapTask({ weekId: week.id, title: 'Build REST API', estimatedHours: 5 });
-
-    const res = await request(app)
-      .put(`/api/roadmap-tasks/${roadmapTask.id}`)
-      .set('Authorization', authHeader(admin))
-      .send({
-        description: 'Implement a fully documented REST API with Swagger',
-        estimatedHours: 8,
-      });
-
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(res.body.data.task.estimatedHours).toBe(8);
-  });
 });

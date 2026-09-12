@@ -20,10 +20,8 @@ const {
   createMentor,
   createMentee,
   createProgram,
-  createProgramLevel,
   createEnrollment,
   createRoadmap,
-  createRoadmapWeek,
   createRoadmapTask,
   createAssignedTask,
   authHeader,
@@ -39,12 +37,10 @@ describe('Mentee Tasks & Submissions', () => {
     mentee = await createMentee({ email: 'awaisfatehali@gmail.com', password: 'Test@1234!' });
 
     const program = await createProgram({ createdBy: admin.id, status: 'published' });
-    const level = await createProgramLevel({ programId: program.id });
-    enrollment = await createEnrollment({ menteeId: mentee.id, programId: program.id, levelId: level.id, status: 'active' });
+    enrollment = await createEnrollment({ menteeId: mentee.id, programId: program.id, status: 'active' });
 
-    const roadmap = await createRoadmap({ programId: program.id, levelId: level.id, createdBy: admin.id });
-    const week = await createRoadmapWeek({ roadmapId: roadmap.id, weekNumber: 1 });
-    const roadmapTask = await createRoadmapTask({ weekId: week.id, title: 'Build REST API' });
+    const roadmap = await createRoadmap({ programId: program.id, createdBy: admin.id });
+    const roadmapTask = await createRoadmapTask({ roadmapId: roadmap.id, title: 'Build REST API' });
 
     task = await createAssignedTask({
       menteeId: mentee.id,

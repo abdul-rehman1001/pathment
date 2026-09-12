@@ -25,6 +25,11 @@ function buildRenderData(cert: CertificateInstance, menteeName: string): Certifi
       ? `${cert.mentor.firstName} ${cert.mentor.lastName}`.trim()
       : 'Pathment Admin',
     issuerTitle: cert.mentor ? 'Mentor' : 'Pathment Admin',
+    // The tier the certificate was actually awarded at. Tier-aware layers —
+    // per-tier wording, per-tier badges, layers only the top tier gets —
+    // resolve against this, so it has to travel with the render data.
+    tier:        cert.tier,
+    tierName:    cert.template?.criteria?.find(c => c.id === cert.tier)?.name || cert.tier,
   };
 }
 

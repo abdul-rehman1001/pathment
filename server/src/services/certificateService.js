@@ -19,6 +19,11 @@ const {
 } = require('../utils/certificateUtils');
 const { sortCriteriaByPriority } = require('../utils/criteriaUtils');
 
+// A per-tier value is either a line of certificate wording or an image URL.
+// Generous enough for a paragraph or a signed Cloudinary URL, bounded so a
+// template's JSONB column cannot be used as free storage.
+const TIER_VALUE_MAX_LENGTH = 2000;
+
 function deduplicateById(arr) {
   const seen = new Set();
   return arr.filter(item => {
@@ -796,6 +801,16 @@ class CertificateService {
 
   // ==================== TEMPLATE MANAGEMENT METHODS ====================
 
+  /**
+   * Shape-check a template's layers.
+   *
+   * Tier-aware fields (`tierValues`, `visibleForTiers`) are validated for SHAPE
+   * only, never against the template's current tier ids. Criteria are edited
+   * independently of the layout — renaming or deleting a tier would otherwise
+   * make an existing template unsavable — and the renderer already falls back
+   * cleanly for a tier key it does not recognise. Being strict here would turn
+   * a survivable mismatch into a save that fails.
+   */
   validateTemplateConfig(config) {
     if (!Array.isArray(config)) {
       throw new ValidationError('Template config must be an array of elements');
@@ -809,6 +824,27 @@ class CertificateService {
       }
       if (el.widthPercent != null && (typeof el.widthPercent !== 'number' || el.widthPercent < 0 || el.widthPercent > 100)) {
         throw new ValidationError('Element widthPercent must be a number between 0 and 100');
+      }
+      if (el.tierValues != null) {
+        if (typeof el.tierValues !== 'object' || Array.isArray(el.tierValues)) {
+          throw new ValidationError('Element tierValues must be an object keyed by tier id');
+        }
+        for (const [tierId, value] of Object.entries(el.tierValues)) {
+          if (typeof value !== 'string') {
+            throw new ValidationError(`Element tierValues.${tierId} must be a string`);
+          }
+          if (value.length > TIER_VALUE_MAX_LENGTH) {
+            throw new ValidationError(`Element tierValues.${tierId} is too long (max ${TIER_VALUE_MAX_LENGTH} characters)`);
+          }
+        }
+      }
+      if (el.visibleForTiers != null) {
+        if (!Array.isArray(el.visibleForTiers)) {
+          throw new ValidationError('Element visibleForTiers must be an array of tier ids');
+        }
+        if (el.visibleForTiers.some((tierId) => typeof tierId !== 'string' || !tierId.trim())) {
+          throw new ValidationError('Element visibleForTiers must contain non-empty tier ids');
+        }
       }
     }
   }

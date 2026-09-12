@@ -53,6 +53,7 @@ Every feature file follows the same template so things are easy to find and reme
 | [Notifications & Email](./notifications-and-email.md) | The notification matrix, in-app + email, preference gating, Resend. |
 | [Community](./community.md) | Scoped feeds (clan/cohort/program/global), posts, comments, kudos, Q&A, moderation. |
 | [Gamification](./gamification.md) | Points, badges, challenges, leaderboards, the gift catalog + redemptions. |
+| [Certificates](./certificates.md) | Template builder, certificate types + criteria, AI grading, issuance, and tier-aware layers (per-type wording and badges). |
 
 ### Insight, intelligence & knowledge
 | Feature | What it covers |

@@ -25,6 +25,13 @@ if (!_dbUrl.includes('test')) {
 /**
  * Truncate all application tables in dependency order.
  * Call in beforeEach to keep tests isolated.
+ *
+ * Each TRUNCATE is wrapped in a try/catch for partial schemas, which means a
+ * name that no longer exists fails silently forever. Four did: `program_levels`,
+ * `roadmap_weeks` and `level_mentor_assignments` (levels and weeks were removed
+ * from the product) and `gamification_points` (points live in `points_history`,
+ * which was therefore never being cleaned between tests). Keep this list honest
+ * — a table listed here but absent looks like isolation it is not providing.
  */
 async function cleanDb() {
   await sequelize.query('SET session_replication_role = replica');  // disable FK checks temporarily
@@ -35,12 +42,9 @@ async function cleanDb() {
     'task_submissions',
     'assigned_tasks',
     'roadmap_tasks',
-    'roadmap_weeks',
     'roadmaps',
     'mentor_mentee_matches',
     'enrollments',
-    'level_mentor_assignments',
-    'program_levels',
     'programs',
     'password_reset_tokens',
     'email_verification_tokens',
@@ -51,7 +55,7 @@ async function cleanDb() {
     'mentee_profiles',
     'admin_profiles',
     'user_skills',
-    'gamification_points',
+    'points_history',
     'notifications',
     'user_badges',
     // Stored AI keys. Nothing else seeds these, and leaving them behind meant a
@@ -193,31 +197,23 @@ async function createProgram({ createdBy, name = 'Test Program', status = 'publi
   });
 }
 
-async function createProgramLevel({ programId, name = 'Foundation', levelOrder = 1 } = {}) {
-  return models.ProgramLevel.create({
-    programId,
-    name,
-    levelOrder,
-    durationWeeks: 4,
-    description: 'Foundation level',
-    learningOutcomes: [],
-    prerequisites: [],
-  });
-}
-
 // ─── Roadmap helpers ───────────────────────────────────────────────────────────
+//
+// Programs used to be divided into LEVELS, and roadmaps into WEEKS, with tasks
+// hanging off a week. Both were removed: a roadmap now belongs straight to a
+// program and its tasks straight to the roadmap. `createProgramLevel` and
+// `createRoadmapWeek` outlived the models they built, so every suite that
+// seeded a level died on `models.ProgramLevel.create` before it reached its
+// first assertion. They are gone rather than stubbed — a helper for a concept
+// the product no longer has would only invite the next test to depend on it.
 
-async function createRoadmap({ programId, levelId, createdBy } = {}) {
-  return models.Roadmap.create({ programId, levelId, createdBy, name: 'Test Roadmap', description: 'Test roadmap' });
+async function createRoadmap({ programId, createdBy } = {}) {
+  return models.Roadmap.create({ programId, createdBy, name: 'Test Roadmap', description: 'Test roadmap' });
 }
 
-async function createRoadmapWeek({ roadmapId, weekNumber = 1 } = {}) {
-  return models.RoadmapWeek.create({ roadmapId, weekNumber, title: 'Week theme', objectives: [] });
-}
-
-async function createRoadmapTask({ weekId, title = 'Build REST API', estimatedHours = 5, taskOrder = 1 } = {}) {
+async function createRoadmapTask({ roadmapId, title = 'Build REST API', estimatedHours = 5, taskOrder = 1 } = {}) {
   return models.RoadmapTask.create({
-    roadmapWeekId: weekId,
+    roadmapId,
     title,
     description: 'Task description',
     type: 'project',
@@ -225,24 +221,69 @@ async function createRoadmapTask({ weekId, title = 'Build REST API', estimatedHo
     deliverable: 'GitHub link',
     estimatedHours,
     difficulty: 'medium',
-    objectives: [],
-    resources: [],
   });
+}
+
+// ─── Clan helpers ──────────────────────────────────────────────────────────────
+
+/**
+ * A clan with its lead mentor and members placed.
+ *
+ * Access to a mentee is CLAN-BASED now: `authzService.canViewMentee` and
+ * `canActOnTask` admit the mentee themselves, an admin, a 1:1 match, or anyone
+ * holding the permission at one of the mentee's clans. The older
+ * `assignedTask.mentorId === you` ownership is gone (it wrongly excluded every
+ * co-mentor), so seeding a task with a mentorId no longer grants that mentor
+ * anything — the suites that relied on it started 403-ing. Put them in a clan
+ * together instead, which is what the product does.
+ *
+ * Goes through `clanService.addMember` rather than writing memberships directly
+ * so a seeded mentee gets the same enrollment and mentee profile a real
+ * placement creates.
+ */
+async function createClan({ programId, createdBy, leadMentor, mentees = [], coMentors = [], name = 'Test Clan' } = {}) {
+  const clanService = require('../../src/services/clanService');
+  const clan = await models.Clan.create({
+    programId,
+    name,
+    leadMentorId: leadMentor ? leadMentor.id : null,
+    createdBy: createdBy || (leadMentor && leadMentor.id),
+  });
+  if (leadMentor) await clanService.addMember(clan.id, { userId: leadMentor.id, role: 'lead_mentor' });
+  for (const m of coMentors) await clanService.addMember(clan.id, { userId: m.id, role: 'co_mentor' });
+  for (const m of mentees) await clanService.addMember(clan.id, { userId: m.id, role: 'mentee' });
+  return clan;
 }
 
 // ─── Enrollment helpers ────────────────────────────────────────────────────────
 
-async function createEnrollment({ menteeId, programId, levelId = null, status = 'pending_match' } = {}) {
-  return models.Enrollment.create({
-    menteeId,
-    programId,
-    currentLevelId: levelId,
-    status,
-    currentWeek: 1,
-    tasksCompleted: 0,
-    tasksTotal: 0,
-    overallProgressPercentage: 0,
+/**
+ * The mentee's enrollment in a program, created if they have none.
+ *
+ * Find-or-create rather than create, because placing somebody in a clan ALSO
+ * enrolls them (`clanService.addMember` — placement is enrollment), so a suite
+ * that seeds a clan and then an enrollment was inserting a second one and
+ * hitting the unique constraint. A mentee has one enrollment per program in the
+ * product; the helper now says the same thing.
+ */
+async function createEnrollment({ menteeId, programId, status = 'pending_match' } = {}) {
+  const [enrollment] = await models.Enrollment.findOrCreate({
+    where: { menteeId, programId },
+    defaults: {
+      menteeId,
+      programId,
+      status,
+      currentWeek: 1,
+      tasksCompleted: 0,
+      tasksTotal: 0,
+      overallProgressPercentage: 0,
+    },
   });
+  if (enrollment.status !== status) {
+    enrollment.status = status;
+    await enrollment.save();
+  }
+  return enrollment;
 }
 
 // ─── Task helpers ──────────────────────────────────────────────────────────────
@@ -266,8 +307,8 @@ function tokenFor(user) {
   return generateAccessToken({ id: user.id, email: user.email, role: user.role });
 }
 
-async function createMatch({ mentorId, menteeId, enrollmentId, levelId, matchedBy, status = 'active' } = {}) {
-  return models.MentorMenteeMatch.create({ mentorId, menteeId, enrollmentId, levelId, matchedBy: matchedBy || mentorId, status });
+async function createMatch({ mentorId, menteeId, enrollmentId, matchedBy, status = 'active' } = {}) {
+  return models.MentorMenteeMatch.create({ mentorId, menteeId, enrollmentId, matchedBy: matchedBy || mentorId, status });
 }
 
 function authHeader(user) {
@@ -284,10 +325,9 @@ module.exports = {
   createEmailVerificationToken,
   createPasswordResetToken,
   createProgram,
-  createProgramLevel,
   createRoadmap,
-  createRoadmapWeek,
   createRoadmapTask,
+  createClan,
   createEnrollment,
   createAssignedTask,
   createMatch,
