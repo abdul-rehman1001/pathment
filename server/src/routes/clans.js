@@ -45,6 +45,15 @@ router.patch('/:id/members/:userId/permissions', authenticate, requirePermission
 // Reassign a mentee to a different clan (cross-clan admin action).
 router.post('/reassign', authenticate, requirePermissionMinScope(PERMISSIONS.CLAN_MANAGE_MEMBERS, 'program'), clanController.reassignClan);
 
+// Bulk public-join access (must be before /:id routes).
+router.post(
+  '/public-join/bulk-access',
+  authenticate,
+  requirePermissionMinScope(PERMISSIONS.CLAN_MANAGE_MEMBERS, 'program'),
+  validateBody(clanSchemas.bulkPublicJoinAccess),
+  clanController.bulkSetPublicJoinAccess
+);
+
 // Lead mentor: pull in unassigned mentees, or invite a new one straight into the clan.
 router.get('/:id/available', authenticate, requireAnyPermission([PERMISSIONS.CLAN_MANAGE_MEMBERS, PERMISSIONS.MENTEE_ADD], scope.clan('id')), clanController.availableMembers);
 router.post('/:id/invite', authenticate, requireAnyPermission([PERMISSIONS.CLAN_MANAGE_MEMBERS, PERMISSIONS.MENTEE_ADD], scope.clan('id')), clanController.inviteToClan);
@@ -70,6 +79,7 @@ router.post(
   '/:id/public-join/link',
   authenticate,
   validateParams(clanSchemas.idParams),
+  validateBody(clanSchemas.publicJoinLinkBody),
   clanController.generatePublicJoinLink
 );
 router.delete(
@@ -82,6 +92,7 @@ router.post(
   '/:id/public-join/regenerate',
   authenticate,
   validateParams(clanSchemas.idParams),
+  validateBody(clanSchemas.publicJoinLinkBody),
   clanController.regeneratePublicJoinLink
 );
 router.get(

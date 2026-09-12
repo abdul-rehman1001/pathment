@@ -246,7 +246,7 @@ const getPublicJoinState = catchAsync(async (req, res) => {
 const setPublicJoinAccess = catchAsync(async (req, res) => {
   const state = await clanPublicJoinService.setPublicJoinAccess(
     req.params.id,
-    req.body.allowed,
+    req.body,
     req.user
   );
   res.status(200).json(successResponse(
@@ -256,11 +256,25 @@ const setPublicJoinAccess = catchAsync(async (req, res) => {
 });
 
 /**
+ * POST /api/clans/public-join/bulk-access  (admin)
+ * Grant or revoke public-join permission for multiple clans.
+ */
+const bulkSetPublicJoinAccess = catchAsync(async (req, res) => {
+  const result = await clanPublicJoinService.bulkSetPublicJoinAccess(req.body, req.user);
+  res.status(200).json(successResponse(
+    req.body.allowed
+      ? `Public joining access granted for ${result.updated} clan${result.updated === 1 ? '' : 's'}`
+      : `Public joining access removed for ${result.updated} clan${result.updated === 1 ? '' : 's'}`,
+    result
+  ));
+});
+
+/**
  * POST /api/clans/:id/public-join/link  (lead mentor)
- * Mint or re-enable the shareable joining link.
+ * Mint or re-enable the shareable joining link (optional join window in body).
  */
 const generatePublicJoinLink = catchAsync(async (req, res) => {
-  const state = await clanPublicJoinService.generateOrEnableLink(req.params.id, req.user);
+  const state = await clanPublicJoinService.generateOrEnableLink(req.params.id, req.user, req.body);
   res.status(200).json(successResponse('Public joining link ready', state));
 });
 
@@ -275,10 +289,10 @@ const disablePublicJoinLink = catchAsync(async (req, res) => {
 
 /**
  * POST /api/clans/:id/public-join/regenerate  (lead mentor)
- * Replace the slug so old URLs stop working.
+ * Replace the slug so old URLs stop working (optional join window in body).
  */
 const regeneratePublicJoinLink = catchAsync(async (req, res) => {
-  const state = await clanPublicJoinService.regenerateLink(req.params.id, req.user);
+  const state = await clanPublicJoinService.regenerateLink(req.params.id, req.user, req.body);
   res.status(200).json(successResponse('Public joining link regenerated', state));
 });
 
@@ -367,6 +381,7 @@ module.exports = {
   inviteToClan,
   getPublicJoinState,
   setPublicJoinAccess,
+  bulkSetPublicJoinAccess,
   generatePublicJoinLink,
   disablePublicJoinLink,
   regeneratePublicJoinLink,

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { clanApi } from '@/lib/services/clan-api';
+import { toast } from 'sonner';
+import { clanApi, type PublicJoinState } from '@/lib/services/clan-api';
 import { usePagination } from '@/lib/hooks/shared/usePagination';
 import { useDebounce } from '@/lib/hooks/shared/useDebounce';
+import { extractApiErrorMessage } from '@/lib/utils/api-error';
 
 export interface ClanMembershipRow {
   id: string;
@@ -31,6 +33,10 @@ export interface Clan {
   /** Active-member counts from the paginated list endpoint. */
   menteeCount?: number;
   mentorCount?: number;
+  /** Admin granted public-joining permission (lead may generate a link). */
+  publicJoinAllowed?: boolean;
+  /** Lead has an enabled public joining link. */
+  publicJoinEnabled?: boolean;
 }
 
 export interface UseAdminClansReturn {
@@ -43,6 +49,14 @@ export interface UseAdminClansReturn {
   setSearch: (v: string) => void;
   programFilter: string;
   setProgramFilter: (v: string) => void;
+  selected: Set<string>;
+  selectedCount: number;
+  allVisibleSelected: boolean;
+  bulkBusy: boolean;
+  toggleOne: (id: string) => void;
+  toggleAllVisible: () => void;
+  clearSelected: () => void;
+  applyBulkPublicJoinAccess: (allowed: boolean) => Promise<void>;
 }
 
 /**
@@ -59,6 +73,8 @@ export function useAdminClans(): UseAdminClansReturn {
   const [clans, setClans] = useState<Clan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const fetchClans = useCallback(async () => {
     try {
@@ -90,5 +106,131 @@ export function useAdminClans(): UseAdminClansReturn {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearch, programFilter]);
 
-  return { clans, loading, error, refetch: fetchClans, pagination, search, setSearch, programFilter, setProgramFilter };
+  useEffect(() => {
+    const visible = new Set(clans.map((c) => c.id));
+    setSelected((prev) => {
+      const next = new Set([...prev].filter((id) => visible.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [clans]);
+
+  const allVisibleSelected = clans.length > 0 && clans.every((c) => selected.has(c.id));
+  const selectedCount = selected.size;
+
+  const toggleOne = useCallback((id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleAllVisible = useCallback(() => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      clans.forEach((c) => {
+        if (allVisibleSelected) next.delete(c.id);
+        else next.add(c.id);
+      });
+      return next;
+    });
+  }, [allVisibleSelected, clans]);
+
+  const clearSelected = useCallback(() => setSelected(new Set()), []);
+
+  const applyBulkPublicJoinAccess = useCallback(async (allowed: boolean) => {
+    if (!selected.size) return;
+    setBulkBusy(true);
+    try {
+      const result = await clanApi.bulkSetPublicJoinAccess({
+        clanIds: [...selected],
+        allowed,
+      });
+      toast.success(
+        allowed
+          ? `Public joining allowed for ${result.updated} clan${result.updated === 1 ? '' : 's'}`
+          : `Public joining removed for ${result.updated} clan${result.updated === 1 ? '' : 's'}`
+      );
+      setSelected(new Set());
+      await fetchClans();
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, 'Could not update public joining access'));
+    } finally {
+      setBulkBusy(false);
+    }
+  }, [fetchClans, selected]);
+
+  return {
+    clans,
+    loading,
+    error,
+    refetch: fetchClans,
+    pagination,
+    search,
+    setSearch,
+    programFilter,
+    setProgramFilter,
+    selected,
+    selectedCount,
+    allVisibleSelected,
+    bulkBusy,
+    toggleOne,
+    toggleAllVisible,
+    clearSelected,
+    applyBulkPublicJoinAccess,
+  };
+}
+
+export interface UseAdminClanPublicJoinReturn {
+  publicJoin: PublicJoinState | null;
+  publicJoinLoading: boolean;
+  publicJoinBusy: boolean;
+  loadPublicJoin: () => Promise<PublicJoinState | null>;
+  savePublicJoinAccess: (allowed: boolean) => Promise<boolean>;
+}
+
+/** Admin drawer: allow/revoke public joining only (lead sets the join window). */
+export function useAdminClanPublicJoin(clanId: string): UseAdminClanPublicJoinReturn {
+  const [publicJoin, setPublicJoin] = useState<PublicJoinState | null>(null);
+  const [publicJoinLoading, setPublicJoinLoading] = useState(true);
+  const [publicJoinBusy, setPublicJoinBusy] = useState(false);
+
+  const loadPublicJoin = useCallback(async () => {
+    setPublicJoinLoading(true);
+    try {
+      const joinState = await clanApi.getPublicJoinState(clanId).catch(() => null);
+      setPublicJoin(joinState);
+      return joinState;
+    } finally {
+      setPublicJoinLoading(false);
+    }
+  }, [clanId]);
+
+  useEffect(() => {
+    loadPublicJoin();
+  }, [loadPublicJoin]);
+
+  const savePublicJoinAccess = useCallback(async (allowed: boolean) => {
+    setPublicJoinBusy(true);
+    try {
+      const next = await clanApi.setPublicJoinAccess(clanId, { allowed });
+      setPublicJoin(next);
+      toast.success(allowed ? 'Public joining access granted' : 'Public joining access removed');
+      return true;
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, 'Could not update public joining access'));
+      return false;
+    } finally {
+      setPublicJoinBusy(false);
+    }
+  }, [clanId]);
+
+  return {
+    publicJoin,
+    publicJoinLoading,
+    publicJoinBusy,
+    loadPublicJoin,
+    savePublicJoinAccess,
+  };
 }

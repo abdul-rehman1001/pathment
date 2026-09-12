@@ -10,13 +10,13 @@ import { Avatar } from '@/components/shared/Avatar';
 import { CoMentorPermissionsDrawer } from '@/components/shared/CoMentorPermissionsDrawer';
 import { ReassignClanModal } from '@/components/admin/ReassignClanModal';
 import { ClanLevelsField } from '@/components/admin/ClanLevelsField';
-import { useAdminClans, type Clan, type ClanMembershipRow } from '@/lib/hooks/admin';
-import { clanApi, type PublicJoinState } from '@/lib/services/clan-api';
+import { useAdminClanPublicJoin, useAdminClans, type Clan, type ClanMembershipRow } from '@/lib/hooks/admin';
+import { clanApi } from '@/lib/services/clan-api';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 import { programsApi } from '@/lib/services/program-api';
 import { mentorApi } from '@/lib/services/mentor-api';
 import { menteeApi } from '@/lib/services/mentee-api';
-import { extractApiErrorMessage } from '@/lib/utils/api-error';
+import { formatDateTime } from '@/lib/utils/datetime';
 
 interface Person {
   id: string; firstName: string; lastName: string; email?: string; role?: string;
@@ -134,8 +134,12 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
   const [levelsDraft, setLevelsDraft] = useState<string[]>([]);
   const [savingLevels, setSavingLevels] = useState(false);
   const [details, setDetails] = useState({ name: '', description: '', whatsappGroupLink: '', leadMentorId: '', maxMentees: '25', status: 'active', tags: '', countries: '' });
-  const [publicJoin, setPublicJoin] = useState<PublicJoinState | null>(null);
-  const [publicJoinBusy, setPublicJoinBusy] = useState(false);
+  const {
+    publicJoin,
+    publicJoinLoading,
+    publicJoinBusy,
+    savePublicJoinAccess,
+  } = useAdminClanPublicJoin(clanId);
 
   // Searchable person picker (server-backed) so ANYONE is findable — not just the
   // first 20 of a base-role directory. This is how a removed/re-roled person
@@ -149,12 +153,8 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
   const load = async () => {
     setLoading(true);
     try {
-      const [res, joinState] = await Promise.all([
-        clanApi.get(clanId),
-        clanApi.getPublicJoinState(clanId).catch(() => null),
-      ]);
+      const res = await clanApi.get(clanId);
       const c = res?.data?.clan ?? null; setClan(c);
-      setPublicJoin(joinState);
       setLevelsDraft(Array.isArray(c?.levels) ? c.levels : []);
       setDetails({
         name: c?.name ?? '', description: c?.description ?? '', whatsappGroupLink: c?.whatsappGroupLink ?? '', leadMentorId: c?.leadMentor?.id ?? '',
@@ -353,7 +353,11 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
                   Disabled by default. When allowed, the Clan Lead Mentor can generate a shareable link.
                   Visitors request to join; membership still requires Lead Mentor approval.
                 </p>
-                {publicJoin ? (
+                {publicJoinLoading ? (
+                  <p className="text-xs text-slate-400 inline-flex items-center gap-1.5">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading public joining state…
+                  </p>
+                ) : publicJoin ? (
                   <>
                     <label className="flex items-start gap-3 cursor-pointer">
                       <input
@@ -362,31 +366,32 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
                         checked={Boolean(publicJoin.publicJoinAllowed)}
                         disabled={publicJoinBusy}
                         onChange={async (e) => {
-                          const allowed = e.target.checked;
-                          setPublicJoinBusy(true);
-                          try {
-                            const next = await clanApi.setPublicJoinAccess(clanId, allowed);
-                            setPublicJoin(next);
-                            toast.success(allowed ? 'Public joining access granted' : 'Public joining access removed');
-                          } catch (err) {
-                            toast.error(extractApiErrorMessage(err, 'Could not update public joining access'));
-                          } finally {
-                            setPublicJoinBusy(false);
-                          }
+                          if (await savePublicJoinAccess(e.target.checked)) onChanged();
                         }}
                       />
                       <span className="text-sm text-slate-700">
                         Allow this clan to use public joining links
                       </span>
                     </label>
+
                     <p className="text-xs text-slate-500">
                       {publicJoin.publicJoinAllowed
                         ? publicJoin.publicJoinEnabled
                           ? 'Access granted · Lead Mentor has an active public joining link.'
                           : publicJoin.publicJoinLinkExists
                             ? 'Access granted · Link exists but is currently disabled by the Lead Mentor.'
-                            : 'Access granted · The Clan Lead Mentor may generate and share the link.'
+                            : 'Access granted · The Clan Lead Mentor may generate the link and set its join window.'
                         : 'This clan is not authorized to generate or use a public joining link. Any existing link is inactive.'}
+                      {publicJoin.publicJoinWindowStatus && publicJoin.publicJoinWindowStatus !== 'active' ? (
+                        <> · Window {publicJoin.publicJoinWindowStatus}</>
+                      ) : null}
+                      {publicJoin.publicJoinStartsAt || publicJoin.publicJoinEndsAt ? (
+                        <>
+                          {' '}· {publicJoin.publicJoinStartsAt ? formatDateTime(publicJoin.publicJoinStartsAt) : 'now'}
+                          {' → '}
+                          {publicJoin.publicJoinEndsAt ? formatDateTime(publicJoin.publicJoinEndsAt) : 'no end'}
+                        </>
+                      ) : null}
                     </p>
                   </>
                 ) : (
@@ -547,7 +552,25 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
 
 function AdminClansInner() {
   // Server-side search + program filter + pagination (capped on the backend).
-  const { clans, loading, error, refetch, pagination, search, setSearch, programFilter, setProgramFilter } = useAdminClans();
+  const {
+    clans,
+    loading,
+    error,
+    refetch,
+    pagination,
+    search,
+    setSearch,
+    programFilter,
+    setProgramFilter,
+    selected,
+    selectedCount,
+    allVisibleSelected,
+    bulkBusy,
+    toggleOne,
+    toggleAllVisible,
+    clearSelected,
+    applyBulkPublicJoinAccess,
+  } = useAdminClans();
   const searchParams = useSearchParams();
   const [programs, setPrograms] = useState<any[]>([]);
   const [mentors, setMentors] = useState<Person[]>([]);
@@ -621,6 +644,66 @@ function AdminClansInner() {
             <span className="text-xs text-slate-500 shrink-0 tabular-nums">{pagination.total} clan{pagination.total === 1 ? '' : 's'}</span>
           </div>
 
+          {clans.length > 0 && (
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="inline-flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="rounded border-slate-300"
+                  checked={allVisibleSelected}
+                  onChange={toggleAllVisible}
+                />
+                Select all on this page
+              </label>
+              {selectedCount > 0 && (
+                <span className="text-xs text-slate-500 tabular-nums">{selectedCount} selected</span>
+              )}
+            </div>
+          )}
+
+          {selectedCount > 0 && (
+            <div className="rounded-2xl border border-brand-200 bg-brand-50/50 dark:bg-brand-500/10 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-slate-900 inline-flex items-center gap-2">
+                    <Link2 className="w-4 h-4 text-brand-600" />
+                    Public joining for {selectedCount} clan{selectedCount === 1 ? '' : 's'}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Allows Lead Mentors to generate a joining link and set its start/end window.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={bulkBusy}
+                    onClick={() => applyBulkPublicJoinAccess(true)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+                  >
+                    {bulkBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                    Allow public joining
+                  </button>
+                  <button
+                    type="button"
+                    disabled={bulkBusy}
+                    onClick={() => applyBulkPublicJoinAccess(false)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-card px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    Remove access
+                  </button>
+                  <button
+                    type="button"
+                    disabled={bulkBusy}
+                    onClick={clearSelected}
+                    className="text-sm text-slate-500 hover:text-slate-700"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {clans.length === 0 ? (
             <div className="bg-card rounded-2xl border border-slate-200 py-16 text-center">
               {hasFilters ? (
@@ -640,27 +723,62 @@ function AdminClansInner() {
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {clans.map((c) => {
             const n = counts(c);
+            const isSelected = selected.has(c.id);
             return (
-              <button key={c.id} onClick={() => setOpenClan(c.id)}
-                className="text-left bg-card rounded-2xl border border-slate-200 p-5 hover:border-brand-300 hover:shadow-sm transition-all">
-                <div className="flex items-start justify-between gap-2">
-                  <h3 className="font-medium text-slate-900 truncate">{c.name}</h3>
-                  {c.levelLabel && <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs shrink-0">{c.levelLabel}</span>}
-                </div>
-                <p className="text-xs text-slate-500 mt-0.5">{c.program?.name}</p>
-                {c.leadMentor && (
-                  <p className="text-xs text-slate-600 mt-2 flex items-center gap-1"><Crown className="w-3 h-3 text-amber-500" />{c.leadMentor.firstName} {c.leadMentor.lastName}</p>
-                )}
-                <div className="flex items-center gap-3 mt-3 text-xs text-slate-500">
-                  <span className="inline-flex items-center gap-1"><GraduationCap className="w-3.5 h-3.5" />{n.mentees} mentees</span>
-                  <span className="inline-flex items-center gap-1"><Crown className="w-3.5 h-3.5" />{n.mentors} mentors</span>
-                </div>
-                {c.tags?.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mt-3">
-                    {c.tags.map((t) => <span key={t} className="px-2 py-0.5 rounded-full bg-brand-50 text-brand-600 text-xs">{t}</span>)}
+              <div
+                key={c.id}
+                className={`relative text-left bg-card rounded-2xl border p-5 transition-all ${
+                  isSelected ? 'border-brand-400 ring-1 ring-brand-200' : 'border-slate-200 hover:border-brand-300 hover:shadow-sm'
+                }`}
+              >
+                <label
+                  className="absolute top-4 left-4 z-10"
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => e.stopPropagation()}
+                >
+                  <input
+                    type="checkbox"
+                    className="rounded border-slate-300"
+                    checked={isSelected}
+                    onChange={() => toggleOne(c.id)}
+                    aria-label={`Select ${c.name}`}
+                  />
+                </label>
+                <button type="button" onClick={() => setOpenClan(c.id)} className="w-full text-left pl-7">
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="font-medium text-slate-900 truncate">{c.name}</h3>
+                    {c.levelLabel && <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs shrink-0">{c.levelLabel}</span>}
                   </div>
-                )}
-              </button>
+                  <p className="text-xs text-slate-500 mt-0.5">{c.program?.name}</p>
+                  {c.leadMentor && (
+                    <p className="text-xs text-slate-600 mt-2 flex items-center gap-1"><Crown className="w-3 h-3 text-amber-500" />{c.leadMentor.firstName} {c.leadMentor.lastName}</p>
+                  )}
+                  <div className="flex items-center gap-3 mt-3 text-xs text-slate-500">
+                    <span className="inline-flex items-center gap-1"><GraduationCap className="w-3.5 h-3.5" />{n.mentees} mentees</span>
+                    <span className="inline-flex items-center gap-1"><Crown className="w-3.5 h-3.5" />{n.mentors} mentors</span>
+                  </div>
+                  <div className="mt-3">
+                    {c.publicJoinAllowed ? (
+                      <span
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium"
+                        title={c.publicJoinEnabled ? 'Public joining allowed · Lead Mentor has an active link' : 'Public joining allowed · Lead Mentor can generate a link'}
+                      >
+                        <Link2 className="w-3 h-3" />
+                        Public join{c.publicJoinEnabled ? ' · live' : ''}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-xs">
+                        No public join
+                      </span>
+                    )}
+                  </div>
+                  {c.tags?.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-3">
+                      {c.tags.map((t) => <span key={t} className="px-2 py-0.5 rounded-full bg-brand-50 text-brand-600 text-xs">{t}</span>)}
+                    </div>
+                  )}
+                </button>
+              </div>
             );
               })}
             </div>

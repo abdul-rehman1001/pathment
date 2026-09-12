@@ -122,6 +122,7 @@ export type ClanJoinViewerStatus =
   | 'anonymous'
   | 'eligible'
   | 'already_member'
+  | 'approved'
   | 'pending'
   | 'member_elsewhere'
   | 'mentor_of_clan';
@@ -136,6 +137,14 @@ export interface PublicClanJoinInfo {
     seatsRemaining?: number | null;
   };
   program: { name: string } | null;
-  joining: { requiresApproval: boolean; message: string };
+  joining: {
+    requiresApproval: boolean;
+    message: string;
+    open?: boolean;
+    windowStatus?: 'active' | 'upcoming' | 'expired' | null;
+    startsAt?: string | null;
+    endsAt?: string | null;
+    timezone?: string | null;
+  };
   viewerStatus: ClanJoinViewerStatus;
 }

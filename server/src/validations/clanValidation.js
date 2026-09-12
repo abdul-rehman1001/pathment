@@ -17,9 +17,26 @@ module.exports = {
     id: Joi.string().uuid().required()
   }),
 
+  // Admin only toggles permission — join window is set by the lead on generate/regenerate.
   publicJoinAccess: Joi.object({
     allowed: Joi.boolean().required()
   }),
+
+  bulkPublicJoinAccess: Joi.object({
+    clanIds: Joi.array().items(Joi.string().uuid()).min(1).max(100).required(),
+    allowed: Joi.boolean().required()
+  }),
+
+  // Lead mentor: optional join window when generating / regenerating the link.
+  publicJoinLinkBody: Joi.object({
+    timezone: Joi.string().trim().max(64).allow('', null).optional(),
+    startsDate: Joi.string().trim().pattern(/^\d{4}-\d{2}-\d{2}$/).allow('', null).optional(),
+    startsTime: Joi.string().trim().max(16).allow('', null).optional(),
+    endsDate: Joi.string().trim().pattern(/^\d{4}-\d{2}-\d{2}$/).allow('', null).optional(),
+    endsTime: Joi.string().trim().max(16).allow('', null).optional(),
+    startsAt: Joi.alternatives().try(Joi.date().iso(), Joi.valid(null)).optional(),
+    endsAt: Joi.alternatives().try(Joi.date().iso(), Joi.valid(null)).optional()
+  }).default({}),
 
   joinRequestQuery: Joi.object({
     status: Joi.string().valid('pending', 'approved', 'rejected', 'cancelled').optional()

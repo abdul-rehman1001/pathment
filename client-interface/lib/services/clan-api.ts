@@ -56,14 +56,19 @@ export const clanApi = {
   // ── Public clan joining link ─────────────────────────────────────────────
   getPublicJoinState: (id: string) =>
     apiClient.get<any>(`/clans/${id}/public-join`).then((r) => r.data as PublicJoinState),
-  setPublicJoinAccess: (id: string, allowed: boolean) =>
-    apiClient.patch<any>(`/clans/${id}/public-join/access`, { allowed }).then((r) => r.data as PublicJoinState),
-  generatePublicJoinLink: (id: string) =>
-    apiClient.post<any>(`/clans/${id}/public-join/link`, {}).then((r) => r.data as PublicJoinState),
+  /** Admin: grant/revoke publicJoinAllowed only (join window is lead-mentor owned). */
+  setPublicJoinAccess: (id: string, payload: { allowed: boolean }) =>
+    apiClient.patch<any>(`/clans/${id}/public-join/access`, payload).then((r) => r.data as PublicJoinState),
+  bulkSetPublicJoinAccess: (payload: { clanIds: string[]; allowed: boolean }) =>
+    apiClient.post<any>('/clans/public-join/bulk-access', payload)
+      .then((r) => r.data as { updated: number; clans: (PublicJoinState & { clanId: string })[] }),
+  /** Lead: mint/enable link and optionally set the join window (wall-clock + timezone). */
+  generatePublicJoinLink: (id: string, payload: PublicJoinWindowPayload = {}) =>
+    apiClient.post<any>(`/clans/${id}/public-join/link`, payload).then((r) => r.data as PublicJoinState),
   disablePublicJoinLink: (id: string) =>
     apiClient.delete<any>(`/clans/${id}/public-join/link`).then((r) => r.data as PublicJoinState),
-  regeneratePublicJoinLink: (id: string) =>
-    apiClient.post<any>(`/clans/${id}/public-join/regenerate`, {}).then((r) => r.data as PublicJoinState),
+  regeneratePublicJoinLink: (id: string, payload: PublicJoinWindowPayload = {}) =>
+    apiClient.post<any>(`/clans/${id}/public-join/regenerate`, payload).then((r) => r.data as PublicJoinState),
   listJoinRequests: (id: string, status?: string) =>
     apiClient.get<any>(`/clans/${id}/join-requests`, { params: status ? { status } : {} })
       .then((r) => (r.data?.requests || []) as ClanJoinRequestRow[]),
@@ -73,6 +78,17 @@ export const clanApi = {
     apiClient.post<any>(`/clans/${id}/join-requests/${requestId}/reject`, note ? { note } : {}),
 };
 
+/** Wall-clock join window sent with generate/regenerate (same shape as cohort apply window). */
+export interface PublicJoinWindowPayload {
+  timezone?: string | null;
+  startsDate?: string | null;
+  startsTime?: string | null;
+  endsDate?: string | null;
+  endsTime?: string | null;
+  startsAt?: string | null;
+  endsAt?: string | null;
+}
+
 export interface PublicJoinState {
   clanId?: string;
   clanName?: string;
@@ -81,6 +97,10 @@ export interface PublicJoinState {
   publicJoinLinkExists: boolean;
   publicJoinUsable?: boolean;
   publicJoinUrl: string | null;
+  publicJoinStartsAt?: string | null;
+  publicJoinEndsAt?: string | null;
+  publicJoinTimezone?: string | null;
+  publicJoinWindowStatus?: 'active' | 'upcoming' | 'expired';
 }
 
 export interface ClanJoinRequestRow {
@@ -93,5 +113,31 @@ export interface ClanJoinRequestRow {
   resolutionNote?: string | null;
   reviewedAt?: string | null;
   createdAt: string;
-  user?: { id: string; firstName: string; lastName: string; email: string } | null;
+  alreadyMember?: boolean;
+  placedElsewhere?: { clanId: string; clanName: string } | null;
+  seatsRemaining?: number | null;
+  blockedReason?: 'member_elsewhere' | 'clan_full' | 'user_inactive' | null;
+  user?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    role?: string | null;
+    status?: string | null;
+    profilePictureUrl?: string | null;
+    bio?: string | null;
+    city?: string | null;
+    country?: string | null;
+    languages?: string[];
+    emailVerified?: boolean;
+    memberSince?: string | null;
+    currentEducation?: string | null;
+    currentOccupation?: string | null;
+    learningGoals?: string[];
+    interests?: string[];
+    priorExperience?: string | null;
+    linkedinUrl?: string | null;
+    githubUrl?: string | null;
+    portfolioUrl?: string | null;
+  } | null;
 }

@@ -109,6 +109,24 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       unique: true,
       field: 'public_join_slug'
+    },
+    // Optional join window (UTC instants). Null start = open when enabled;
+    // null end = no expiry. Wall-clock input is converted via publicJoinTimezone
+    // using the same helpers as cohort apply opens/closes.
+    publicJoinStartsAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: 'public_join_starts_at'
+    },
+    publicJoinEndsAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: 'public_join_ends_at'
+    },
+    publicJoinTimezone: {
+      type: DataTypes.STRING(64),
+      allowNull: true,
+      field: 'public_join_timezone'
     }
   }, {
     tableName: 'clans',
