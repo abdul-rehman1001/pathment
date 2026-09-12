@@ -222,12 +222,21 @@ export function resolveBadgeUrl(
 // ==================== TEXT RESOLVER ====================
 
 export function resolveText(el: CertificateElement, data: CertificateRenderData): string {
-  // Per-tier wording replaces the base text, then variables are substituted into
-  // it as usual — so "Awarded to {{mentee_name}} with Distinction" works as a
-  // gold-only line without giving up the variables.
-  let text = resolveTierValue(el, data) ?? (el.text || '');
+  // Per-tier wording is the most specific thing the author stated for THIS
+  // tier, so it outranks the layer's dynamicKey.
+  //
+  // It did not, and that silently discarded their work: a {{tier_name}} layer
+  // with per-type wording set (Gold → "OF GOLD", Participation → "OF
+  // PARTICIPATION") rendered "Participation Certificate", because this
+  // switch ran second and overwrote the value resolved just above. The wording
+  // was computed correctly and then thrown away.
+  //
+  // Variables are still substituted into per-tier wording further down, so
+  // "Awarded to {{mentee_name}} with Distinction" works as a gold-only line.
+  const perTier = resolveTierValue(el, data);
+  let text = perTier ?? (el.text || '');
 
-  if (el.dynamicKey) {
+  if (!perTier && el.dynamicKey) {
     switch (el.dynamicKey) {
       case 'mentee_name':
         text = data.menteeName || text;
