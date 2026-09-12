@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { qk, useApiQuery, STALE } from '@/lib/query';
-import { useClan, ALL_CLANS } from '@/lib/context/ClanContext';
+import { useClan } from '@/lib/context/ClanContext';
+import { scopeToClan, clanIdOfRow } from '@/lib/utils/clan-scope';
 import { mentorApi } from '@/lib/services/mentor-api';
 import { notifyApprovalsChanged } from '@/lib/utils/approvals-badge';
 import { submissionService } from '@/lib/services/submissionService';
@@ -85,6 +86,8 @@ export interface UseMentorApprovalsReturn {
   queue: ApprovalItem[];
   changesRequested: ChangesRequestedItem[];
   reviewed: ReviewedItem[];
+  /** Rows the sidebar clan picker is holding back from the lists above. */
+  hiddenByClan: number;
   loading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
@@ -134,15 +137,23 @@ export function useMentorApprovals(): UseMentorApprovalsReturn {
 
   // Scope every list to the clan picked in the sidebar (multi-clan mentors).
   // 'all' = the merged view. Fetch-once/filter-in-memory, like the cohort views,
-  // so switching clans is instant and needs no refetch.
+  // so switching clans is instant and needs no refetch. Shares one rule with the
+  // inbox and the sidebar badges — see lib/utils/clan-scope.
   const scope = useCallback(
-    <T extends { clan: ItemClan | null }>(rows: T[]) =>
-      (activeClanId === ALL_CLANS ? rows : rows.filter((r) => r.clan?.id === activeClanId)),
+    <T extends { clan: ItemClan | null }>(rows: T[]) => scopeToClan(rows, activeClanId, clanIdOfRow),
     [activeClanId]
   );
-  const queue = useMemo(() => scope(allQueue), [allQueue, scope]);
-  const changesRequested = useMemo(() => scope(allChangesRequested), [allChangesRequested, scope]);
-  const reviewed = useMemo(() => scope(allReviewed), [allReviewed, scope]);
+  const scopedQueue = useMemo(() => scope(allQueue), [allQueue, scope]);
+  const scopedChanges = useMemo(() => scope(allChangesRequested), [allChangesRequested, scope]);
+  const scopedReviewed = useMemo(() => scope(allReviewed), [allReviewed, scope]);
+  const queue = scopedQueue.visible;
+  const changesRequested = scopedChanges.visible;
+  const reviewed = scopedReviewed.visible;
+
+  // What the clan picker is holding back, so the page can say "none in this
+  // clan" instead of "All caught up" while another clan's queue is full.
+  const hiddenByClan =
+    scopedQueue.hiddenByClan + scopedChanges.hiddenByClan + scopedReviewed.hiddenByClan;
 
   const bulkApprove = useCallback(async (submissionIds: string[]) => {
     await mentorApi.bulkApprove(submissionIds);
@@ -159,5 +170,5 @@ export function useMentorApprovals(): UseMentorApprovalsReturn {
     await refetch();
   }, [refetch]);
 
-  return { queue, changesRequested, reviewed, loading, error, refetch, bulkApprove, bulkReview, handleExtension };
+  return { queue, changesRequested, reviewed, hiddenByClan, loading, error, refetch, bulkApprove, bulkReview, handleExtension };
 }

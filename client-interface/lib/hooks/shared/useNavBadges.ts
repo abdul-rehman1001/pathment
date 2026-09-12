@@ -1,16 +1,22 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { messagingApi } from '@/lib/services/messaging-api';
 import { mentorApi } from '@/lib/services/mentor-api';
 import { acquireSocket } from '@/lib/services/socket-client';
 import { APPROVALS_CHANGED } from '@/lib/utils/approvals-badge';
 import { qk, useApiQuery, STALE } from '@/lib/query';
+import { unreadCountForClan } from '@/lib/utils/clan-scope';
+import { ALL_CLANS } from '@/lib/context/ClanContext';
+import type { ConversationSummary } from '@/lib/types/messaging';
 
 export interface ApprovalCounts { total: number; byClan: Record<string, number> }
 
 const NO_COUNTS: ApprovalCounts = { total: 0, byClan: {} };
+
+type BadgeConversation = Pick<ConversationSummary, 'clanIds' | 'unreadCount'>;
+const NO_CONVERSATIONS: BadgeConversation[] = [];
 
 /**
  * The sidebar's unread-message and approvals badges.
@@ -19,18 +25,30 @@ const NO_COUNTS: ApprovalCounts = { total: 0, byClan: {} };
  * than refetched on navigation, which is what used to make every route change
  * cost two requests.
  */
-export function useNavBadges({ userId, isMentor, portal }: { userId?: string; isMentor: boolean; portal: string }) {
+export function useNavBadges({
+  userId,
+  isMentor,
+  portal,
+  activeClanId,
+}: { userId?: string; isMentor: boolean; portal: string; activeClanId: string }) {
   const client = useQueryClient();
 
-  const { data: unreadMessageCount = 0 } = useApiQuery<number>({
+  // Cache the conversations, derive the badge from them. The badge has to count
+  // what the inbox will actually SHOW, which for a mentor means honouring the
+  // sidebar's clan picker — it already counts the approvals queue that way. A
+  // badge counting more than the list can display is how a mentor ends up
+  // staring at "No conversations yet" next to a red 1.
+  const { data: conversations = NO_CONVERSATIONS } = useApiQuery<BadgeConversation[]>({
     queryKey: qk.messaging.unreadCount(portal),
-    queryFn: async () => {
-      const conversations = await messagingApi.listConversations(50);
-      return conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
-    },
+    queryFn: () => messagingApi.listConversations(50),
     enabled: !!userId,
     staleTime: STALE.short,
   });
+
+  const unreadMessageCount = useMemo(
+    () => unreadCountForClan(conversations, isMentor ? activeClanId : ALL_CLANS),
+    [conversations, isMentor, activeClanId]
+  );
 
   const { data: approvalCounts = NO_COUNTS } = useApiQuery<ApprovalCounts>({
     queryKey: qk.mentor.approvalsCount,

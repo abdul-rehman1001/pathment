@@ -10,6 +10,7 @@ import { connectSocket, getSocket } from '@/lib/services/socket-client';
 import { getToken } from '@/lib/services/token-store';
 import { useAuth } from '@/lib/context/AuthContext';
 import { useClan, ALL_CLANS } from '@/lib/context/ClanContext';
+import { scopeConversationsToClan } from '@/lib/utils/clan-scope';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import type { ChatMessage, ConversationSummary, MessageReaction, SearchableUser } from '@/lib/types/messaging';
 
@@ -28,7 +29,7 @@ export default function MessageCenter({ role }: MessageCenterProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
-  const { activeClanId } = useClan();
+  const { activeClanId, setActiveClanId, clans } = useClan();
 
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [archivedConversations, setArchivedConversations] = useState<ConversationSummary[]>([]);
@@ -64,11 +65,14 @@ export default function MessageCenter({ role }: MessageCenterProps) {
   const participantId = searchParams.get('participantId');
   const queryConversationId = searchParams.get('conversationId');
 
-  // Scope conversation list to active clan for mentors
-  const visibleConversations = useMemo(() => {
-    if (role !== 'mentor' || activeClanId === ALL_CLANS) return conversations;
-    return conversations.filter((c) => (c.clanIds || []).includes(activeClanId));
-  }, [conversations, role, activeClanId]);
+  // Scope the list to the clan picked in the sidebar (mentors only). Shared
+  // with the sidebar's unread badge so the two cannot disagree — see
+  // lib/utils/conversation-scope.ts. `hiddenByClan` is what lets the empty
+  // state say "none in this clan" instead of "no conversations yet".
+  const { visible: visibleConversations, hiddenByClan } = useMemo(
+    () => scopeConversationsToClan(conversations, role, activeClanId),
+    [conversations, role, activeClanId]
+  );
 
   const selectedConversation = useMemo(
     () =>
@@ -724,6 +728,9 @@ export default function MessageCenter({ role }: MessageCenterProps) {
             activeTab={activeTab}
             onTabChange={handleTabChange}
             isBootstrapping={isBootstrapping}
+            hiddenByClan={hiddenByClan}
+            activeClanName={clans.find((c) => c.id === activeClanId)?.name ?? null}
+            onShowAllClans={() => setActiveClanId(ALL_CLANS)}
           />
         </div>
 

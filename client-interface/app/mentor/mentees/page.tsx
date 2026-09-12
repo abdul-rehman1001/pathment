@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useClan, ALL_CLANS } from '@/lib/context/ClanContext';
 import { useRouter } from 'next/navigation';
 import { Loader2, Search, Users, Users2, Inbox, ListPlus } from 'lucide-react';
 import { useMentorCohort } from '@/lib/hooks/mentor';
@@ -12,7 +13,9 @@ type Filter = 'all' | 'attention' | 'on_track' | 'no_tasks';
 
 export default function MentorMentees() {
   const router = useRouter();
-  const { cohort, totals, loading, error, refetch } = useMentorCohort();
+  const { cohort, totals, hiddenByClan, loading, error, refetch } = useMentorCohort();
+  const { clans: mentoredClans, activeClanId, setActiveClanId } = useClan();
+  const activeClanName = mentoredClans.find((c) => c.id === activeClanId)?.name ?? null;
   const [search, setSearch] = useState('');
   const [clan, setClan] = useState('all');
   const [filter, setFilter] = useState<Filter>('all');
@@ -122,8 +125,29 @@ export default function MentorMentees() {
       ) : cohort.length === 0 ? (
         <div className="bg-card rounded-2xl border border-slate-200 py-16 text-center">
           <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-          <p className="text-slate-600 font-medium">No mentees yet</p>
-          <p className="text-slate-400 text-sm mt-1">Once mentees are placed in your clans, they show up here.</p>
+          {/* "No mentees yet" is about placement. When the clan picker is what
+              emptied the list, that sentence sends the mentor looking for a
+              problem that is not there — name the clan instead. */}
+          {hiddenByClan > 0 ? (
+            <>
+              <p className="text-slate-600 font-medium">No mentees in {activeClanName || 'this clan'}</p>
+              <p className="text-slate-400 text-sm mt-1">
+                {hiddenByClan} mentee{hiddenByClan === 1 ? ' is' : 's are'} in your other clans.
+              </p>
+              <button
+                type="button"
+                onClick={() => setActiveClanId(ALL_CLANS)}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-brand-500/40 bg-brand-500/10 px-3 py-1.5 text-xs font-bold text-brand-700 hover:bg-brand-500/20 transition-colors"
+              >
+                Show all clans
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="text-slate-600 font-medium">No mentees yet</p>
+              <p className="text-slate-400 text-sm mt-1">Once mentees are placed in your clans, they show up here.</p>
+            </>
+          )}
         </div>
       ) : filtered.length === 0 ? (
         <div className="bg-card rounded-2xl border border-slate-200 py-12 text-center">
