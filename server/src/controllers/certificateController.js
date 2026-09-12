@@ -1,6 +1,7 @@
 const { catchAsync } = require('../middlewares/errorHandler');
 const { successResponse } = require('../utils/responses');
 const certificateService = require('../services/certificateService');
+const { portalOf } = require('../middlewares/portalScope');
 
 const createTemplate = catchAsync(async (req, res) => {
   const template = await certificateService.createTemplate(req.body, req.user.id);
@@ -28,7 +29,7 @@ const deleteTemplate = catchAsync(async (req, res) => {
 });
 
 const issueCertificates = catchAsync(async (req, res) => {
-  const result = await certificateService.issueCertificates(req.body, req.user.id);
+  const result = await certificateService.issueCertificates(req.body, req.user.id, req.user);
   res.status(201).json(successResponse(`Enqueued ${result.count} certificate(s) for generation`, result, 201));
 });
 
@@ -48,7 +49,7 @@ const uploadAsset = catchAsync(async (req, res) => {
 });
 
 const getQualification = catchAsync(async (req, res) => {
-  const result = await certificateService.getQualification(req.params.id, req.query.mentorId, req.user);
+  const result = await certificateService.getQualification(req.params.id, req.query.mentorId, req.user, { clanId: portalOf(req).clanId });
   res.status(200).json(successResponse('Qualification calculation complete', result));
 });
 
@@ -89,7 +90,7 @@ const resendAllTemplateCertificates = catchAsync(async (req, res) => {
 });
 
 const runAIEvaluation = catchAsync(async (req, res) => {
-  const result = await certificateService.runAIEvaluation(req.params.id, req.query.mentorId, req.user);
+  const result = await certificateService.runAIEvaluation(req.params.id, req.query.mentorId, req.user, { clanId: portalOf(req).clanId });
   if (result.total === 0) {
     return res.status(200).json(successResponse('No active mentees found in this program.', [], 200));
   }

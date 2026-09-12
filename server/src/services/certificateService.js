@@ -18,6 +18,8 @@ const {
   enrichEvaluationResults
 } = require('../utils/certificateUtils');
 const { sortCriteriaByPriority } = require('../utils/criteriaUtils');
+const authzService = require('./authzService');
+const { PERMISSIONS } = require('../config/permissions');
 
 // A per-tier value is either a line of certificate wording or an image URL.
 // Generous enough for a paragraph or a signed Cloudinary URL, bounded so a
@@ -36,50 +38,90 @@ function deduplicateById(arr) {
 class CertificateService {
   // ==================== QUALIFICATION & SCOPE METHODS ====================
 
-  async getMentorScopedMenteeIds(mentorId, programId, userRole) {
-    if (userRole !== 'mentor') return null;
+  /**
+   * The clans this user may act on for certificates, inside one program.
+   *
+   * Derived from the permission they actually hold at each clan
+   * (`authzService.clansWhereCan`) rather than from a `clan_memberships` row
+   * with role lead_mentor/co_mentor. That matters because cross-clan cover and
+   * explicit IAM grants also make somebody responsible for a clan, and reading
+   * the membership table directly misses both.
+   *
+   * `clanId` narrows further to the clan picked in the sidebar, so a mentor who
+   * runs several clans evaluates the one they are looking at.
+   */
+  async getMentorScopedMenteeClans(user, programId, { clanId = null } = {}) {
+    if (!user) return [];
+    let clanIds = await authzService.clansWhereCan(user, PERMISSIONS.MENTEE_VIEW);
+    if (!clanIds.length) return [];
 
-    const clanIds = await this.getMentorScopedMenteeClans(mentorId, programId, userRole);
-    if (!clanIds || clanIds.length === 0) return [];
-
-    const menteeMembers = await models.ClanMembership.findAll({
-      where: {
-        clanId: { [Op.in]: clanIds },
-        role: 'mentee',
-        status: 'active'
-      },
-      attributes: ['userId'],
-      raw: true
-    });
-
-    return menteeMembers.map(m => m.userId);
-  }
-
-  async getMentorScopedMenteeClans(mentorId, programId, userRole) {
-    const clanInclude = {
-      model: models.Clan,
-      as: 'clan',
-      attributes: []
-    };
     if (programId) {
-      clanInclude.where = { programId };
+      const inProgram = await models.Clan.findAll({
+        where: { id: { [Op.in]: clanIds }, programId },
+        attributes: ['id'],
+        raw: true
+      });
+      clanIds = inProgram.map((c) => c.id);
     }
-
-    const mentorClans = await models.ClanMembership.findAll({
-      where: {
-        userId: mentorId,
-        role: { [Op.in]: ['lead_mentor', 'co_mentor'] },
-        status: 'active'
-      },
-      attributes: ['clanId'],
-      include: [clanInclude],
-      raw: true
-    });
-    let clanIds = mentorClans.map(c => c.clanId || c['clan.id']).filter(Boolean);
+    if (clanId) clanIds = clanIds.filter((id) => id === clanId);
     return clanIds;
   }
 
-  async getScopedMenteesForTemplate(programId, mentorId, userRole) {
+  /**
+   * Throw unless the user may act on this mentee's certificate.
+   *
+   * The old shape of this check was `if (user.role === 'mentee') deny; if
+   * (user.role === 'mentor') scope-check` — which got BOTH halves wrong for a
+   * co-mentor promoted from a mentee account. They were denied their own
+   * mentees on the read paths, and on delete/revoke the `role === 'mentor'`
+   * test simply did not match, so the scope check never ran at all and they
+   * could revoke anybody's certificate.
+   */
+  async assertCanActOnMentee(user, menteeId, message) {
+    if (!user) throw new ForbiddenError(message);
+    if (user.id === menteeId) return;                       // your own certificate
+    const scope = await this.resolveMenteeScope(user);
+    if (scope === null) return;                             // admin access
+    if (!scope.includes(menteeId)) throw new ForbiddenError(message);
+  }
+
+  /**
+   * Which mentees this user may see, grade and issue to.
+   *
+   *   null  → unrestricted, and ONLY for real org/program admin access
+   *   [ids] → exactly the mentees they mentor
+   *
+   * This used to key off `user.role`, the column that records what an account
+   * was CREATED as. A co-mentor promoted from mentee still reads 'mentee'
+   * there, so the old `userRole !== 'mentor'` test fell through to the
+   * unrestricted branch and handed them the entire programme: the AI evaluation
+   * they started said "0 / 623" because it was grading every enrolled mentee in
+   * the org, not the dozen in their clan. Capability is derived now, and the
+   * default is closed — an empty scope means "nobody", never "everybody".
+   */
+  async resolveMenteeScope(user, { programId = null, clanId = null } = {}) {
+    if (!user) return [];
+    if (await authzService.hasAdminAccess(user)) return null;
+
+    const clanIds = await this.getMentorScopedMenteeClans(user, programId, { clanId });
+    if (!clanIds.length) return [];
+
+    const menteeMembers = await models.ClanMembership.findAll({
+      where: { clanId: { [Op.in]: clanIds }, role: 'mentee', status: 'active' },
+      attributes: ['userId'],
+      raw: true
+    });
+    return [...new Set(menteeMembers.map((m) => m.userId))];
+  }
+
+  /**
+   * The mentees a certificate template is about, for THIS user.
+   *
+   * `user` decides the scope, not a mentorId the client happened to send: an
+   * admin gets the whole programme, anybody else gets only the clans they
+   * actually mentor. The caller no longer has to know which of those it is.
+   */
+  async getScopedMenteesForTemplate(programId, user, { clanId = null } = {}) {
     const activeMentees = [];
     const pausedMentees = [];
 
@@ -99,8 +141,13 @@ class CertificateService {
       pausedMemberships.forEach(pm => pausedMenteeIdsSet.add(pm.userId));
     }
 
-    if (mentorId) {
-      const clanIds = await this.getMentorScopedMenteeClans(mentorId, programId, userRole);
+    // Unrestricted ONLY for real admin access. Everyone else is confined to the
+    // clans they mentor — and to none at all if they mentor none, which is the
+    // safe answer rather than the whole programme.
+    const isAdmin = await authzService.hasAdminAccess(user);
+
+    if (!isAdmin) {
+      const clanIds = await this.getMentorScopedMenteeClans(user, programId, { clanId });
       if (clanIds.length > 0) {
         const menteeMembers = await models.ClanMembership.findAll({
           where: { clanId: { [Op.in]: clanIds }, role: 'mentee', status: { [Op.in]: ['active', 'paused'] } },
@@ -137,14 +184,18 @@ class CertificateService {
     };
   }
 
-  async getQualification(id, queryMentorId, user) {
+  async getQualification(id, queryMentorId, user, { clanId = null } = {}) {
     const template = await models.CertificateTemplate.findOne({ where: { id, status: 'active' } });
     if (!template) throw new NotFoundError('Certificate template not found');
 
     const programId = template.programId;
-    const mentorId = user.role === 'mentor' ? user.id : queryMentorId;
-
-    const { activeMentees, pausedMentees } = await this.getScopedMenteesForTemplate(programId, mentorId, user.role);
+    // `queryMentorId` lets an ADMIN look at one mentor's slice. It can never
+    // widen anybody's scope: the resolver below asks what this user actually
+    // mentors, so a non-admin is confined to their own clans whatever the
+    // client sends.
+    const { activeMentees, pausedMentees } = await this.getScopedMenteesForTemplate(
+      programId, user, { clanId }
+    );
 
     const existingInstances = await models.CertificateInstance.findAll({
       where: { templateId: id },
@@ -249,7 +300,7 @@ class CertificateService {
 
     const whereClause = { templateId: id };
 
-    const menteeIds = await this.getMentorScopedMenteeIds(user.id, template.programId || null, user.role);
+    const menteeIds = await this.resolveMenteeScope(user, { programId: template.programId || null });
     if (menteeIds !== null) {
       whereClause.menteeId = { [Op.in]: [...menteeIds, user.id] };
     }
@@ -290,15 +341,17 @@ class CertificateService {
   }
 
 
-  async runAIEvaluation(id, queryMentorId, user) {
+  async runAIEvaluation(id, queryMentorId, user, { clanId = null } = {}) {
     const template = await models.CertificateTemplate.findOne({ where: { id, status: 'active' } });
     if (!template) throw new NotFoundError('Certificate template not found');
 
     const programId = template.programId;
     const criteria = sortCriteriaByPriority(Array.isArray(template.criteria) ? template.criteria : []);
-    const mentorId = user.role === 'mentor' ? user.id : queryMentorId;
 
-    const { activeMentees } = await this.getScopedMenteesForTemplate(programId, mentorId, user.role);
+    // Who this run is allowed to grade. A mentor grades their own clans and
+    // nobody else's — this is the path that used to hand a co-mentor the entire
+    // programme ("0 / 623") because it decided scope from `user.role`.
+    const { activeMentees } = await this.getScopedMenteesForTemplate(programId, user, { clanId });
     const mentees = activeMentees;
 
     if (mentees.length === 0) {
@@ -307,14 +360,15 @@ class CertificateService {
 
     const menteeIds = mentees.map(m => m.id);
 
-    if (!mentorId) {
+    // An admin run is programme-wide and carries no clan.
+    if (await authzService.hasAdminAccess(user)) {
       const { runId, total } = await this.enqueueEvaluation(
         id, menteeIds, user.id, criteria, null
       );
       return { runId, total };
     }
 
-    const clanIds = await this.getMentorScopedMenteeClans(mentorId, programId, user.role);
+    const clanIds = await this.getMentorScopedMenteeClans(user, programId, { clanId });
     if (clanIds.length === 0) {
       return { total: 0, runId: null, data: [] };
     }
@@ -878,16 +932,21 @@ class CertificateService {
       whereClause.programId = queryProgramId;
     }
 
-    if (user.role === 'mentor') {
-      const memberships = await models.ClanMembership.findAll({
-        where: {
-          userId: user.id,
-          role: { [Op.in]: ['lead_mentor', 'co_mentor'] },
-          status: 'active'
-        },
-        include: [{ model: models.Clan, as: 'clan', attributes: ['programId'] }]
-      });
-      const programIds = [...new Set(memberships.map(m => m.clan?.programId).filter(Boolean))];
+    // Non-admins see the templates of programmes they mentor in, plus any
+    // shared directly with them. Keyed on what they mentor rather than on
+    // `user.role`, which says only what their account was created as — a
+    // co-mentor promoted from a mentee account was falling past this branch
+    // and listing every template in the org.
+    if (!(await authzService.hasAdminAccess(user))) {
+      const mentoredClanIds = await authzService.clansWhereCan(user, PERMISSIONS.MENTEE_VIEW);
+      const mentoredClans = mentoredClanIds.length
+        ? await models.Clan.findAll({
+          where: { id: { [Op.in]: mentoredClanIds } },
+          attributes: ['programId'],
+          raw: true
+        })
+        : [];
+      const programIds = [...new Set(mentoredClans.map((c) => c.programId).filter(Boolean))];
 
       const shares = await models.Notification.findAll({
         where: {
@@ -1063,7 +1122,7 @@ class CertificateService {
 
   // ==================== ISSUANCE & QUEUE METHODS ====================
 
-  async issueCertificates({ templateId, menteeIds, mentorId, tier, recipients }, userId) {
+  async issueCertificates({ templateId, menteeIds, mentorId, tier, recipients }, userId, user = null) {
     if (!templateId) {
       throw new ValidationError('Template ID is required');
     }
@@ -1078,6 +1137,24 @@ class CertificateService {
 
       if (!template) {
         throw new NotFoundError('Certificate template not found');
+      }
+
+      // Issuing is a WRITE and the recipient list comes straight from the
+      // request body, so it has to be checked against what this user actually
+      // mentors. Nothing did that before: a mentor could name any mentee id in
+      // the org and a certificate was created for them.
+      const requested = Array.isArray(recipients) && recipients.length > 0
+        ? recipients.map((r) => r.menteeId)
+        : (Array.isArray(menteeIds) ? menteeIds : []);
+      const scope = await this.resolveMenteeScope(user, { programId: template.programId });
+      if (scope !== null) {
+        const allowed = new Set(scope);
+        const refused = [...new Set(requested.filter((id) => id && !allowed.has(id)))];
+        if (refused.length) {
+          throw new ForbiddenError(
+            `You can only issue certificates to mentees in your clan (${refused.length} recipient(s) are not).`
+          );
+        }
       }
 
       let instancesData = [];
@@ -1201,18 +1278,9 @@ class CertificateService {
   }
 
   async listMenteeCertificates(menteeId, user) {
-    if (user.id !== menteeId) {
-      if (user.role === 'mentee') {
-        throw new ForbiddenError('You can only view your own certificates');
-      }
-
-      if (user.role === 'mentor') {
-        const scopedIds = await this.getMentorScopedMenteeIds(user.id, null, user.role);
-        if (scopedIds !== null && !scopedIds.includes(menteeId)) {
-          throw new ForbiddenError('You can only view certificates for mentees in your clan');
-        }
-      }
-    }
+    await this.assertCanActOnMentee(
+      user, menteeId, 'You can only view certificates for mentees in your clan'
+    );
 
     return models.CertificateInstance.findAll({
       where: { menteeId },
@@ -1280,18 +1348,7 @@ class CertificateService {
       throw new NotFoundError('Certificate not found');
     }
 
-    if (user.id !== instance.menteeId) {
-      if (user.role === 'mentee') {
-        throw new ForbiddenError('You can only view your own certificates');
-      }
-
-      if (user.role === 'mentor') {
-        const scopedIds = await this.getMentorScopedMenteeIds(user.id, null, user.role);
-        if (scopedIds !== null && !scopedIds.includes(instance.menteeId)) {
-          throw new ForbiddenError('Access denied to this certificate');
-        }
-      }
-    }
+    await this.assertCanActOnMentee(user, instance.menteeId, 'Access denied to this certificate');
 
     return instance;
   }
@@ -1300,12 +1357,9 @@ class CertificateService {
     const instance = await models.CertificateInstance.findOne({ where: { id } });
     if (!instance) throw new NotFoundError('Certificate instance not found');
 
-    if (user && user.role === 'mentor' && user.id !== instance.menteeId) {
-      const scopedIds = await this.getMentorScopedMenteeIds(user.id, null, user.role);
-      if (scopedIds !== null && !scopedIds.includes(instance.menteeId)) {
-        throw new ForbiddenError('You can only revoke certificates for mentees in your clan');
-      }
-    }
+    await this.assertCanActOnMentee(
+      user, instance.menteeId, 'You can only revoke certificates for mentees in your clan'
+    );
 
     await instance.destroy();
     return true;
@@ -1334,21 +1388,15 @@ class CertificateService {
     const template = await models.CertificateTemplate.findOne({ where: { id } });
     if (!template) throw new NotFoundError('Certificate template not found');
 
-    if (user.role === 'mentor') {
-      const mentorScopedIds = await this.getMentorScopedMenteeIds(
-        user.id, template.programId, user.role
-      );
-      if (mentorScopedIds === null) {
-        throw new ForbiddenError('Unauthorized: unable to verify program scope');
-      }
-      if (mentorScopedIds.length === 0) {
-        throw new ForbiddenError('You do not have access to this certificate template');
-      }
+    // Resolved once: `null` is admin (revoke everything the template issued),
+    // an empty list is somebody with no mentees in this programme — who must be
+    // refused rather than falling through to an unfiltered destroy.
+    const menteeIds = await this.resolveMenteeScope(user, { programId: template.programId });
+    if (menteeIds !== null && menteeIds.length === 0) {
+      throw new ForbiddenError('You do not have access to this certificate template');
     }
 
     const whereClause = { templateId: id };
-
-    const menteeIds = await this.getMentorScopedMenteeIds(user.id, template.programId, user.role);
     if (menteeIds !== null) {
       whereClause.menteeId = { [Op.in]: menteeIds };
     }
@@ -1375,7 +1423,7 @@ class CertificateService {
 
     const whereClause = { templateId: id };
 
-    const scopedMenteeIds = await this.getMentorScopedMenteeIds(user.id, null, user.role);
+    const scopedMenteeIds = await this.resolveMenteeScope(user, { programId: template.programId || null });
     if (scopedMenteeIds !== null) {
       whereClause.menteeId = { [Op.in]: scopedMenteeIds };
     }
