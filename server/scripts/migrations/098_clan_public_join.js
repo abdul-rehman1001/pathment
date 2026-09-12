@@ -66,6 +66,20 @@ async function up() {
       console.log('  ✓ Added clans.public_join_slug');
     }
 
+    // Optional join window (UTC instants + timezone; same shape as cohort apply window).
+    for (const [col, spec] of [
+      ['public_join_starts_at', { type: S.DATE, allowNull: true }],
+      ['public_join_ends_at', { type: S.DATE, allowNull: true }],
+      ['public_join_timezone', { type: S.STRING(64), allowNull: true }]
+    ]) {
+      if (await columnExists('clans', col, t)) {
+        console.log(`  ℹ clans.${col} exists, skipping`);
+      } else {
+        await qi.addColumn('clans', col, spec, { transaction: t });
+        console.log(`  ✓ Added clans.${col}`);
+      }
+    }
+
     if (!(await indexExists(SLUG_UNIQ, t))) {
       await sequelize.query(
         `CREATE UNIQUE INDEX "${SLUG_UNIQ}" ON clans (public_join_slug)`,
@@ -170,7 +184,14 @@ async function down() {
       console.log(`  Dropped ${SLUG_UNIQ}`);
     }
 
-    for (const col of ['public_join_slug', 'public_join_enabled', 'public_join_allowed']) {
+    for (const col of [
+      'public_join_timezone',
+      'public_join_ends_at',
+      'public_join_starts_at',
+      'public_join_slug',
+      'public_join_enabled',
+      'public_join_allowed'
+    ]) {
       if (await columnExists('clans', col, t)) {
         await qi.removeColumn('clans', col, { transaction: t });
         console.log(`   Dropped clans.${col}`);
