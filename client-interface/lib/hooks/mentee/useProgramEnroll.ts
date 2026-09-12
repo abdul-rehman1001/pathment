@@ -1,12 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { programManagementApi } from '@/lib/services/program-api';
 import { enrollmentApi } from '@/lib/services/enrollment-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { toast } from 'sonner';
+import { qk, useApiQuery } from '@/lib/query';
 import { useAuth } from '@/lib/context/AuthContext';
 
 export interface UseProgramEnrollReturn {
@@ -23,41 +24,32 @@ export function useProgramEnroll(programId: string): UseProgramEnrollReturn {
   const { user } = useAuth();
   const router = useRouter();
 
-  const [program, setProgram] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
   const [enrolling, setEnrolling] = useState(false);
-  const [existingEnrollment, setExistingEnrollment] = useState<any>(null);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
-  const fetchProgram = useCallback(async () => {
-    try {
+  const programQuery = useApiQuery<any>({
+    queryKey: qk.me.program(programId),
+    queryFn: async () => {
       const response = await programManagementApi.programs.getById(programId);
-      setProgram(response?.data?.program || response?.program || response);
-    } catch (err: any) {
-      console.error('Failed to fetch program:', err);
-      toast.error('Failed to load program details');
-    }
-  }, [programId]);
+      return response?.data?.program || response?.program || response;
+    },
+    enabled: !!programId,
+    errorMessage: 'Failed to load program details',
+  });
 
-  const checkEnrollmentStatus = useCallback(async () => {
-    if (!user?.id) return;
-    try {
-      const response = await enrollmentApi.getAll({ programId, menteeId: user.id });
+  const enrollmentQuery = useApiQuery<any>({
+    queryKey: qk.me.programEnrollment(programId, user?.id ?? ''),
+    queryFn: async () => {
+      const response = await enrollmentApi.getAll({ programId, menteeId: user!.id });
       const list = response?.data?.enrollments || response?.enrollments || [];
-      if (list.length > 0) setExistingEnrollment(list[0]);
-    } catch (err: any) {
-      console.error('Failed to check enrollment status:', err);
-    }
-  }, [programId, user?.id]);
+      return list[0] ?? null;
+    },
+    enabled: !!programId && !!user?.id,
+  });
 
-  useEffect(() => {
-    if (programId && user) {
-      setLoading(true);
-      Promise.all([fetchProgram(), checkEnrollmentStatus()]).finally(() =>
-        setLoading(false)
-      );
-    }
-  }, [programId, user, fetchProgram, checkEnrollmentStatus]);
+  const program = programQuery.data ?? null;
+  const existingEnrollment = enrollmentQuery.data ?? null;
+  const loading = programQuery.loading || enrollmentQuery.loading;
 
   const handleEnroll = useCallback(async () => {
     try {

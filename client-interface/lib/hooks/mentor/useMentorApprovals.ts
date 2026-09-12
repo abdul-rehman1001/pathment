@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
+import { qk, useApiQuery, STALE } from '@/lib/query';
 import { useClan, ALL_CLANS } from '@/lib/context/ClanContext';
 import { mentorApi } from '@/lib/services/mentor-api';
 import { notifyApprovalsChanged } from '@/lib/utils/approvals-badge';
@@ -92,43 +93,48 @@ export interface UseMentorApprovalsReturn {
   handleExtension: (submissionId: string, approved: boolean, newDueDate?: string) => Promise<void>;
 }
 
+interface ApprovalsData {
+  queue: ApprovalItem[];
+  changesRequested: ChangesRequestedItem[];
+  reviewed: ReviewedItem[];
+}
+
+const EMPTY: ApprovalsData = { queue: [], changesRequested: [], reviewed: [] };
+
 export function useMentorApprovals(): UseMentorApprovalsReturn {
-  const [allQueue, setAllQueue] = useState<ApprovalItem[]>([]);
-  const [allChangesRequested, setAllChangesRequested] = useState<ChangesRequestedItem[]>([]);
-  const [allReviewed, setAllReviewed] = useState<ReviewedItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const { activeClanId } = useClan();
 
-  const fetchQueue = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      // Load the review queue, the changes-requested list, and the reviewed
-      // history together. The latter two are best-effort: a failure there must
-      // not blank the whole page.
+  const { data, loading, error, refetch } = useApiQuery<ApprovalsData>({
+    queryKey: qk.mentor.approvals,
+    queryFn: async () => {
+      // The changes-requested and reviewed lists are best-effort: a failure
+      // there must not blank the whole page.
       const [res, changesRes, reviewedRes] = await Promise.all([
         mentorApi.getApprovals(),
         mentorApi.getChangesRequested().catch(() => null),
         mentorApi.getReviewed().catch(() => null),
       ]);
-      setAllQueue(res?.data?.queue ?? []);
-      setAllChangesRequested(changesRes?.data?.items ?? []);
-      setAllReviewed(reviewedRes?.data?.items ?? []);
-      // The queue just changed (initial load or a post-review refetch) — nudge
-      // the sidebar badge so it never lags behind what's on screen.
-      notifyApprovalsChanged();
-    } catch {
-      setError('Failed to load the approvals queue');
-      setAllQueue([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      return {
+        queue: res?.data?.queue ?? [],
+        changesRequested: changesRes?.data?.items ?? [],
+        reviewed: reviewedRes?.data?.items ?? [],
+      };
+    },
+    staleTime: STALE.short,
+    errorMessage: 'Failed to load the approvals queue',
+  });
+
+  const { queue: allQueue, changesRequested: allChangesRequested, reviewed: allReviewed } = data ?? EMPTY;
+
+  // The queue just changed — nudge the sidebar badge so it never lags behind
+  // what is on screen.
+  useEffect(() => {
+    if (data) notifyApprovalsChanged();
+  }, [data]);
 
   // Scope every list to the clan picked in the sidebar (multi-clan mentors).
-  // 'all' = the merged view. Same fetch-once/filter-in-memory shape the cohort
-  // views use, so switching clans is instant and needs no refetch.
+  // 'all' = the merged view. Fetch-once/filter-in-memory, like the cohort views,
+  // so switching clans is instant and needs no refetch.
   const scope = useCallback(
     <T extends { clan: ItemClan | null }>(rows: T[]) =>
       (activeClanId === ALL_CLANS ? rows : rows.filter((r) => r.clan?.id === activeClanId)),
@@ -140,22 +146,18 @@ export function useMentorApprovals(): UseMentorApprovalsReturn {
 
   const bulkApprove = useCallback(async (submissionIds: string[]) => {
     await mentorApi.bulkApprove(submissionIds);
-    await fetchQueue();
-  }, [fetchQueue]);
+    await refetch();
+  }, [refetch]);
 
   const bulkReview = useCallback(async (submissionIds: string[], payload: BulkReviewPayload) => {
     await mentorApi.bulkReview(submissionIds, payload);
-    await fetchQueue();
-  }, [fetchQueue]);
+    await refetch();
+  }, [refetch]);
 
   const handleExtension = useCallback(async (submissionId: string, approved: boolean, newDueDate?: string) => {
     await submissionService.handleExtension(submissionId, approved, newDueDate);
-    await fetchQueue();
-  }, [fetchQueue]);
+    await refetch();
+  }, [refetch]);
 
-  useEffect(() => {
-    fetchQueue();
-  }, [fetchQueue]);
-
-  return { queue, changesRequested, reviewed, loading, error, refetch: fetchQueue, bulkApprove, bulkReview, handleExtension };
+  return { queue, changesRequested, reviewed, loading, error, refetch, bulkApprove, bulkReview, handleExtension };
 }

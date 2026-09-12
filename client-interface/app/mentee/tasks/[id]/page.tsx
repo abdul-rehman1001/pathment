@@ -11,7 +11,6 @@ import {
   BookOpen,
   Sparkles,
   XCircle,
-  AlertCircle,
   User,
   Award,
   MessageSquare,
@@ -24,9 +23,11 @@ import {
 import { ResourceLink } from '@/components/shared/ResourceLink';
 import { SubmissionFileList } from '@/components/shared/SubmissionFileList';
 import { useTaskDetail } from '@/lib/hooks/mentee';
+import { ResourceError } from '@/components/shared/ResourceError';
 import { PageHeader, StatusBadge } from '@/components/admin/ui';
 import { useActivityTracker } from '@/lib/hooks/shared/useActivityTracker';
 import { FrictionPanel } from '@/components/mentee/FrictionPanel';
+import { TaskProgressTimeline } from '@/components/shared/TaskProgressTimeline';
 import { SubmitTaskDrawer } from '@/components/mentee/SubmitTaskDrawer';
 import { InterviewReviewDrawer } from '@/components/mentor/InterviewReviewDrawer';
 import { isMissingDescription } from '@/lib/utils/html';
@@ -38,7 +39,7 @@ interface PageProps {
 export default function TaskDetailsPage({ params }: PageProps) {
   const resolvedParams = use(params);
   const router = useRouter();
-  const { task, loading, error, refetch } = useTaskDetail(resolvedParams.id);
+  const { task, loading, error, errorStatus, refetch } = useTaskDetail(resolvedParams.id);
   const { trackEvent } = useActivityTracker();
   const [submitOpen, setSubmitOpen] = useState(false);
   const [interviewResultsOpen, setInterviewResultsOpen] = useState(false);
@@ -63,10 +64,14 @@ export default function TaskDetailsPage({ params }: PageProps) {
 
   if (error || !task) {
     return (
-      <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
-        <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
-        <p className="text-red-900">{error || 'Task not found'}</p>
-      </div>
+      <ResourceError
+        status={errorStatus ?? (task ? null : 404)}
+        resource="task"
+        message={error}
+        backHref="/mentee/tasks"
+        backLabel="Back to tasks"
+        onRetry={refetch}
+      />
     );
   }
 
@@ -410,6 +415,13 @@ export default function TaskDetailsPage({ params }: PageProps) {
             );
           })}
         </div>
+      )}
+
+      {/* Day by day progress. Sits above the friction panel because "here's what
+          I did" is the everyday act and "here's what stopped me" is the exception.
+          Interview and quiz tasks are one sitting, so there is no day three. */}
+      {!['completed', 'cancelled'].includes(task.status) && !isInterview && !isQuiz && (
+        <TaskProgressTimeline taskId={task.id} mode="mentee" />
       )}
 
       {/* What's getting in the way - log roadblock / delay / request extension */}

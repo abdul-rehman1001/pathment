@@ -2,12 +2,13 @@
 
 import Link from 'next/link';
 import {
-  ArrowLeft, Mail, Building2, Briefcase, Star,
+  Mail, Building2, Briefcase, Star,
   Users, CheckCircle2, Clock, TrendingUp, Award,
-  Linkedin, Github, Globe, AlertCircle, Loader2,
+  Linkedin, Github, Globe, Loader2,
   UserCheck, BookOpen, ChevronRight,
 } from 'lucide-react';
 import { useMentorProfile } from '@/lib/hooks/admin';
+import { ResourceError } from '@/components/shared/ResourceError';
 import type { MentorSkill, MentorActiveMatch } from '@/lib/hooks/admin';
 import { StatsCard, PageHeader } from '@/components/admin/ui';
 import { MentorFeedbackAdminPanel } from '@/components/admin/MentorFeedbackAdminPanel';
@@ -48,7 +49,7 @@ const formatLevel = (l: string | null | undefined): string => {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AdminMentorProfilePage() {
-  const { mentor, activeMatches, isLoading, error } = useMentorProfile();
+  const { mentor, activeMatches, isLoading, error, errorStatus } = useMentorProfile();
 
   if (isLoading) {
     return (
@@ -60,16 +61,14 @@ export default function AdminMentorProfilePage() {
 
   if (error || !mentor) {
     return (
-      <div className="max-w-md mx-auto mt-20 text-center">
-        <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
-          <AlertCircle className="w-8 h-8 text-red-500" />
-        </div>
-        <h2 className="text-lg font-semibold text-slate-900 mb-2">Mentor not found</h2>
-        <p className="text-slate-500 text-sm mb-6">{error ?? 'This mentor profile does not exist.'}</p>
-        <Link href="/admin/users/mentors" className="inline-flex items-center gap-2 text-brand-600 hover:text-brand-700 text-sm font-medium">
-          <ArrowLeft className="w-4 h-4" />
-          Back to Mentors
-        </Link>
+      <div className="max-w-md mx-auto mt-20">
+        <ResourceError
+          status={errorStatus ?? (mentor ? null : 404)}
+          resource="mentor"
+          message={error}
+          backHref="/admin/users/mentors"
+          backLabel="Back to Mentors"
+        />
       </div>
     );
   }

@@ -477,19 +477,132 @@ class LinearRoadmapService {
     for (const p of progresses) {
       const roadmap = await models.Roadmap.findByPk(p.roadmapId, { attributes: ['id', 'name', 'description', 'skillTags'] });
       if (!roadmap) continue;
-      const steps = await this.getSteps(p.roadmapId);
-      const stepIds = steps.map((s) => s.id);
 
-      const assignedTasks = stepIds.length
+      const templateSteps = await this.getSteps(p.roadmapId);
+      const templateStepIds = templateSteps.map((s) => s.id);
+
+      // Fetch all non-cancelled AssignedTasks for this mentee and enrollment
+      const assignedTasks = p.enrollmentId
         ? await models.AssignedTask.findAll({
-            where: { menteeId, roadmapTaskId: { [Op.in]: stepIds } },
-            attributes: ['id', 'roadmapTaskId', 'status', 'dueDate', 'completedAt', 'pointsAwarded', 'pointsBase'],
+            where: {
+              menteeId,
+              enrollmentId: p.enrollmentId,
+              status: { [Op.ne]: 'cancelled' },
+            },
+            attributes: ['id', 'roadmapTaskId', 'status', 'dueDate', 'completedAt', 'pointsAwarded', 'pointsBase', 'isCustomTask', 'assignedAt', 'titleOverride', 'descriptionOverride', 'deliverableOverride', 'acceptanceCriteriaOverride', 'resourcesOverride'],
+            include: [{
+              model: models.RoadmapTask,
+              as: 'roadmapTask',
+              attributes: ['id', 'title', 'description', 'type', 'difficulty', 'deliverable', 'acceptanceCriteria', 'estimatedHours', 'pointsBase', 'effort', 'dueOffsetDays'],
+              include: [{
+                model: models.TaskResource, as: 'resources',
+                attributes: ['id', 'title', 'url', 'resourceType', 'description', 'displayOrder'],
+                separate: true, order: [['displayOrder', 'ASC']],
+              }],
+            }],
           })
         : [];
-      const assignedByStepId = new Map(assignedTasks.map((at) => [at.roadmapTaskId, at]));
 
-      const total = steps.length;
-      const currentStep = Math.min(p.currentStep, total);
+      // Separate roadmap assignments from custom ones
+      const roadmapAssignments = assignedTasks.filter(at => !at.isCustomTask && templateStepIds.includes(at.roadmapTaskId));
+      const customAssignments = assignedTasks.filter(at => at.isCustomTask);
+
+      const assignedByStepId = new Map(roadmapAssignments.map(at => [at.roadmapTaskId, at]));
+
+      // Build active/completed sequence: both roadmap steps that have been assigned and custom tasks, sorted by assignment date
+      const allActiveTasks = [
+        ...templateSteps
+          .filter(s => assignedByStepId.has(s.id))
+          .map(s => {
+            const at = assignedByStepId.get(s.id);
+            return { type: 'roadmap', step: s, assignedAt: at.assignedAt, assignedTask: at };
+          }),
+        ...customAssignments
+          .filter(at => at.roadmapTask)
+          .map(at => ({ type: 'custom', step: at.roadmapTask, assignedAt: at.assignedAt, assignedTask: at }))
+      ];
+
+      // Sort temporally by assignedAt (with ID fallback for stability)
+      allActiveTasks.sort((a, b) => new Date(a.assignedAt) - new Date(b.assignedAt) || a.assignedTask.id.localeCompare(b.assignedTask.id));
+
+      // Unassigned template steps are locked
+      const lockedRoadmapSteps = templateSteps.filter(s => !assignedByStepId.has(s.id));
+
+      // Unified steps list
+      const finalSteps = [];
+      let earnedRoadmapPoints = 0;
+      let totalRoadmapPoints = 0;
+      let completedCount = 0;
+
+      // Add active/completed tasks
+      for (const item of allActiveTasks) {
+        const s = item.step;
+        const at = item.assignedTask;
+        const done = at.status === 'completed';
+        const isCurrent = !p.completed && at.status !== 'completed';
+        const status = done ? 'completed' : 'current';
+
+        const basePts = at.pointsBase ?? s.pointsBase ?? 0;
+        totalRoadmapPoints += basePts;
+        if (done) {
+          earnedRoadmapPoints += at.pointsAwarded ?? basePts;
+          completedCount++;
+        }
+
+        finalSteps.push({
+          id: s.id,
+          title: at.titleOverride || s.title,
+          description: at.descriptionOverride || s.description || '',
+          type: s.type || 'assignment',
+          difficulty: s.difficulty || 'medium',
+          effort: s.effort || 'm',
+          deliverable: at.deliverableOverride || s.deliverable || '',
+          acceptanceCriteria: at.acceptanceCriteriaOverride || s.acceptanceCriteria || [],
+          estimatedHours: s.estimatedHours ?? null,
+          pointsBase: basePts,
+          dueOffsetDays: s.dueOffsetDays ?? null,
+          resources: at.resourcesOverride || s.resources || [],
+          done,
+          current: isCurrent,
+          status,
+          assignedTask: {
+            id: at.id,
+            status: at.status,
+            dueDate: at.dueDate,
+            completedAt: at.completedAt,
+            pointsAwarded: at.pointsAwarded,
+          }
+        });
+      }
+
+      // Add locked tasks
+      for (const s of lockedRoadmapSteps) {
+        const basePts = s.pointsBase ?? 0;
+        totalRoadmapPoints += basePts;
+
+        finalSteps.push({
+          id: s.id,
+          title: s.title,
+          description: s.description || '',
+          type: s.type || 'assignment',
+          difficulty: s.difficulty || 'medium',
+          effort: s.effort || 'm',
+          deliverable: s.deliverable || '',
+          acceptanceCriteria: s.acceptanceCriteria || [],
+          estimatedHours: s.estimatedHours ?? null,
+          pointsBase: basePts,
+          dueOffsetDays: s.dueOffsetDays ?? null,
+          resources: s.resources || [],
+          done: false,
+          current: false,
+          status: 'upcoming',
+          assignedTask: null
+        });
+      }
+
+      const total = finalSteps.length;
+      let currentStep = p.completed ? total : finalSteps.findIndex((s) => !s.done);
+      if (currentStep === -1) currentStep = total;
 
       // Find next milestone due date from active assigned task if present
       const activeAssignedTask = assignedTasks.find((at) => ['assigned', 'in_progress', 'submitted', 'revision_needed'].includes(at.status));
@@ -529,50 +642,6 @@ class LinearRoadmapService {
         }
       }
 
-      // Calculate SSOT total & earned roadmap points for this mentee
-      let earnedRoadmapPoints = 0;
-      let totalRoadmapPoints = 0;
-
-      const stepItems = steps.map((s, i) => {
-        const at = assignedByStepId.get(s.id);
-        const done = i < currentStep || at?.status === 'completed';
-        const isCurrent = !p.completed && i === currentStep;
-        const status = done ? 'completed' : isCurrent ? 'current' : 'upcoming';
-
-        const basePts = s.pointsBase ?? 0;
-        totalRoadmapPoints += basePts;
-        if (done) {
-          earnedRoadmapPoints += at?.pointsAwarded ?? basePts;
-        }
-
-        return {
-          id: s.id,
-          title: s.title,
-          description: s.description || '',
-          type: s.type || 'assignment',
-          difficulty: s.difficulty || 'medium',
-          effort: s.effort || 'm',
-          deliverable: s.deliverable || '',
-          acceptanceCriteria: s.acceptanceCriteria || [],
-          estimatedHours: s.estimatedHours ?? null,
-          pointsBase: s.pointsBase ?? null,
-          dueOffsetDays: s.dueOffsetDays ?? null,
-          resources: s.resources || [],
-          done,
-          current: isCurrent,
-          status,
-          assignedTask: at
-            ? {
-                id: at.id,
-                status: at.status,
-                dueDate: at.dueDate,
-                completedAt: at.completedAt,
-                pointsAwarded: at.pointsAwarded,
-              }
-            : null,
-        };
-      });
-
       out.push({
         roadmapId: roadmap.id,
         name: roadmap.name,
@@ -581,13 +650,13 @@ class LinearRoadmapService {
         currentStep,
         totalSteps: total,
         completed: !!p.completed,
-        percent: total > 0 ? Math.round((currentStep / total) * 100) : 0,
-        currentStepTitle: !p.completed && steps[currentStep] ? steps[currentStep].title : (p.completed ? 'Roadmap Completed 🎉' : null),
+        percent: total > 0 ? Math.round((completedCount / total) * 100) : 0,
+        currentStepTitle: !p.completed && finalSteps[currentStep] ? finalSteps[currentStep].title : (p.completed ? 'Roadmap Completed 🎉' : null),
         nextMilestoneDueDate,
         mentorCheckInDate,
         earnedRoadmapPoints,
         totalRoadmapPoints,
-        steps: stepItems,
+        steps: finalSteps,
       });
     }
     return out;

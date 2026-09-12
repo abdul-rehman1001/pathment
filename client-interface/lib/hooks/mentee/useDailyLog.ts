@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+'use client';
+
+import { useCallback } from 'react';
 import { menteeApi } from '@/lib/services/mentee-api';
+import { qk, useApiQuery, STALE } from '@/lib/query';
 
 export interface DailyLogEntry {
   id: string;
@@ -18,33 +21,20 @@ export interface UseDailyLogReturn {
   save: (data: { dateKey: string; tasksDone: string[]; slotsDone?: string[]; note?: string }) => Promise<void>;
 }
 
+const EMPTY: DailyLogEntry[] = [];
+
 export function useDailyLog(): UseDailyLogReturn {
-  const [entries, setEntries] = useState<DailyLogEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, loading, error, refetch } = useApiQuery<DailyLogEntry[]>({
+    queryKey: qk.me.dailyLog,
+    queryFn: async () => (await menteeApi.getDailyLog())?.data?.entries ?? [],
+    staleTime: STALE.short,
+    errorMessage: 'Failed to load your daily log',
+  });
 
-  const fetchLogs = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await menteeApi.getDailyLog();
-      setEntries(res?.data?.entries ?? []);
-    } catch {
-      setError('Failed to load your daily log');
-      setEntries([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const save = useCallback(async (payload: { dateKey: string; tasksDone: string[]; slotsDone?: string[]; note?: string }) => {
+    await menteeApi.saveDailyLog(payload);
+    await refetch();
+  }, [refetch]);
 
-  const save = useCallback(async (data: { dateKey: string; tasksDone: string[]; slotsDone?: string[]; note?: string }) => {
-    await menteeApi.saveDailyLog(data);
-    await fetchLogs();
-  }, [fetchLogs]);
-
-  useEffect(() => {
-    fetchLogs();
-  }, [fetchLogs]);
-
-  return { entries, loading, error, refetch: fetchLogs, save };
+  return { entries: data ?? EMPTY, loading, error, refetch, save };
 }

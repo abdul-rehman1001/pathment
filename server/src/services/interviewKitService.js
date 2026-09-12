@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const { models, sequelize } = require('../db');
 const { NotFoundError, ForbiddenError, ValidationError, ConflictError } = require('../utils/errors/errorTypes');
 const { uploadToCloudinary } = require('../utils/cloudinaryUpload');
+const { snapToDifficultyPoints } = require('../config/points');
 
 const QUESTION_KINDS = ['voice', 'code', 'text'];
 const TIMING_MODES = ['per_question', 'total'];
@@ -31,7 +32,9 @@ class InterviewKitService {
       position,
       kind,
       prompt,
-      points: toPosInt(raw?.points, 10),
+      // Snapped to the difficulty curve rather than taken as typed. See
+      // config/points.js: the same difficulty is worth the same to everybody.
+      points: snapToDifficultyPoints(toPosInt(raw?.points, 10)),
       required: raw?.required !== false,
       // Per-question timer (seconds). Default 120s for voice/text, 600s for code.
       timeLimitSeconds: toPosInt(raw?.timeLimitSeconds, kind === 'code' ? 600 : 120),

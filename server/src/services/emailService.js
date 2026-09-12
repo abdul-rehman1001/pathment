@@ -115,10 +115,35 @@ class EmailService {
     return 'transient';
   }
 
-  /** Exponential backoff with jitter: 60s, 2m, 4m… capped at 2h. */
+  /**
+   * Exponential backoff with PROPORTIONAL jitter: attempt N waits a random time
+   * in [base, base * 1.5) where base = 60s * 2^(N-1), capped at 2h.
+   *
+   * The jitter window must scale with the base. It used to be a flat 30ms-to-30s
+   * window, which is 50% of the 60s first retry but only 6% of the 8-minute
+   * fourth one - so when a few hundred emails failed together (a Resend blip)
+   * they re-formed the same tight herd on every retry round. Measured on a
+   * 500-email herd: peak emails becoming due in the same second stayed 26 -> 25
+   * -> 21 -> 15 -> 15 across the five attempts. With the window scaled it decays
+   * 23 -> 16 -> 9 -> 6 -> 4, and total time spent above 10 sends/sec drops from
+   * 96s to 39s. The earliest possible retry is still 60s, exactly as before.
+   */
   backoffMs(attempt) {
     const base = Math.min(2 * 60 * 60 * 1000, 60 * 1000 * Math.pow(2, Math.max(0, attempt - 1)));
-    return base + Math.floor(Math.random() * 30 * 1000);
+    return Math.floor(base + Math.random() * (base / 2));
+  }
+
+  /**
+   * When a send is deferred to tomorrow (daily cap), wake it at a RANDOM point
+   * inside a window after midnight UTC rather than exactly at 00:00:00. Every
+   * deferred row used to get the identical timestamp, so the whole backlog came
+   * due in one single second and the worker tried to push 200 of them in one
+   * 15s tick. Spreading over an hour turns that spike into a trickle.
+   */
+  deferredWakeAt(now = new Date()) {
+    const midnight = this.getUtcStartOfDay(new Date(now.getTime() + 86400000));
+    const windowMs = this.parsePositiveInt(process.env.EMAIL_DEFER_SPREAD_MS, 60 * 60 * 1000);
+    return new Date(midnight.getTime() + Math.floor(Math.random() * windowMs));
   }
 
   async _deliverViaResend(row, toList) {
@@ -222,7 +247,7 @@ class EmailService {
     if (!this.isCritical(row)) {
       const limit = await this.isWithinDailyLimits(primary);
       if (!limit.allowed) {
-        await row.update({ status: 'pending', errorCategory: 'transient', lastError: limit.reason, nextAttemptAt: this.getUtcStartOfDay(new Date(Date.now() + 86400000)) });
+        await row.update({ status: 'pending', errorCategory: 'transient', lastError: limit.reason, nextAttemptAt: this.deferredWakeAt() });
         return { sent: false, reason: limit.reason, deferred: true };
       }
     }
@@ -270,9 +295,35 @@ class EmailService {
     }
   }
 
-  /** Reset rows wedged in 'sending' (worker died mid-send) back to pending. */
+  /**
+   * Reset rows wedged in 'sending' (worker died mid-send) back to pending.
+   *
+   * This MUST count the dead attempt and apply backoff. It used to just flip the
+   * row to pending with next_attempt_at=NOW() and leave attempt_count alone - so
+   * a row that kills the worker (OOM, a body that blows up the SDK) got claimed
+   * again immediately, forever, and could never reach the DLQ. Verified: three
+   * reap cycles, attempt_count still 0, still due immediately. A poison pill has
+   * to be able to exhaust its attempts like any other failure.
+   *
+   * The retry can double-send if the provider actually accepted the mail before
+   * we died; the idempotency key we pass to Resend is what covers that.
+   */
   async reapStuck() {
-    await sequelize.query(`UPDATE email_queue SET status='pending', next_attempt_at=NOW(), updated_at=NOW()
+    await sequelize.query(`
+      UPDATE email_queue SET
+        attempt_count   = COALESCE(attempt_count, 0) + 1,
+        error_category  = 'transient',
+        last_error      = COALESCE(last_error, 'worker_died_mid_send'),
+        status          = CASE WHEN COALESCE(attempt_count,0) + 1 >= COALESCE(max_attempts, 5)
+                               THEN 'dead' ELSE 'pending' END,
+        failed_at       = CASE WHEN COALESCE(attempt_count,0) + 1 >= COALESCE(max_attempts, 5)
+                               THEN NOW() ELSE failed_at END,
+        next_attempt_at = CASE WHEN COALESCE(attempt_count,0) + 1 >= COALESCE(max_attempts, 5)
+                               THEN NULL
+                               ELSE NOW() + make_interval(secs =>
+                                      LEAST(7200, 60 * POWER(2, COALESCE(attempt_count,0)))
+                                      * (1 + random() * 0.5)) END,
+        updated_at      = NOW()
       WHERE status='sending' AND last_attempt_at < NOW() - INTERVAL '10 minutes'`);
   }
 
@@ -305,7 +356,20 @@ class EmailService {
       } catch (e) {
         failed++;
         // Unexpected error: don't leave it stuck in 'sending'.
-        try { await row.update({ status: 'pending', nextAttemptAt: new Date(Date.now() + this.backoffMs((row.attemptCount || 0) + 1)), lastError: String(e?.message || 'worker_error').slice(0, 500) }); } catch { /* noop */ }
+        try {
+          // Count the attempt. Without this an unexpected worker error retries
+          // forever and the row can never age into the DLQ.
+          const attempt = (row.attemptCount || 0) + 1;
+          const exhausted = attempt >= (row.maxAttempts || 5);
+          await row.update({
+            status: exhausted ? 'dead' : 'pending',
+            attemptCount: attempt,
+            errorCategory: 'transient',
+            failedAt: exhausted ? new Date() : null,
+            nextAttemptAt: exhausted ? null : new Date(Date.now() + this.backoffMs(attempt)),
+            lastError: String(e?.message || 'worker_error').slice(0, 500),
+          });
+        } catch { /* noop */ }
       }
     }
     return { claimed: rows.length, sent, failed, dead };

@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { mentorApi } from '@/lib/services/mentor-api';
 import { useClan, ALL_CLANS } from '@/lib/context/ClanContext';
+import { qk, useApiQuery } from '@/lib/query';
 
 export type CohortMomentum = 'up' | 'flat' | 'down';
 export type CohortRisk = 'low' | 'watch' | 'high';
@@ -61,32 +62,22 @@ export interface UseMentorCohortReturn {
   refetch: () => Promise<void>;
 }
 
+const EMPTY_COHORT: CohortMentee[] = [];
+
 export function useMentorCohort(): UseMentorCohortReturn {
-  const [allCohort, setAllCohort] = useState<CohortMentee[]>([]);
-  const [rawTotals, setRawTotals] = useState<CohortTotals | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const { activeClanId } = useClan();
 
-  const fetchCohort = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  const { data, loading, error, refetch } = useApiQuery<{ cohort: CohortMentee[]; totals: CohortTotals | null }>({
+    queryKey: qk.mentor.cohort,
+    queryFn: async () => {
       const res = await mentorApi.getCohort();
-      setAllCohort(res?.data?.cohort ?? []);
-      setRawTotals(res?.data?.totals ?? null);
-    } catch (err) {
-      setError('Failed to load your cohort');
-      setAllCohort([]);
-      setRawTotals(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      return { cohort: res?.data?.cohort ?? [], totals: res?.data?.totals ?? null };
+    },
+    errorMessage: 'Failed to load your cohort',
+  });
 
-  useEffect(() => {
-    fetchCohort();
-  }, [fetchCohort]);
+  const allCohort = data?.cohort ?? EMPTY_COHORT;
+  const rawTotals = data?.totals ?? null;
 
   // Scope to the active clan (multi-clan mentors). 'all' = the merged view.
   const cohort = useMemo(
@@ -108,5 +99,5 @@ export function useMentorCohort(): UseMentorCohortReturn {
     };
   }, [cohort, allCohort, activeClanId, rawTotals]);
 
-  return { cohort, totals, loading, error, refetch: fetchCohort };
+  return { cohort, totals, loading, error, refetch };
 }

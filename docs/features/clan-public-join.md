@@ -26,7 +26,7 @@ per `(clanId, userId)`.
 
 Distinct from `RegistrationInvite` (email-locked register/placement) and
 `ClanChangeRequest` (permanent move between clans). Migration:
-`096_clan_public_join.js`.
+`098_clan_public_join.js` and `099_clan_public_join_window.js`.
 
 ## Backend
 Service: `clanPublicJoinService`. HTTP handlers live in `clanController`. Approving a

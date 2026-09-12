@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const { models } = require('../db');
 const { NotFoundError, ValidationError, ForbiddenError } = require('../utils/errors/errorTypes');
+const { VISIBLE_MEMBERSHIP_STATUSES } = require('../config/membership');
 
 /**
  * Anonymous, structured mentee→mentor feedback collected at program completion.
@@ -33,8 +34,15 @@ class ProgramReviewService {
     });
     if (match) return match.mentorId;
 
+    // Paused counts: a mentee paused after finishing still has a mentor their
+    // feedback belongs to. Filtering to 'active' returned null and the review
+    // had no recipient.
     const menteeClans = await models.ClanMembership.findAll({
-      where: { userId: enrollment.menteeId, status: 'active', role: 'mentee' },
+      where: {
+        userId: enrollment.menteeId,
+        status: { [Op.in]: VISIBLE_MEMBERSHIP_STATUSES },
+        role: 'mentee'
+      },
       include: [{ model: models.Clan, as: 'clan', attributes: ['programId'] }]
     });
     const clanIds = menteeClans

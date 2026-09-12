@@ -48,7 +48,7 @@ async function addBoolColumn(qi, table, column, t) {
 async function up() {
   const qi = sequelize.getQueryInterface();
   const S = Sequelize;
-  console.log('▶ Running migration 096: clan public join');
+  console.log('▶ Running migration 098: clan public join');
 
   await sequelize.transaction(async (t) => {
     await addBoolColumn(qi, 'clans', 'public_join_allowed', t);
@@ -147,12 +147,12 @@ async function up() {
     }
   });
 
-  console.log('Migration 096 complete');
+  console.log('Migration 098 complete');
 }
 
 async function down() {
   const qi = sequelize.getQueryInterface();
-  console.log('Rolling back migration 096');
+  console.log('Rolling back migration 098');
 
   await sequelize.transaction(async (t) => {
     if (await indexExists(PENDING_UNIQ, t)) {
@@ -178,7 +178,7 @@ async function down() {
     }
   });
 
-  console.log(' Rollback 096 complete');
+  console.log(' Rollback 098 complete');
 }
 
 if (require.main === module) {

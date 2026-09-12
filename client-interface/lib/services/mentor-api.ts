@@ -120,8 +120,8 @@ export const mentorApi = {
   recordReviewTalkTime: (id: string, items: { menteeId: string; seconds: number }[]) =>
     apiClient.post(`/mentor/review/sessions/${id}/meeting/talk-time`, { items }),
   proposeReviewContribution: (id: string) => apiClient.get(`/mentor/review/sessions/${id}/meeting/contribution`),
-  finalizeReviewContribution: (id: string, menteeIds: string[]) =>
-    apiClient.post(`/mentor/review/sessions/${id}/meeting/contribution`, { menteeIds }),
+  finalizeReviewContribution: (id: string, menteeIds: string[], sendAbsentEmails?: boolean) =>
+    apiClient.post(`/mentor/review/sessions/${id}/meeting/contribution`, { menteeIds, sendAbsentEmails }),
 
   // Recurring review schedules (weekly / biweekly). Each occurrence auto-creates
   // a session, opens its room at the scheduled time, and emails timezone-correct
@@ -260,6 +260,9 @@ export const mentorApi = {
       apiClient.post<{ data: { request: TransferRequest } }>(`/mentor/transfers/${id}/respond`, { accept, note }),
     cancel: (id: string) => apiClient.post(`/mentor/transfers/${id}/cancel`, {}),
   },
+
+  // A mentee's day-by-day progress on one task, read only.
+  getTaskProgress: (taskId: string) => apiClient.get('/mentor/tasks/' + taskId + '/progress'),
 
   deleteUser: (id: string) => {
     return apiClient.delete(`/admin/users/${id}`);

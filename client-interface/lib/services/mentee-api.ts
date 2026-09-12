@@ -1,6 +1,36 @@
 import { apiClient } from './api-client';
 import { apiConfig } from '@/lib/config/api';
 
+// ── Task progress ───────────────────────────────────────────────────────────
+export interface TaskProgressEntry {
+  id: string;
+  dateKey: string;
+  note: string;
+  minutesSpent: number | null;
+  loggedAt: string;
+  updatedAt: string;
+}
+
+export interface TaskProgressDay {
+  dateKey: string;
+  isToday: boolean;
+  isFuture: boolean;
+  /** Null means nothing was logged that day. The gaps are the signal, so they stay. */
+  entry: TaskProgressEntry | null;
+}
+
+export interface TaskProgress {
+  days: TaskProgressDay[];
+  summary: {
+    loggedDays: number;
+    elapsedDays: number;
+    /** The sentence a mentor reads, e.g. "logged 3 of 4 days". */
+    label: string;
+    lastNote: string | null;
+    lastLoggedOn: string | null;
+  };
+}
+
 export const menteeApi = {
   getAll: (filters?: { search?: string; page?: number; limit?: number }) => {
     const params = new URLSearchParams();
@@ -22,6 +52,16 @@ export const menteeApi = {
   getDailyLog: () => apiClient.get('/mentee/daily-log'),
   saveDailyLog: (data: { dateKey: string; tasksDone: string[]; slotsDone?: string[]; note?: string }) =>
     apiClient.post('/mentee/daily-log', data),
+
+  // ── Day-by-day progress on ONE task ──────────────────────────────────────
+  // Writing here also logs the day in the daily log above, so the streak counts
+  // work done where the work actually happens.
+  getTaskProgress: (taskId: string) =>
+    apiClient.get<{ data: TaskProgress }>(`/mentee/tasks/${taskId}/progress`),
+  logTaskProgress: (taskId: string, note: string, minutesSpent?: number) =>
+    apiClient.post<{ data: { entry: TaskProgressEntry } }>(`/mentee/tasks/${taskId}/progress`, { note, minutesSpent }),
+  removeTaskProgress: (taskId: string, dateKey: string) =>
+    apiClient.delete(`/mentee/tasks/${taskId}/progress/${dateKey}`),
 
   // Is the signed-in user's mentee side paused? Powers the paused gate.
   getPauseState: () => apiClient.get('/mentee/pause-state'),

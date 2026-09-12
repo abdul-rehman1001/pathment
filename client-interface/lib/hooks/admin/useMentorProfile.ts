@@ -1,10 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { qk, useApiQuery } from '@/lib/query';
 import { useParams } from 'next/navigation';
 import { mentorApi } from '@/lib/services/enrollment-api';
-import { extractApiErrorMessage } from '@/lib/utils/api-error';
-import { toast } from 'sonner';
 
 export interface MentorProfileData {
   title?: string;
@@ -59,40 +57,37 @@ interface UseMentorProfileReturn {
   activeMatches: MentorActiveMatch[];
   isLoading: boolean;
   error: string | null;
+  /** HTTP status when the load failed — lets the page tell 403 from 404. */
+  errorStatus: number | null;
   refetch: () => Promise<void>;
 }
 
+interface MentorWithMatches {
+  mentor: MentorDetail | null;
+  activeMatches: MentorActiveMatch[];
+}
+
+const EMPTY: MentorWithMatches = { mentor: null, activeMatches: [] };
+
 export function useMentorProfile(): UseMentorProfileReturn {
   const { id } = useParams<{ id: string }>();
-  const [mentor, setMentor] = useState<MentorDetail | null>(null);
-  const [activeMatches, setActiveMatches] = useState<MentorActiveMatch[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  const fetchMentor = useCallback(async () => {
-    if (!id) return;
-    try {
-      setIsLoading(true);
-      setError(null);
+  const { data, loading, error, errorStatus, refetch } = useApiQuery<MentorWithMatches>({
+    queryKey: qk.admin.mentorProfile(id ?? ''),
+    queryFn: async () => {
       const response = (await mentorApi.getById(id)) as {
         data?: { mentor?: MentorDetail; activeMatches?: MentorActiveMatch[] };
         mentor?: MentorDetail;
         activeMatches?: MentorActiveMatch[];
       };
-      setMentor(response?.data?.mentor ?? response?.mentor ?? null);
-      setActiveMatches(response?.data?.activeMatches ?? response?.activeMatches ?? []);
-    } catch (err: unknown) {
-      const msg = extractApiErrorMessage(err, 'Failed to load mentor profile');
-      setError(msg);
-      toast.error(msg);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [id]);
+      return {
+        mentor: response?.data?.mentor ?? response?.mentor ?? null,
+        activeMatches: response?.data?.activeMatches ?? response?.activeMatches ?? [],
+      };
+    },
+    enabled: !!id,
+    errorMessage: 'Failed to load mentor profile',
+  });
 
-  useEffect(() => {
-    fetchMentor();
-  }, [fetchMentor]);
-
-  return { mentor, activeMatches, isLoading, error, refetch: fetchMentor };
+  return { ...(data ?? EMPTY), isLoading: loading, error, errorStatus, refetch };
 }

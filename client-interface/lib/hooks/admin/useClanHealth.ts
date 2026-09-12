@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+'use client';
+
+import { qk, useApiQuery } from '@/lib/query';
 import { clanApi } from '@/lib/services/clan-api';
 
 export type ClanStatus = 'red' | 'amber' | 'green';
@@ -66,35 +68,24 @@ export interface UseClanHealthReturn {
   refetch: () => Promise<void>;
 }
 
+interface HealthData {
+  kpis: ClanHealthKpis | null;
+  programs: ProgramHealth[];
+  atRiskMentees: AtRiskMentee[];
+}
+
+const EMPTY: HealthData = { kpis: null, programs: [], atRiskMentees: [] };
+
 export function useClanHealth(): UseClanHealthReturn {
-  const [kpis, setKpis] = useState<ClanHealthKpis | null>(null);
-  const [programs, setPrograms] = useState<ProgramHealth[]>([]);
-  const [atRiskMentees, setAtRiskMentees] = useState<AtRiskMentee[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchHealth = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  const { data, loading, error, refetch } = useApiQuery<HealthData>({
+    queryKey: qk.admin.clanHealth,
+    queryFn: async () => {
       const res = await clanApi.health();
-      const data = res?.data ?? {};
-      setKpis(data.kpis ?? null);
-      setPrograms(data.programs ?? []);
-      setAtRiskMentees(data.atRiskMentees ?? []);
-    } catch {
-      setError('Failed to load clan health');
-      setKpis(null);
-      setPrograms([]);
-      setAtRiskMentees([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      const d = res?.data ?? {};
+      return { kpis: d.kpis ?? null, programs: d.programs ?? [], atRiskMentees: d.atRiskMentees ?? [] };
+    },
+    errorMessage: 'Failed to load clan health',
+  });
 
-  useEffect(() => {
-    fetchHealth();
-  }, [fetchHealth]);
-
-  return { kpis, programs, atRiskMentees, loading, error, refetch: fetchHealth };
+  return { ...(data ?? EMPTY), loading, error, refetch };
 }

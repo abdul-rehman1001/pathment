@@ -12,6 +12,8 @@ router.get('/me/memberships', authenticate, clanController.myMemberships);
 
 // Programs the current mentor runs (their clans + roster counts).
 router.get('/mentor/programs', authenticate, authorize(['mentor', 'admin']), clanController.mentorPrograms);
+// Must sit before '/:id' so 'mentor' is not swallowed as a clan id.
+router.get('/mentor/programs/:programId', authenticate, authorize(['mentor', 'admin']), clanController.mentorProgramDetail);
 
 // List clans (any authenticated user; filterable by program/status/search,
 // paginated when page/limit are supplied — limit is hard-capped at 100).
@@ -57,6 +59,15 @@ router.post(
 // Lead mentor: pull in unassigned mentees, or invite a new one straight into the clan.
 router.get('/:id/available', authenticate, requireAnyPermission([PERMISSIONS.CLAN_MANAGE_MEMBERS, PERMISSIONS.MENTEE_ADD], scope.clan('id')), clanController.availableMembers);
 router.post('/:id/invite', authenticate, requireAnyPermission([PERMISSIONS.CLAN_MANAGE_MEMBERS, PERMISSIONS.MENTEE_ADD], scope.clan('id')), clanController.inviteToClan);
+
+// The invites into this clan, and the two things left to do to one. Guarded on
+// the same pair as sending one: whoever may invite into a clan may see what
+// they invited. Listing invites otherwise lives behind invite.create, which a
+// lead mentor does not hold, so an invite went out and nothing could be learned
+// about it afterwards.
+router.get('/:id/invites', authenticate, requireAnyPermission([PERMISSIONS.CLAN_MANAGE_MEMBERS, PERMISSIONS.MENTEE_ADD], scope.clan('id')), clanController.listClanInvites);
+router.post('/:id/invites/:inviteId/resend', authenticate, requireAnyPermission([PERMISSIONS.CLAN_MANAGE_MEMBERS, PERMISSIONS.MENTEE_ADD], scope.clan('id')), clanController.resendClanInvite);
+router.post('/:id/invites/:inviteId/revoke', authenticate, requireAnyPermission([PERMISSIONS.CLAN_MANAGE_MEMBERS, PERMISSIONS.MENTEE_ADD], scope.clan('id')), clanController.revokeClanInvite);
 
 // ── Public clan joining link (admin access + lead link + join requests) ─────
 // Service layer enforces: admin-only for access; current Lead Mentor for link /

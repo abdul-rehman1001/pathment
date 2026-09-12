@@ -48,7 +48,8 @@ EXTENSION_HANDLED: 'extension_handled',
   REVIEW_SCHEDULED: 'review_scheduled',
   REVIEW_REMINDER: 'review_reminder',
   ADMIN_MEETING_INVITE: 'admin_meeting_invite',
-  ADMIN_MEETING_REMINDER: 'admin_meeting_reminder'
+  ADMIN_MEETING_REMINDER: 'admin_meeting_reminder',
+  CERTIFICATE_AWARDED: 'certificate_awarded'
 };
 
 // Which role's "hat" a notification concerns, so the bell + list can scope to the
@@ -177,17 +178,17 @@ const NOTIFICATION_MATRIX = {
     channels: { inApp: false, email: true, chat: false }
   },
   [NOTIFICATION_EVENTS.EXTENSION_REQUESTED]: {
-  type: 'task',
-  audience: 'mentor',
-  preferenceKey: 'extension_requested',
-  channels: { inApp: true, email: true, chat: false }
-},
-[NOTIFICATION_EVENTS.EXTENSION_HANDLED]: {
-  type: 'task',
-  audience: 'mentee',
-  preferenceKey: 'extension_handled',
-  channels: { inApp: true, email: true, chat: false }
-},
+    type: 'task',
+    audience: 'mentor',
+    preferenceKey: 'extension_requested',
+    channels: { inApp: true, email: true, chat: false }
+  },
+  [NOTIFICATION_EVENTS.EXTENSION_HANDLED]: {
+    type: 'task',
+    audience: 'mentee',
+    preferenceKey: 'extension_handled',
+    channels: { inApp: true, email: true, chat: false }
+  },
   [NOTIFICATION_EVENTS.MENTOR_NUDGE]: {
     type: 'system',
     audience: 'mentee',
@@ -228,6 +229,12 @@ const NOTIFICATION_MATRIX = {
     type: 'milestone',
     audience: 'any',
     preferenceKey: 'program_completed',
+    channels: { inApp: true, email: true, chat: false }
+  },
+  [NOTIFICATION_EVENTS.CERTIFICATE_AWARDED]: {
+    type: 'milestone',
+    audience: 'mentee',
+    preferenceKey: 'certificate_awarded',
     channels: { inApp: true, email: true, chat: false }
   },
   [NOTIFICATION_EVENTS.MENTOR_FEEDBACK_REQUESTED]: {
@@ -422,6 +429,7 @@ const EMAIL_PREFERENCE_CATEGORIES = [
   { group: 'Program', key: 'promotion_nominated', label: 'A mentee is nominated for promotion (admins)' },
   { group: 'Milestones', key: 'completion_ready_for_signoff', label: 'Completion is ready for sign-off' },
   { group: 'Milestones', key: 'program_completed', label: 'A program is completed' },
+  { group: 'Milestones', key: 'certificate_awarded', label: 'A certificate is awarded to me' },
   { group: 'Digests', key: 'weekly_progress_report', label: 'Weekly progress report' },
   { group: 'Program', key: 'mentee_returned', label: 'A paused mentee returns to my clan' },
   { group: 'Program', key: 'mentee_reengage', label: 'Reminders to come back when I\'m paused' },

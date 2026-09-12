@@ -35,7 +35,25 @@ function fmtInZone(date, tz) {
   catch { return new Intl.DateTimeFormat('en-US', { ...opts, timeZone: 'UTC' }).format(date); }
 }
 
-const VALID_TZ = (tz) => { try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return true; } catch { return false; } };
+/**
+ * A real IANA zone, and one that was actually given.
+ *
+ * The undefined check is the point. `new Intl.DateTimeFormat('en-US', {
+ * timeZone: undefined })` does not throw, it quietly uses the server's own
+ * zone, so a request with no timezone passed this and then died in the column
+ * as a bare "Validation failed". That is what a mentor saw as "Could not set
+ * that rhythm. Try again." for every attempt: a message that named neither the
+ * field nor the fix.
+ */
+const VALID_TZ = (tz) => {
+  if (typeof tz !== 'string' || !tz.trim()) return false;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 class ReviewScheduleService {
   async _assertMentorsClan(mentorId, clanId) {
@@ -49,7 +67,11 @@ class ReviewScheduleService {
     await this._assertMentorsClan(mentorId, clanId);
     if (!(dayOfWeek >= 0 && dayOfWeek <= 6)) throw new ValidationError('dayOfWeek must be 0–6');
     if (!/^\d{2}:\d{2}$/.test(String(timeLocal || ''))) throw new ValidationError('timeLocal must be HH:mm');
-    if (!VALID_TZ(timezone)) throw new ValidationError('Invalid timezone');
+    if (!VALID_TZ(timezone)) {
+      throw new ValidationError(
+        'A timezone is required, and must be one like Asia/Karachi. The time you set is a wall clock, so it means nothing without the clock it was read from.'
+      );
+    }
     if (![1, 2].includes(Number(intervalWeeks))) throw new ValidationError('intervalWeeks must be 1 or 2');
     if (!startsOn) throw new ValidationError('startsOn is required');
 
@@ -269,42 +291,6 @@ class ReviewScheduleService {
     await this._remind(now, 'reminded24hAt', '24h', 23, 25);
     // 3) 1h reminders
     await this._remind(now, 'reminded1hAt', '1h', 0.5, 1.5);
-    // 4) "it's live — join now" once the scheduled time has arrived and nobody
-    //    has opened it yet (backstop; on-page users already get it in real time
-    //    from the mentee poll / the host opening the review page).
-    await this._notifyStarted(now);
-  }
-
-  async _notifyStarted(now) {
-    const grace = new Date(now.getTime() - 3 * 3600000); // catch up to 3h late
-    const due = await models.CohortReviewSession.findAll({
-      where: {
-        reviewScheduleId: { [Op.ne]: null },
-        scheduledAt: { [Op.lte]: now, [Op.gte]: grace },
-      },
-    });
-    for (const session of due) {
-      // Already opened THIS occurrence? (meeting_started_at stamped to scheduled_at).
-      // Guards re-fire AND respects a deliberate end of the scheduled call itself.
-      const openedForSchedule = session.meetingStartedAt && session.scheduledAt
-        && new Date(session.meetingStartedAt).getTime() === new Date(session.scheduledAt).getTime();
-      if (openedForSchedule) continue;
-      const schedule = await models.ReviewSchedule.findByPk(session.reviewScheduleId);
-      if (!schedule || !schedule.active) continue;
-      // (Re)open — clears any earlier ad-hoc call on the shared day's session.
-      await session.update({ meetingStartedAt: session.scheduledAt, meetingEndedAt: null, status: 'in_progress' });
-      // Real-time banner for mentees who are on a page right now.
-      // Mentees: socket banner + in-app bell (handled inside _notifyMenteesStarted).
-      try { await require('./reviewMeetingService')._notifyMenteesStarted(session); } catch { /* non-fatal */ }
-      // Host-only bell (mentees already notified above), so the mentor knows their
-      // scheduled review auto-started even if they're not on the page.
-      const clan = await models.Clan.findByPk(schedule.clanId, { attributes: ['name'], raw: true });
-      const title = schedule.title || `${clan?.name || 'Clan'} cohort review`;
-      await this._dispatchInApp(schedule, [], {
-        eventKey: NOTIFICATION_EVENTS.REVIEW_REMINDER,
-        title: 'Review is live', message: `"${title}" is starting now — join.`, mentorLabel: 'Join review',
-      }).catch((e) => console.error('[reviewSchedule] host start notify failed:', e.message));
-    }
   }
 
   async _remind(now, flagField, kind, lowH, highH) {

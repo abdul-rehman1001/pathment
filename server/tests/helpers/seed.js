@@ -54,6 +54,10 @@ async function cleanDb() {
     'gamification_points',
     'notifications',
     'user_badges',
+    // Stored AI keys. Nothing else seeds these, and leaving them behind meant a
+    // key added by one test was still resolvable in the next, so a test
+    // asserting "no key configured" passed or failed on run order.
+    'ai_connections',
     'users',
   ];
   for (const table of tableOrder) {
@@ -63,6 +67,14 @@ async function cleanDb() {
       // Table may not exist in a partial schema; ignore
     }
   }
+  // The AI feature routing lives in system_settings, which is NOT truncated:
+  // other suites rely on rows in there. Only the routing keys go.
+  try {
+    await sequelize.query(`DELETE FROM "system_settings" WHERE "setting_key" LIKE 'ai.routing%'`);
+  } catch (_) {
+    // Same as above: a partial schema is not a failure here.
+  }
+
   await sequelize.query('SET session_replication_role = DEFAULT');
 }
 

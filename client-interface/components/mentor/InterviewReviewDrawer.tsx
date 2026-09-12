@@ -14,7 +14,6 @@ import { useConfirm } from '@/lib/context/ConfirmContext';
 import { fmtClock } from '@/lib/utils/interviewMedia';
 
 const FLAG_LABEL: Record<string, string> = {
-  // From a browser
   focus_loss: 'Left the tab',
   window_blur: 'Window lost focus',
   fullscreen_exit: 'Exited fullscreen',
@@ -332,7 +331,7 @@ export function InterviewReviewDrawer({
                       )}
                       <input type="number" min={0} max={it.points} value={sc.points}
                         onChange={(e) => saveScore(it, { points: e.target.value })}
-                        className="shrink-0 w-14 border border-slate-300 rounded-lg px-2 py-1 text-sm tabular-nums text-right focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                        className="shrink-0 w-14 bg-transparent border border-slate-300 rounded-lg px-2 py-1 text-sm tabular-nums text-right focus:outline-none focus:ring-2 focus:ring-brand-500" />
                       <span className="shrink-0 text-xs text-slate-400 w-7">/{it.points}</span>
                     </div>
                   );
@@ -398,7 +397,7 @@ export function InterviewReviewDrawer({
 
           {/* AI grading hint — where the key lives + what "AI grade" does. */}
           {canReview && (
-            <div className="rounded-xl border border-brand-100 bg-brand-50/50 p-3 text-xs text-slate-600 flex items-start gap-2">
+            <div className="rounded-xl border border-brand-100 dark:border-brand-900 bg-brand-50/50 dark:bg-brand-950/50 p-3 text-xs text-slate-600 flex items-start gap-2">
               <Sparkles className="w-4 h-4 text-brand-500 shrink-0 mt-0.5" />
               <span>
                 Hit <span className="font-medium text-slate-800">AI grade</span> on any question to score it against your rubric. Voice answers are re-transcribed with Whisper — more accurate than the live transcript when pronunciation trips it up. It runs on your own AI key: add or manage it in{' '}
@@ -476,10 +475,10 @@ export function InterviewReviewDrawer({
                     browser's live STT, shown once AI grading has run. */}
                 {a?.aiDraft?.transcript && (
                   <details className="mt-2" open>
-                    <summary className="text-xs font-medium text-emerald-700 cursor-pointer inline-flex items-center gap-1">
+                    <summary className="text-xs font-medium text-emerald-700 dark:text-emerald-500 cursor-pointer inline-flex items-center gap-1">
                       <Sparkles className="w-3 h-3" /> AI transcript (from audio)
                     </summary>
-                    <div className="text-sm text-slate-700 bg-emerald-50/60 border border-emerald-100 rounded-lg p-3 mt-1.5 whitespace-pre-wrap">{a.aiDraft.transcript}</div>
+                    <div className="text-sm text-slate-700 bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/50 rounded-lg p-3 mt-1.5 whitespace-pre-wrap">{a.aiDraft.transcript}</div>
                   </details>
                 )}
 
@@ -508,8 +507,8 @@ export function InterviewReviewDrawer({
                 {/* Reference answer (mentor only) */}
                 {it.referenceAnswer && (
                   <details className="mt-3">
-                    <summary className="text-xs font-medium text-brand-600 cursor-pointer">Reference answer</summary>
-                    <div className="text-sm text-slate-600 bg-amber-50/50 rounded-lg p-3 mt-1.5 whitespace-pre-wrap">{it.referenceAnswer}</div>
+                    <summary className="text-xs font-medium text-brand-600 dark:text-brand-400 cursor-pointer">Reference answer</summary>
+                    <div className="text-sm text-slate-600 bg-amber-50/50 dark:bg-amber-950/30 rounded-lg p-3 mt-1.5 whitespace-pre-wrap">{it.referenceAnswer}</div>
                   </details>
                 )}
 
@@ -521,21 +520,21 @@ export function InterviewReviewDrawer({
                         Score
                         <input type="number" min={0} max={it.points} value={sc.points}
                           onChange={(e) => saveScore(it, { points: e.target.value })}
-                          className="w-16 border border-slate-300 rounded-lg px-2 py-1 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                          className="w-16 bg-transparent border border-slate-300 rounded-lg px-2 py-1 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-brand-500" />
                         <span className="text-slate-400">/ {it.points}</span>
                       </label>
                       <button onClick={() => runAiDraft(it)} disabled={aiBusy === it.questionId}
                         title={it.kind === 'voice'
                           ? 'Transcribes the audio with Whisper and scores it against the rubric — uses your AI key (Settings → AI Connections)'
                           : 'Scores this answer against the rubric — uses your AI key (Settings → AI Connections)'}
-                        className="ml-auto inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border border-brand-200 text-brand-700 hover:bg-brand-50 disabled:opacity-50">
+                        className="ml-auto inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-950/50 disabled:opacity-50">
                         {aiBusy === it.questionId ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
                         {it.kind === 'voice' && a?.audioUrl ? 'AI grade (from audio)' : 'AI draft'}
                       </button>
                     </div>
                     <input value={sc.note} onChange={(e) => saveScore(it, { note: e.target.value })}
                       placeholder="Note on this answer (optional)"
-                      className="mt-2 w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                      className="mt-2 w-full bg-transparent border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
                   </div>
                 ) : (
                   (a?.pointsAwarded != null || a?.scoreNote) && (
@@ -557,7 +556,7 @@ export function InterviewReviewDrawer({
               </label>
               <textarea value={overallNote} onChange={(e) => setOverallNote(e.target.value)} rows={3}
                 placeholder="Summary the mentee will see when you finalize…"
-                className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                className="w-full bg-transparent border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
             </div>
           )}
 

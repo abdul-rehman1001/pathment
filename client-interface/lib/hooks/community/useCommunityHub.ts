@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
 import { communityApi, type ScopeType, type PostType, type ReactionType, type CreatePostInput } from '@/lib/services/community-api';
+import { qk, useApiQuery, STALE } from '@/lib/query';
 import { useClan, ALL_CLANS } from '@/lib/context/ClanContext';
 
 export interface CommunitySpace {
@@ -54,101 +55,107 @@ export interface CommunityMember { id: string; name: string; avatar: string; ava
 export interface LeaderboardEntry { rank: number; userId: string; name: string; avatar?: string; avatarUrl?: string | null; points: number; tier: string; mine?: boolean }
 export interface LeaderboardSelf { rank: number | null; userId: string; name: string; points: number; tier: string }
 
-export function useCommunityHub() {
-  const [spaces, setSpaces] = useState<CommunitySpace[]>([]);
-  const [activeKey, setActiveKey] = useState<string | null>(null);
-  const [feed, setFeed] = useState<CommunityPost[]>([]);
-  const [shoutouts, setShoutouts] = useState<CommunityPost[]>([]);
-  const [stats, setStats] = useState<CommunityStats | null>(null);
-  const [people, setPeople] = useState<CommunityPerson[]>([]);
-  const [members, setMembers] = useState<CommunityMember[]>([]);
-  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
-  const [myRank, setMyRank] = useState<LeaderboardSelf | null>(null);
-  const [lbPeriod, setLbPeriod] = useState<'week' | 'all'>('all');
+interface FeedData {
+  feed: CommunityPost[];
+  shoutouts: CommunityPost[];
+  stats: CommunityStats | null;
+}
+interface LeaderboardData {
+  leaderboard: LeaderboardEntry[];
+  me: LeaderboardSelf | null;
+}
 
+const NO_FEED: FeedData = { feed: [], shoutouts: [], stats: null };
+const NO_LEADERBOARD: LeaderboardData = { leaderboard: [], me: null };
+const NO_SPACES: CommunitySpace[] = [];
+const NO_PEOPLE: CommunityPerson[] = [];
+const NO_MEMBERS: CommunityMember[] = [];
+
+export function useCommunityHub() {
+  const [spaceOverride, setActiveKey] = useState<string | null>(null);
+  const [lbPeriod, setLbPeriod] = useState<'week' | 'all'>('all');
   const [typeFilter, setTypeFilter] = useState<PostType | null>(null);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [query, setQuery] = useState('');
 
-  const [loadingSpaces, setLoadingSpaces] = useState(true);
-  const [loadingFeed, setLoadingFeed] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const spacesQuery = useApiQuery<CommunitySpace[]>({
+    queryKey: qk.community.spaces,
+    queryFn: async () => (await communityApi.spaces())?.data?.spaces ?? [],
+    staleTime: STALE.long,
+    errorMessage: 'Failed to load your community spaces',
+  });
+
+  const spaces = spacesQuery.data ?? NO_SPACES;
+  const loadingSpaces = spacesQuery.loading;
+
+  // Follow the global clan selector when it points at a specific clan; an
+  // explicit pick in this page wins. Derived, so no effect can fall out of step.
+  const { activeClanId } = useClan();
+  const activeKey = useMemo(() => {
+    if (spaceOverride && spaces.some((s) => s.key === spaceOverride)) return spaceOverride;
+    const clanKey = `clan:${activeClanId}`;
+    if (activeClanId !== ALL_CLANS && spaces.some((s) => s.key === clanKey)) return clanKey;
+    // Clan-first, else the first space we have.
+    return spaces.find((s) => s.type === 'clan')?.key || spaces[0]?.key || null;
+  }, [spaceOverride, spaces, activeClanId]);
 
   const active = useMemo(() => spaces.find((s) => s.key === activeKey) || null, [spaces, activeKey]);
+  const scope = { type: active?.type ?? '', id: active?.id ?? '' };
 
-  // Load spaces once; default to the first clan space (clan-first), else the first.
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        setLoadingSpaces(true);
-        const res = await communityApi.spaces();
-        const list: CommunitySpace[] = res?.data?.spaces ?? [];
-        if (!alive) return;
-        setSpaces(list);
-        const firstClan = list.find((s) => s.type === 'clan');
-        setActiveKey((prev) => prev ?? (firstClan?.key || list[0]?.key || null));
-      } catch {
-        if (alive) setError('Failed to load your community spaces');
-      } finally {
-        if (alive) setLoadingSpaces(false);
-      }
-    })();
-    return () => { alive = false; };
-  }, []);
-
-  // Follow the global clan selector: when it points at a specific clan, jump to
-  // that clan's space here (the user can still pick another space manually after).
-  const { activeClanId } = useClan();
-  useEffect(() => {
-    if (activeClanId === ALL_CLANS) return;
-    const key = `clan:${activeClanId}`;
-    if (spaces.some((s) => s.key === key)) setActiveKey(key);
-  }, [activeClanId, spaces]);
-
-  const fetchFeed = useCallback(async () => {
-    if (!active) return;
-    try {
-      setLoadingFeed(true);
-      setError(null);
+  const feedQuery = useApiQuery<FeedData>({
+    queryKey: qk.community.feed({ ...scope, type: typeFilter, tag: tagFilter, q: query || null }),
+    queryFn: async () => {
       const res = await communityApi.feed({
-        scopeType: active.type,
-        scopeId: active.id,
+        scopeType: active!.type,
+        scopeId: active!.id,
         type: typeFilter,
         tag: tagFilter,
         q: query || null,
       });
-      setFeed(res?.data?.feed ?? []);
-      setShoutouts(res?.data?.shoutouts ?? []);
-      setStats(res?.data?.stats ?? null);
-    } catch {
-      setError('Failed to load the feed');
-      setFeed([]);
-    } finally {
-      setLoadingFeed(false);
-    }
-  }, [active, typeFilter, tagFilter, query]);
+      return {
+        feed: res?.data?.feed ?? [],
+        shoutouts: res?.data?.shoutouts ?? [],
+        stats: res?.data?.stats ?? null,
+      };
+    },
+    enabled: !!active,
+    staleTime: STALE.short,
+    errorMessage: 'Failed to load the feed',
+  });
 
-  useEffect(() => { fetchFeed(); }, [fetchFeed]);
+  const peopleQuery = useApiQuery<CommunityPerson[]>({
+    queryKey: qk.community.people(scope.type, scope.id),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    queryFn: async () => ((await communityApi.people(active!.type, active!.id)) as any)?.data?.people ?? [],
+    enabled: !!active,
+  });
 
-  // People + members refresh when the space changes.
-  useEffect(() => {
-    if (!active) return;
-    communityApi.people(active.type, active.id).then((r: any) => setPeople(r?.data?.people ?? [])).catch(() => setPeople([]));
-    communityApi.members(active.type, active.id).then((r: any) => setMembers(r?.data?.members ?? [])).catch(() => setMembers([]));
-  }, [active]);
+  const membersQuery = useApiQuery<CommunityMember[]>({
+    queryKey: qk.community.members(scope.type, scope.id),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    queryFn: async () => ((await communityApi.members(active!.type, active!.id)) as any)?.data?.members ?? [],
+    enabled: !!active,
+  });
 
-  // Leaderboard refresh when the space, period, or feed (new activity) changes.
-  const fetchLeaderboard = useCallback(async () => {
-    if (!active) return;
-    try {
-      const r: any = await communityApi.leaderboard(active.type, active.id, lbPeriod);
-      setLeaderboard(r?.data?.leaderboard ?? []);
-      setMyRank(r?.data?.me ?? null);
-    } catch { setLeaderboard([]); setMyRank(null); }
-  }, [active, lbPeriod]);
+  const leaderboardQuery = useApiQuery<LeaderboardData>({
+    queryKey: qk.community.leaderboard(scope.type, scope.id, lbPeriod),
+    queryFn: async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const r: any = await communityApi.leaderboard(active!.type, active!.id, lbPeriod);
+      return { leaderboard: r?.data?.leaderboard ?? [], me: r?.data?.me ?? null };
+    },
+    enabled: !!active,
+    staleTime: STALE.short,
+  });
 
-  useEffect(() => { fetchLeaderboard(); }, [fetchLeaderboard]);
+  const { feed, shoutouts, stats } = feedQuery.data ?? NO_FEED;
+  const { leaderboard, me: myRank } = leaderboardQuery.data ?? NO_LEADERBOARD;
+  const people = peopleQuery.data ?? NO_PEOPLE;
+  const members = membersQuery.data ?? NO_MEMBERS;
+  const loadingFeed = feedQuery.loading;
+  const error = spacesQuery.error ?? feedQuery.error;
+  const fetchFeed = feedQuery.refetch;
+  const fetchLeaderboard = leaderboardQuery.refetch;
 
   const createPost = useCallback(async (input: Omit<CreatePostInput, 'scopeType' | 'scopeId'>) => {
     if (!active) return false;

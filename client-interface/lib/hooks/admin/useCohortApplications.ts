@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+'use client';
+
+import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
+import { qk, useApiQuery } from '@/lib/query';
 import { cohortApi, applicationApi } from '@/lib/services/intake-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import type { Cohort } from './useCohorts';
@@ -56,44 +59,41 @@ export interface ImportReport {
   capReached?: boolean;
 }
 
+interface ApplicationsData { applications: Application[]; passThreshold: number | null }
+
+const NO_APPLICATIONS: ApplicationsData = { applications: [], passThreshold: null };
+
 export function useCohortApplications(cohortId: string) {
-  const [cohort, setCohort] = useState<Cohort | null>(null);
-  const [applications, setApplications] = useState<Application[]>([]);
-  const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<ApplicationStatus | 'all'>('all');
-  const [passThreshold, setPassThreshold] = useState<number | null>(null);
 
-  const fetchCohort = useCallback(async () => {
-    try {
-      const res = await cohortApi.get(cohortId);
-      setCohort(res?.data?.cohort ?? null);
-    } catch {
-      setCohort(null);
-    }
-  }, [cohortId]);
+  const cohortQuery = useApiQuery<Cohort | null>({
+    queryKey: qk.admin.cohort(cohortId),
+    queryFn: async () => (await cohortApi.get(cohortId))?.data?.cohort ?? null,
+    enabled: !!cohortId,
+  });
 
-  const fetchApplications = useCallback(async () => {
-    try {
-      setLoading(true);
+  const appsQuery = useApiQuery<ApplicationsData>({
+    queryKey: qk.admin.applications(cohortId),
+    queryFn: async () => {
       // Fetch the WHOLE cohort once; the page filters client-side so every tab
       // can show a real count and switching filters is instant (no round-trip).
       const res = await applicationApi.list(cohortId);
-      setApplications(res?.data?.applications ?? []);
-      setPassThreshold(res?.data?.passThreshold ?? null);
-    } catch {
-      toast.error('Failed to load applications');
-      setApplications([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [cohortId]);
+      return {
+        applications: res?.data?.applications ?? [],
+        passThreshold: res?.data?.passThreshold ?? null,
+      };
+    },
+    enabled: !!cohortId,
+    errorMessage: 'Failed to load applications',
+  });
 
-  useEffect(() => { fetchCohort(); }, [fetchCohort]);
-  useEffect(() => { fetchApplications(); }, [fetchApplications]);
+  const { applications, passThreshold } = appsQuery.data ?? NO_APPLICATIONS;
+  const cohort = cohortQuery.data ?? null;
+  const loading = appsQuery.loading;
 
   const refetch = useCallback(async () => {
-    await Promise.all([fetchCohort(), fetchApplications()]);
-  }, [fetchCohort, fetchApplications]);
+    await Promise.all([cohortQuery.refetch(), appsQuery.refetch()]);
+  }, [cohortQuery, appsQuery]);
 
   const importRows = useCallback(async (rows: Record<string, string>[], allowExceed = false): Promise<ImportReport | null> => {
     try {

@@ -145,6 +145,7 @@ async function cleanupDemo() {
         paranoid: false,
       })).map((t) => t.roadmapTaskId).filter(Boolean)
     )];
+    if (models.TaskProgressEntry) await models.TaskProgressEntry.destroy({ where: { menteeId: { [Op.in]: userIds } }, force: true });
     if (models.RoadmapProgress) await models.RoadmapProgress.destroy(byMentee);
     if (models.PromotionCandidate) await models.PromotionCandidate.destroy({ where: { [Op.or]: [{ menteeId: { [Op.in]: userIds } }, { nominatedBy: { [Op.in]: userIds } }] }, force: true });
     if (models.ClanMemberPermission) await models.ClanMemberPermission.destroy({ where: { userId: { [Op.in]: userIds } }, force: true });
@@ -264,15 +265,23 @@ async function cleanupDemo() {
       await models.RoadmapTask.destroy({ where: { roadmapId: { [Op.in]: rmIds } }, force: true });
     }
     await models.Roadmap.destroy({ where: { programId: inPrograms }, force: true });
-    if (models.ClanJoinRequest) {
-      const demoClans = await models.Clan.findAll({
-        where: { programId: inPrograms },
-        attributes: ["id"],
-        paranoid: false,
-      });
-      const clanIds = demoClans.map((c) => c.id);
+    // Anything that references a clan has to go before the clans do. Recurring
+    // review schedules were added after this cleanup was written, so a re-seed
+    // died on their foreign key.
+    {
+      const clanRows = await models.Clan.findAll({ where: { programId: inPrograms }, attributes: ["id"], paranoid: false });
+      const clanIds = clanRows.map((c) => c.id);
       if (clanIds.length) {
-        await models.ClanJoinRequest.destroy({ where: { clanId: { [Op.in]: clanIds } }, force: true });
+        const inClans = { [Op.in]: clanIds };
+        if (models.ClanJoinRequest) await models.ClanJoinRequest.destroy({ where: { clanId: inClans }, force: true });
+        if (models.ReviewSchedule) await models.ReviewSchedule.destroy({ where: { clanId: inClans }, force: true });
+        if (models.AdminMeeting) await models.AdminMeeting.destroy({ where: { clanId: inClans }, force: true });
+        if (models.CrossClanAssignment) {
+          await models.CrossClanAssignment.destroy({ where: { [Op.or]: [{ toClanId: inClans }, { fromClanId: inClans }] }, force: true });
+        }
+        if (models.ClanChangeRequest) {
+          await models.ClanChangeRequest.destroy({ where: { [Op.or]: [{ toClanId: inClans }, { fromClanId: inClans }] }, force: true });
+        }
       }
     }
     await models.Clan.destroy({ where: { programId: inPrograms }, force: true });
@@ -775,6 +784,20 @@ async function seed() {
           status: t.status === "completed" ? "approved" : "pending",
           submittedAt: submittedAt || daysAgo(1),
         });
+        // An attachment on the work still awaiting review, so a mentor opening
+        // the review sheet has something to open. Every submission in this seed
+        // carried a link and no files at all, which made a review screen that
+        // shows attachments look like it shows nothing.
+        if (t.status === "submitted" && models.TaskSubmissionFile) {
+          await models.TaskSubmissionFile.create({
+            submissionId: submission.id,
+            fileName: "retry-path-before-and-after.png",
+            fileUrl: "https://res.cloudinary.com/demo/image/upload/sample.png",
+            fileType: "image/png",
+            fileSizeBytes: 374000,
+          });
+        }
+
         if (t.status === "completed") {
           await models.TaskFeedback.create({
             assignedTaskId: at.id,
@@ -788,6 +811,83 @@ async function seed() {
           });
         }
       }
+    }
+
+    // ── The two review states nothing else in this seed produces ────────────
+    //
+    // A mentor's review screen has four tabs and only two of them had anything
+    // to show: work awaiting review, and work already graded. Sent back and
+    // Extensions were empty on every demo account, which reads as two broken
+    // tabs rather than as two empty ones.
+    //
+    // One of each, on the first mentee of each clan, so both tabs demonstrate
+    // themselves without burying the queue that matters.
+    if (s.local === 0 && local.tasks.length >= 2) {
+      const sentBackTask = local.tasks[local.tasks.length - 1];
+      const at = await models.AssignedTask.create({
+        roadmapTaskId: sentBackTask.id,
+        menteeId: m.id,
+        mentorId: mentor.id,
+        enrollmentId: enrollment.id,
+        status: "revision_needed",
+        assignedAt: daysAgo(9),
+        dueDate: daysAhead(3),
+        startedAt: daysAgo(7),
+        submittedAt: daysAgo(2),
+        currentSubmissionVersion: 1,
+        revisionCount: 1,
+        pointsAwarded: 0,
+      });
+      const sub = await models.TaskSubmission.create({
+        assignedTaskId: at.id,
+        version: 1,
+        submissionText: "First pass is up. I know the error handling is thin.",
+        submissionUrls: ["https://github.com/demo/pathment-fellowship"],
+        status: "revision_needed",
+        submittedAt: daysAgo(2),
+        reviewedAt: daysAgo(1),
+      });
+      await models.TaskFeedback.create({
+        assignedTaskId: at.id,
+        submissionId: sub.id,
+        mentorId: mentor.id,
+        feedbackText: "The shape is right and the naming is clear.",
+        revisionNotes: "1. Handle the offline case\n2. Rename the hook so it says what it returns",
+        rating: 3,
+        isApproved: false,
+        decision: "changes",
+        feedbackType: "general",
+      });
+    }
+
+    if (s.local === 1 && local.tasks.length >= 3) {
+      // An extension request does NOT move the task to submitted, because the
+      // mentee has not done the work. It is a pending submission carrying the
+      // ask, which is what puts it on the mentor's Extensions tab.
+      const askTask = local.tasks[local.tasks.length - 2];
+      const at = await models.AssignedTask.create({
+        roadmapTaskId: askTask.id,
+        menteeId: m.id,
+        mentorId: mentor.id,
+        enrollmentId: enrollment.id,
+        status: "in_progress",
+        assignedAt: daysAgo(11),
+        dueDate: daysAhead(1),
+        startedAt: daysAgo(6),
+        currentSubmissionVersion: 0,
+        pointsAwarded: 0,
+      });
+      await models.TaskSubmission.create({
+        assignedTaskId: at.id,
+        version: 1,
+        submissionText: "",
+        status: "pending",
+        extensionRequested: true,
+        extensionStatus: "pending",
+        extensionReason: "My shifts moved and I lose the two evenings I had set aside.",
+        extensionDays: 3,
+        submittedAt: daysAgo(1),
+      });
     }
 
     // Mentee's position in the linear roadmap (drives the mentee progress view +
@@ -807,6 +907,54 @@ async function seed() {
   console.log(`✅ ${menteeSpecs.length} enrollments, assigned tasks, submissions & feedback created across a ${taskDefs.length}-step roadmap\n`);
 
   // ── Blockers + accepted delays (drive watch/fighting + fairness credit) ───────
+  // ── Day-by-day progress on in-flight tasks ──────────────────────────────────
+  // Deliberately UNEVEN: some mentees log every day, some log twice and go quiet,
+  // one logs nothing at all. The gaps are the whole point of the feature, so the
+  // demo has to contain some.
+  if (models.TaskProgressEntry) {
+    console.log("📝 Adding day-by-day task progress…");
+    const PROGRESS_NOTES = [
+      "Read through the docs and sketched the approach. No code yet.",
+      "Got the basic version working. Tests still failing on edge cases.",
+      "Stuck on this one honestly. Tried three approaches, none of them fit.",
+      "Pairing with Leo helped. Fixed the thing I misunderstood yesterday.",
+      "Refactored it properly now that I know what it should look like.",
+      "Almost done. Just cleaning up and writing the README.",
+      "Spent most of today reading other people's implementations for ideas.",
+      "Small progress. Work was busy so only got an hour in.",
+    ];
+    const keyOf = (d) => d.toISOString().split("T")[0];
+    let progressRows = 0;
+
+    for (const s of menteeSpecs) {
+      const m = mentees[s.local].user;
+      const live = await models.AssignedTask.findAll({
+        where: { menteeId: m.id, status: { [Op.in]: ["in_progress", "submitted"] } },
+        attributes: ["id"], limit: 2,
+      });
+      // How diligently this archetype logs. "new" logs nothing, which is exactly
+      // what a mentor should be able to see.
+      const density = { star: 4, on_track: 3, review: 3, average: 2, fighting: 2, watch: 1, disengaged: 1, new: 0 }[s.archetype] ?? 2;
+      if (!density) continue;
+
+      for (const t of live) {
+        for (let d = density; d >= 1; d--) {
+          // Skip a day here and there so the timeline has real holes in it.
+          if (density > 2 && d === 2) continue;
+          const dateKey = keyOf(daysAgo(d));
+          const note = PROGRESS_NOTES[(menteeSpecs.indexOf(s) + d) % PROGRESS_NOTES.length];
+          try {
+            await models.TaskProgressEntry.create({
+              assignedTaskId: t.id, menteeId: m.id, dateKey, note,
+            });
+            progressRows += 1;
+          } catch { /* unique (task, day) — fine, skip */ }
+        }
+      }
+    }
+    console.log(`✅ ${progressRows} task progress entries across in-flight work (with gaps, on purpose)\n`);
+  }
+
   console.log("🚧 Adding blockers, delays, notes & schedules…");
   const noor = mentees["mentee.noor"].user;
   const ivan = mentees["mentee.ivan"].user;
@@ -1182,18 +1330,43 @@ async function seed() {
       readAt: o.read ? daysAgo(Math.max(0, (o.ago ?? 1) - 1)) : null,
       sentAt: daysAgo(o.ago ?? 1), createdAt: daysAgo(o.ago ?? 1), updatedAt: daysAgo(o.ago ?? 1),
     });
+    /**
+     * A notification points at the thing it is about, not at the list it is in.
+     *
+     * Every one of these named a screen: "/mentee/tasks", "/mentor/mentees",
+     * "/mentee/dashboard". So tapping "Feedback received" opened the plan, and
+     * tapping "Your mentor checked in" opened the home screen, and a tester
+     * reasonably read the whole list as taking them nowhere. The ids are all in
+     * scope here; nothing was using them.
+     */
+    const firstTaskOf = async (localMentee) => {
+      const user = byLocal(localMentee);
+      if (!user) return null;
+      const task = await models.AssignedTask.findOne({
+        where: { menteeId: user.id },
+        order: [["createdAt", "DESC"]],
+      });
+      return task ? task.id : null;
+    };
+
+    const mayaTask = await firstTaskOf("mentee.maya");
+    const noorTask = await firstTaskOf("mentee.noor");
+    const priyaTask = await firstTaskOf("mentee.priya");
+    const mayaId = byLocal("mentee.maya")?.id ?? null;
+    const noorId = byLocal("mentee.noor")?.id ?? null;
+
     // Mentors
     await notify(omar.id, "task", "Priya submitted 2 tasks for review", "Priya Sharma has work waiting on your review.", { actionUrl: "/mentor/approvals", actionLabel: "Review", ago: 1 });
-    await notify(omar.id, "system", "Noor logged a blocker", "“Stuck on JWT refresh-token flow” — Noor Hassan.", { actionUrl: "/mentor/mentees", ago: 1 });
+    await notify(omar.id, "system", "Noor logged a blocker", "“Stuck on JWT refresh-token flow” — Noor Hassan.", { actionUrl: noorId ? `/mentor/mentees/${noorId}` : "/mentor/mentees", ago: 1 });
     await notify(aisha.id, "task", "Maya submitted a task", "Maya Patel submitted “React components & state”.", { actionUrl: "/mentor/approvals", actionLabel: "Review", ago: 2, read: true });
-    await notify(aisha.id, "milestone", "Maya is ready for more", "Maya is well ahead of pace — consider a stretch goal.", { actionUrl: "/mentor/mentees", ago: 3, read: true });
+    await notify(aisha.id, "milestone", "Maya is ready for more", "Maya is well ahead of pace — consider a stretch goal.", { actionUrl: mayaId ? `/mentor/mentees/${mayaId}` : "/mentor/mentees", ago: 3, read: true });
     // Admin
     await notify(admin.id, "milestone", "Maya nominated for co-mentor", "Aisha nominated Maya Patel. Awaiting your approval.", { actionUrl: "/admin/promotions", actionLabel: "Open", ago: 2 });
     // Mentees
-    await notify(byLocal("mentee.maya").id, "feedback", "Your task was approved 🎉", "Aisha approved “React components & state”. Nice work!", { actionUrl: "/mentee/tasks", actionLabel: "View", ago: 2, read: true });
-    await notify(byLocal("mentee.noor").id, "task", "New task assigned", "Omar assigned “REST APIs with Node & Express”.", { actionUrl: "/mentee/tasks", actionLabel: "Start", ago: 1 });
+    await notify(byLocal("mentee.maya").id, "feedback", "Your task was approved 🎉", "Aisha approved “React components & state”. Nice work!", { actionUrl: mayaTask ? `/mentee/tasks/${mayaTask}` : "/mentee/tasks", actionLabel: "View", ago: 2, read: true });
+    await notify(byLocal("mentee.noor").id, "task", "New task assigned", "Omar assigned “REST APIs with Node & Express”.", { actionUrl: noorTask ? `/mentee/tasks/${noorTask}` : "/mentee/tasks", actionLabel: "Start", ago: 1 });
     await notify(byLocal("mentee.sara").id, "system", "Your mentor checked in", "Aisha sent you a nudge — jump back in when you can.", { actionUrl: "/mentee/dashboard", ago: 1 });
-    await notify(byLocal("mentee.priya").id, "feedback", "Feedback received", "Omar left feedback on your submission.", { actionUrl: "/mentee/tasks", ago: 1 });
+    await notify(byLocal("mentee.priya").id, "feedback", "Feedback received", "Omar left feedback on your submission.", { actionUrl: priyaTask ? `/mentee/tasks/${priyaTask}` : "/mentee/tasks", ago: 1 });
     console.log("✅ Notifications created (mentors, admin & mentees)\n");
   }
 

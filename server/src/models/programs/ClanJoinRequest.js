@@ -64,7 +64,7 @@ module.exports = (sequelize, DataTypes) => {
       { fields: ['clan_id', 'status'] },
       { fields: ['user_id', 'status'] },
       { fields: ['status'] }
-      // Partial unique (one pending per user+clan) is created in migration 096
+      // Partial unique (one pending per user+clan) is created in migration 098
       // via raw SQL — Sequelize indexes cannot express WHERE status = 'pending'.
     ]
   });

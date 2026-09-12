@@ -26,4 +26,35 @@ function pointsForDifficulty(difficulty) {
   return TASK_POINTS_BY_DIFFICULTY[key] ?? DEFAULT_TASK_POINTS;
 }
 
-module.exports = { TASK_POINTS_BY_DIFFICULTY, DEFAULT_TASK_POINTS, pointsForDifficulty };
+/**
+ * A question's points, brought onto the same curve as everything else.
+ *
+ * Kit questions were the one place the rule above was not applied: the field
+ * was free at both ends, so a mentor could save 10000 and a two question
+ * interview was worth more than a mentee earns in a year of finishing steps.
+ * Two mentees on two mentors' kits were not comparable, which is the one thing
+ * this file exists to prevent.
+ *
+ * Snapped rather than rejected. A kit written before the rule still has to
+ * save, and the nearest step is what the phone shows for it, so the number it
+ * lands on is the number the mentor was already looking at.
+ */
+function snapToDifficultyPoints(points) {
+  // null and an empty string both mean "not given", and both are 0 to Number,
+  // which would snap them to the cheapest step rather than the neutral middle.
+  if (points === null || points === undefined || points === '') return DEFAULT_TASK_POINTS;
+
+  const value = Number(points);
+  if (!Number.isFinite(value)) return DEFAULT_TASK_POINTS;
+
+  return Object.values(TASK_POINTS_BY_DIFFICULTY).reduce((nearest, allowed) =>
+    Math.abs(allowed - value) < Math.abs(nearest - value) ? allowed : nearest
+  );
+}
+
+module.exports = {
+  TASK_POINTS_BY_DIFFICULTY,
+  DEFAULT_TASK_POINTS,
+  pointsForDifficulty,
+  snapToDifficultyPoints,
+};

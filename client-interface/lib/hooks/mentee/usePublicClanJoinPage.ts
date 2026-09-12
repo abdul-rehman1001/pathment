@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 import { useAuth } from '@/lib/context/AuthContext';
+import { qk, useApiQuery, useInvalidate } from '@/lib/query';
 import { publicApi, type PublicClanJoinInfo } from '@/lib/services/public-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 
@@ -25,11 +26,9 @@ export interface UsePublicClanJoinPageReturn {
 /** Public `/clan/join/:token` page: load preview + submit join request. */
 export function usePublicClanJoinPage(token: string): UsePublicClanJoinPageReturn {
   const { user, isLoading: authLoading } = useAuth();
-  const [info, setInfo] = useState<PublicClanJoinInfo | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [unavailable, setUnavailable] = useState(false);
+  const invalidate = useInvalidate();
   const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const [submittedLocal, setSubmittedLocal] = useState(false);
   const [message, setMessage] = useState('');
 
   const joinPath = `/clan/join/${encodeURIComponent(token)}`;
@@ -39,26 +38,18 @@ export function usePublicClanJoinPage(token: string): UsePublicClanJoinPageRetur
     ? '/mentee/dashboard'
     : `/login?next=${encodeURIComponent('/mentee/dashboard')}`;
 
-  const reload = useCallback(async () => {
-    if (!token) return;
-    setLoading(true);
-    setUnavailable(false);
-    try {
-      const data = await publicApi.getClanJoin(token);
-      setInfo(data);
-      if (data.viewerStatus === 'pending') setSubmitted(true);
-    } catch {
-      setInfo(null);
-      setUnavailable(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
+  const viewer = user?.id ?? 'anon';
+  const { data: info = null, loading, error } = useApiQuery<PublicClanJoinInfo | null>({
+    queryKey: qk.public.clanJoin(token, viewer),
+    queryFn: () => publicApi.getClanJoin(token),
+    enabled: !!token && !authLoading,
+    errorMessage: 'Clan joining page is unavailable',
+  });
 
   useEffect(() => {
-    if (!token || authLoading) return;
-    reload();
-  }, [token, authLoading, user?.id, reload]);
+    setSubmittedLocal(false);
+    setMessage('');
+  }, [token]);
 
   const submitRequest = useCallback(async () => {
     if (!token) return;
@@ -66,23 +57,23 @@ export function usePublicClanJoinPage(token: string): UsePublicClanJoinPageRetur
     try {
       const trimmed = message.trim();
       await publicApi.submitClanJoinRequest(token, trimmed || undefined);
-      setSubmitted(true);
+      setSubmittedLocal(true);
       setMessage('');
       toast.success('Your join request was sent to the Clan Lead Mentor.');
-      await reload();
+      await invalidate(qk.public.clanJoin(token, viewer));
     } catch (e) {
       toast.error(extractApiErrorMessage(e, 'Could not submit join request'));
     } finally {
       setSubmitting(false);
     }
-  }, [token, message, reload]);
+  }, [token, message, invalidate, viewer]);
 
   return {
     info,
     loading: loading || authLoading,
-    unavailable,
+    unavailable: !!error,
     submitting,
-    submitted,
+    submitted: submittedLocal || info?.viewerStatus === 'pending',
     message,
     setMessage,
     loginHref,

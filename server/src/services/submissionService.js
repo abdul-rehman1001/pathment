@@ -8,6 +8,7 @@ const { endOfDayInZone } = require('../utils/timezone');
 const authzService = require('./authzService');
 const { PERMISSIONS } = require('../config/permissions');
 const { pointsForDifficulty } = require('../config/points');
+const { toStringList, toBoolean } = require('../utils/multipartFields');
 
 /** Standard points for a submission's task, derived solely from difficulty. */
 function taskStandardPoints(task) {
@@ -96,16 +97,17 @@ class SubmissionService {
     const newVersion = currentMaxVersion + 1;
 
     // Create submission
+    const wantsExtension = toBoolean(submissionData.extensionRequested);
     const submission = await models.TaskSubmission.create({
       assignedTaskId: taskId,
       version: newVersion,
       submissionText: submissionData.submissionText || '',
-      submissionUrls: submissionData.submissionUrls || [],
+      submissionUrls: toStringList(submissionData.submissionUrls),
       status: 'pending',
-      extensionRequested: submissionData.extensionRequested || false,
+      extensionRequested: wantsExtension,
       extensionReason: submissionData.extensionReason || null,
       extensionDays: submissionData.extensionDays || null,
-      extensionStatus: submissionData.extensionRequested ? 'pending' : null
+      extensionStatus: wantsExtension ? 'pending' : null
     });
 
     // Save file attachments

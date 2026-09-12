@@ -75,32 +75,97 @@ const resendVerificationLimiter = make({ windowMs: 60 * 60 * 1000, max: 5, messa
 const refreshTokenLimiter = make({ windowMs: 60 * 60 * 1000, max: 60, message: 'Rate limit exceeded. Please try again later.' });
 
 /**
- * Global backstop on /api.
+ * Who is this request? The global limiter runs BEFORE `authenticate` (it guards
+ * the router itself), so `req.user` does not exist yet and the caller has to be
+ * identified from the raw header.
+ *
+ * We decode the JWT payload WITHOUT verifying it. That is safe here because the
+ * value is only ever used to pick a counter bucket — a forged token cannot
+ * borrow anyone's quota beyond what it could already spend from its own IP, and
+ * real verification still happens downstream in `authenticate`.
+ *
+ * The previous version keyed on `token.slice(0, 57)`, which happens to cover the
+ * JWT header plus roughly the first eight characters of the user id. It worked,
+ * but only by accident of payload byte-ordering, and any two users sharing eight
+ * leading hex characters silently shared a budget. Decoding the `id` claim is
+ * the same cost and says what it means.
+ */
+function callerKey(req) {
+  const auth = req.headers.authorization;
+  if (auth && auth.startsWith('Bearer ')) {
+    const payload = auth.slice(7).split('.')[1];
+    if (payload) {
+      try {
+        const { id } = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+        if (id) return `u:${id}`;
+      } catch {
+        // Malformed token — fall through to the token string, which at least
+        // buckets this caller consistently with themselves.
+      }
+    }
+    return `t:${auth.slice(7, 64)}`;
+  }
+  return `ip:${ipKeyGenerator(req.ip)}`;
+}
+
+/**
+ * Traffic that must never consume a person's budget.
+ *
+ * These are fixed-cost and are exactly what accumulates during a long session —
+ * counting them meant a user could be locked out of the product by their own
+ * idle tab. Preflights are not requests the client chose to make at all.
+ */
+const EXEMPT_PATHS = new Set([
+  '/health',                    // uptime pings, mounted inside /api
+  '/activity/session/heartbeat', // one beacon per minute per open tab
+]);
+
+// Methods that only read. HEAD is included because it is a GET without a body.
+const SAFE_METHODS = new Set(['GET', 'HEAD']);
+
+function isExempt(req) {
+  return req.method === 'OPTIONS' || EXEMPT_PATHS.has(req.path);
+}
+
+/**
+ * Global backstop on /api. Split in two.
  *
  * Not a security control — the per-route limiters above are. This exists so a
- * runaway client loop or a crawler cannot exhaust the database on a Heroku dyno,
- * and it is set well above real usage: a busy screen fires a handful of requests
- * and a long session a few hundred an hour, against a default of 1000 per 15
- * minutes. Sustaining more than one request a second for a quarter of an hour is
- * a bug or an attack, not a person.
+ * runaway client loop or a crawler cannot exhaust the database on a Heroku dyno.
  *
- * Keyed per authenticated user where possible, so an office or carrier NAT does
- * not put a whole team in one bucket (the same mistake that once made
- * /auth/refresh 429 and log everyone out).
+ * The single combined budget was the problem: one mentor dashboard fires on the
+ * order of twenty calls before anyone touches anything, and polling adds tens
+ * more per window, so ordinary use could exhaust the very budget that is meant
+ * to protect writes. Reads now get a generous ceiling of their own and writes
+ * keep a tighter one, so a chatty screen can no longer spend the allowance that
+ * actually matters.
+ *
+ * NOTE ON THE STORE: no `store` is configured, so counters live in the dyno's
+ * memory. They are per-dyno (N dynos = N x max in practice, and which bucket you
+ * hit depends on routing) and reset on every restart. That is an acceptable
+ * trade for a backstop — the Redis-backed worker was deliberately removed to
+ * stay inside the Upstash command budget — but it is not a security boundary.
  */
-const apiLimiter = make({
+const apiReadLimiter = make({
   windowMs: config.rateLimit.windowMs,
   max: config.rateLimit.maxRequests,
   message: 'Too many requests. Please slow down and try again shortly.',
   skipSuccessfulRequests: false,
-  keyGenerator: (req) => {
-    const auth = req.headers.authorization;
-    // The token itself identifies the session without needing to verify it here
-    // (verification happens in authenticate); a forged token just buckets alone.
-    if (auth && auth.startsWith('Bearer ')) return `t:${auth.slice(7, 64)}`;
-    return `ip:${ipKeyGenerator(req.ip)}`;
-  },
+  keyGenerator: callerKey,
+  skip: (req) => isExempt(req) || !SAFE_METHODS.has(req.method),
 });
+
+const apiWriteLimiter = make({
+  windowMs: config.rateLimit.windowMs,
+  max: config.rateLimit.maxWriteRequests,
+  message: 'Too many requests. Please slow down and try again shortly.',
+  skipSuccessfulRequests: false,
+  keyGenerator: callerKey,
+  skip: (req) => isExempt(req) || SAFE_METHODS.has(req.method),
+});
+
+/** Mount both: each skips the other's methods, so exactly one ever counts. */
+const apiLimiter = [apiReadLimiter, apiWriteLimiter];
 
 // Unauthenticated public intake: anyone on the internet can POST an application
 // or upload a file here, so it needs a real cap rather than the global backstop.
@@ -121,4 +186,9 @@ module.exports = {
   refreshTokenLimiter,
   apiLimiter,
   publicIntakeLimiter,
+  // Exported for tests: the bucketing and exemption rules are the whole point of
+  // the backstop, and they are easier to pin directly than through 3000 requests.
+  callerKey,
+  isExempt,
+  SAFE_METHODS,
 };

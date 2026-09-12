@@ -10,6 +10,7 @@ import { looksLikeHtml } from '@/lib/utils/html';
 import { toExternalHref } from '@/lib/utils/url';
 import { RichContent } from '@/components/shared/RichContent';
 import { SubmissionFileList } from '@/components/shared/SubmissionFileList';
+import { TaskProgressTimeline } from '@/components/shared/TaskProgressTimeline';
 import type { ApprovalItem } from '@/lib/hooks/mentor';
 
 type Decision = 'approved' | 'approved_notes' | 'changes' | 'rejected';
@@ -128,11 +129,11 @@ export function ReviewDrawer({
             {busy === 'approved_notes' ? <Loader2 className="w-4 h-4 animate-spin" /> : null}Approve w/ notes
           </button>
           <button onClick={() => submit('changes')} disabled={!!busy}
-            className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-700 text-sm font-medium disabled:opacity-50">
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-900/40 border border-amber-300 dark:border-amber-900/50 text-amber-700 dark:text-amber-400 text-sm font-medium disabled:opacity-50">
             {busy === 'changes' ? <Loader2 className="w-4 h-4 animate-spin" /> : null}Request changes
           </button>
           <button onClick={() => submit('rejected')} disabled={!!busy}
-            className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-card hover:bg-red-50 border border-red-300 text-red-700 text-sm font-medium disabled:opacity-50">
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-card hover:bg-red-50 dark:hover:bg-red-950/30 border border-red-300 dark:border-red-900/50 text-red-700 dark:text-red-400 text-sm font-medium disabled:opacity-50">
             {busy === 'rejected' ? <Loader2 className="w-4 h-4 animate-spin" /> : null}Reject
           </button>
         </div>
@@ -140,7 +141,7 @@ export function ReviewDrawer({
     >
       <div className="space-y-6">
         {item.isLate && (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-50 text-red-700 text-xs"><Clock className="w-3 h-3" />Submitted late</span>
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 text-xs"><Clock className="w-3 h-3" />Submitted late</span>
         )}
 
         {/* The task being reviewed */}
@@ -150,7 +151,7 @@ export function ReviewDrawer({
               <div>
                 <p className="text-xs font-medium text-slate-500 mb-0.5">The task</p>
                 {looksLikeHtml(item.brief)
-                  ? <div className="prose prose-sm max-w-none dark:prose-invert text-slate-700 dark:text-slate-300" dangerouslySetInnerHTML={{ __html: item.brief }} />
+                  ? <div className="prose prose-sm max-w-none dark:prose-invert text-slate-700" dangerouslySetInnerHTML={{ __html: item.brief }} />
                   : <p className="text-sm text-slate-700 whitespace-pre-wrap">{item.brief}</p>}
               </div>
             )}
@@ -163,12 +164,18 @@ export function ReviewDrawer({
           </div>
         )}
 
+        {/* How they got here, BEFORE the submission itself. Somebody who worked
+            four days and produced something rough deserves a different review
+            from somebody who started at 11pm the night it was due, and the
+            mentor should see that before forming a judgement rather than after. */}
+        <TaskProgressTimeline taskId={item.taskId} mode="mentor" />
+
         {/* Submission */}
         <div>
           <h3 className="text-sm font-medium text-slate-700 mb-2">Submission</h3>
           <RichContent
             html={item.submissionText}
-            className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4 text-slate-700 dark:text-slate-300"
+            className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-slate-700"
           />
           {item.files.length > 0 && (
             <div className="mt-3">
@@ -233,7 +240,7 @@ export function ReviewDrawer({
             <h3 className="text-sm font-medium text-slate-700 flex items-center gap-2">
               Points awarded
               {isLate && latePenalty > 0 && (
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-50 text-red-700 text-[11px] font-medium"><Clock className="w-3 h-3" />Late −{latePenalty}</span>
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 text-[11px] font-medium"><Clock className="w-3 h-3" />Late −{latePenalty}</span>
               )}
             </h3>
             {points !== total && (
@@ -250,7 +257,7 @@ export function ReviewDrawer({
                 const v = Math.round(Number(e.target.value));
                 setPoints(Number.isFinite(v) ? Math.max(0, Math.min(total, v)) : 0);
               }}
-              className="w-20 border border-slate-300 rounded-lg px-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-brand-500"
+              className="w-20 bg-transparent border border-slate-300 rounded-lg px-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-brand-500"
               aria-label="Points awarded"
             />
             <span className="text-sm text-slate-500 tabular-nums">/ {total} pts</span>
@@ -300,7 +307,7 @@ export function ReviewDrawer({
             onChange={(e) => setNotes(e.target.value)}
             rows={4}
             placeholder="What's good, what to change…"
-            className="mt-2 w-full border border-slate-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
+            className="mt-2 w-full bg-transparent border border-slate-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
           />
         </div>
       </div>

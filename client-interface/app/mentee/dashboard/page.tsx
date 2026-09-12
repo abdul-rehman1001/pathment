@@ -67,7 +67,7 @@ function MenteeDashboardInner() {
   const now = Date.now();
   const taskTitle = (t: any) => t?.roadmapTask?.title || t?.title || 'Task';
   const isLate = (t: any) =>
-    t.dueDate && new Date(t.dueDate).getTime() < now && !['completed', 'cancelled'].includes(t.status);
+    t.dueDate && new Date(t.dueDate).getTime() < now && !['completed', 'submitted', 'cancelled'].includes(t.status);
   const activeTasks = (allTasks || []).filter((t: any) => !['completed', 'cancelled'].includes(t.status));
   const heroTask =
     activeTasks.find(isLate) ||

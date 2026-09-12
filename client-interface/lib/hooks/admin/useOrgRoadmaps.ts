@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
+import { qk, useApiQuery, STALE } from '@/lib/query';
 import { orgRoadmapApi, type RoadmapStepInput } from '@/lib/services/roadmap-api';
 
 export interface OrgRoadmapStep {
@@ -43,61 +44,33 @@ export interface UseOrgRoadmapsReturn {
   remove: (id: string) => Promise<void>;
 }
 
+const EMPTY: OrgRoadmap[] = [];
+
 export function useOrgRoadmaps(): UseOrgRoadmapsReturn {
-  const [roadmaps, setRoadmaps] = useState<OrgRoadmap[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, loading, error, refetch } = useApiQuery<OrgRoadmap[]>({
+    queryKey: qk.admin.orgRoadmaps,
+    queryFn: async () => (await orgRoadmapApi.list())?.data?.roadmaps ?? [],
+    staleTime: STALE.long,
+    errorMessage: 'Failed to load org roadmaps',
+  });
 
-  const fetchAll = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await orgRoadmapApi.list();
-      setRoadmaps(res?.data?.roadmaps ?? []);
-    } catch {
-      setError('Failed to load org roadmaps');
-      setRoadmaps([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Every mutation is write-then-refetch; `after` keeps that in one place.
+  const after = useCallback(async (call: Promise<unknown>) => {
+    await call;
+    await refetch();
+  }, [refetch]);
 
-  const create = useCallback(async (data: Parameters<typeof orgRoadmapApi.create>[0]) => {
-    await orgRoadmapApi.create(data);
-    await fetchAll();
-  }, [fetchAll]);
-
-  const update = useCallback(async (id: string, data: { name?: string; description?: string; skillTags?: string[]; published?: boolean }) => {
-    await orgRoadmapApi.update(id, data);
-    await fetchAll();
-  }, [fetchAll]);
-
-  const addStep = useCallback(async (id: string, step: RoadmapStepInput) => {
-    await orgRoadmapApi.addStep(id, step);
-    await fetchAll();
-  }, [fetchAll]);
-
-  const replaceSteps = useCallback(async (id: string, steps: RoadmapStepInput[]) => {
-    await orgRoadmapApi.replaceSteps(id, steps);
-    await fetchAll();
-  }, [fetchAll]);
-
-  const removeStep = useCallback(async (id: string, stepId: string) => {
-    await orgRoadmapApi.removeStep(id, stepId);
-    await fetchAll();
-  }, [fetchAll]);
-
-  const setPublished = useCallback(async (id: string, published: boolean) => {
-    await orgRoadmapApi.update(id, { published });
-    await fetchAll();
-  }, [fetchAll]);
-
-  const remove = useCallback(async (id: string) => {
-    await orgRoadmapApi.remove(id);
-    await fetchAll();
-  }, [fetchAll]);
-
-  useEffect(() => { fetchAll(); }, [fetchAll]);
-
-  return { roadmaps, loading, error, refetch: fetchAll, create, update, addStep, replaceSteps, removeStep, setPublished, remove };
+  return {
+    roadmaps: data ?? EMPTY,
+    loading,
+    error,
+    refetch,
+    create: useCallback((d: Parameters<typeof orgRoadmapApi.create>[0]) => after(orgRoadmapApi.create(d)), [after]),
+    update: useCallback((id: string, d: { name?: string; description?: string; skillTags?: string[]; published?: boolean }) => after(orgRoadmapApi.update(id, d)), [after]),
+    addStep: useCallback((id: string, step: RoadmapStepInput) => after(orgRoadmapApi.addStep(id, step)), [after]),
+    replaceSteps: useCallback((id: string, steps: RoadmapStepInput[]) => after(orgRoadmapApi.replaceSteps(id, steps)), [after]),
+    removeStep: useCallback((id: string, stepId: string) => after(orgRoadmapApi.removeStep(id, stepId)), [after]),
+    setPublished: useCallback((id: string, published: boolean) => after(orgRoadmapApi.update(id, { published })), [after]),
+    remove: useCallback((id: string) => after(orgRoadmapApi.remove(id)), [after]),
+  };
 }

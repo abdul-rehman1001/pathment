@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+'use client';
+
 import { announcementsApi } from '@/lib/services/announcements-api';
+import { qk, useApiQuery } from '@/lib/query';
 
 export interface Announcement {
   id: string;
@@ -24,27 +26,15 @@ export interface UseAnnouncementsReturn {
   refetch: () => Promise<void>;
 }
 
+const EMPTY: Announcement[] = [];
+
 /** Announcements scoped to the current viewer (server filters by audience). */
 export function useAnnouncements(): UseAnnouncementsReturn {
-  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, loading, error, refetch } = useApiQuery<Announcement[]>({
+    queryKey: qk.announcements,
+    queryFn: async () => (await announcementsApi.list())?.data?.announcements ?? [],
+    errorMessage: 'Failed to load announcements',
+  });
 
-  const fetchAll = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await announcementsApi.list();
-      setAnnouncements(res?.data?.announcements ?? []);
-    } catch {
-      setError('Failed to load announcements');
-      setAnnouncements([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { fetchAll(); }, [fetchAll]);
-
-  return { announcements, loading, error, refetch: fetchAll };
+  return { announcements: data ?? EMPTY, loading, error, refetch };
 }

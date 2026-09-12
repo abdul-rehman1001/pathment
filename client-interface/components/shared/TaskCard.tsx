@@ -66,7 +66,7 @@ export function TaskCard({
   pointsAwarded,
   href,
 }: TaskCardProps) {
-  const isOverdue = dueDate && new Date(dueDate) < new Date() && status !== 'completed';
+  const isOverdue = dueDate && new Date(dueDate) < new Date() && !['completed', 'submitted'].includes(status);
   const priorityStyle = priority ? priorityConfig[priority] : null;
 
   return (

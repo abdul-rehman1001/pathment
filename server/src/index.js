@@ -80,6 +80,11 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Seed per-request audit context (IP + user-agent) for downstream audit writes.
 app.use(requestContext);
 
+// Which portal the caller has open (mentee / mentor / admin) + the mentor clan
+// selector. Parse-only; it narrows what a multi-role user is shown and grants
+// nothing. See middlewares/portalScope.js.
+app.use(require('./middlewares/portalScope'));
+
 // Record every state-changing request (who/what/when/result) to audit_logs.
 app.use(require('./middlewares/auditTrail'));
 
@@ -107,7 +112,9 @@ app.get('/', (req, res) => {
 
 // API routes. The global limiter is a backstop against runaway clients and
 // crawlers; the real per-action limits live on the auth and public-intake routes.
-app.use('/api', require('./middlewares/rateLimiter').apiLimiter, routes);
+// It is a PAIR of limiters (reads and writes have separate budgets) — Express
+// flattens the array, and each one skips the other's methods.
+app.use('/api', ...require('./middlewares/rateLimiter').apiLimiter, routes);
 
 // Provider webhooks (Resend delivery/bounce/complaint) — public, provider-signed.
 app.use('/webhooks', require('./routes/webhooks'));
@@ -157,6 +164,11 @@ async function start() {
     // Initialize RAG subsystem (Workers & Event Listeners)
     const { initializeRag } = require('./features/rag');
     initializeRag();
+
+    // Initialize Certificate Queue Workers (PDF & AI Evaluation)
+    if (process.env.CERTIFICATE_WORKER_DISABLED !== 'true') {
+      require('./workers/certificateWorker').start();
+    }
     if (process.env.NOTIFICATION_SCHEDULER_DISABLED !== 'true') {
       notificationScheduler.start();
     }

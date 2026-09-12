@@ -1,11 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
+import { qk, useApiQuery } from '@/lib/query';
 import { menteeApi } from '@/lib/services/mentee-api';
 import { usePagination } from '@/lib/hooks/shared/usePagination';
 import { useDebounce } from '@/lib/hooks/shared/useDebounce';
-import { extractApiErrorMessage } from '@/lib/utils/api-error';
-import { toast } from 'sonner';
 
 export interface MenteeListItem {
   id: string;
@@ -41,45 +40,33 @@ interface UseMenteesListReturn {
   refetch: () => Promise<void>;
 }
 
+interface MenteePage { mentees: MenteeListItem[]; total?: number }
+
+const NO_MENTEES: MenteeListItem[] = [];
+
 export function useMenteesList(): UseMenteesListReturn {
   const pagination = usePagination({ initialPage: 1, initialLimit: 20 });
   const [search, setSearchInput] = useState('');
   const debouncedSearch = useDebounce(search, 400);
 
-  const [mentees, setMentees] = useState<MenteeListItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchMentees = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
+  const { data, loading, error, refetch } = useApiQuery<MenteePage>({
+    queryKey: qk.admin.menteeList(pagination.page, pagination.limit, debouncedSearch.trim()),
+    queryFn: async () => {
       const response = await menteeApi.getAll({
         ...(debouncedSearch.trim() && { search: debouncedSearch.trim() }),
         page: pagination.page,
         limit: pagination.limit,
       });
+      return { mentees: response?.data?.mentees ?? [], total: response?.pagination?.totalItems };
+    },
+    errorMessage: 'Failed to load mentees',
+  });
 
-      const list: MenteeListItem[] = response?.data?.mentees ?? [];
-      const meta = response?.pagination;
-
-      setMentees(list);
-      if (meta?.totalItems !== undefined) {
-        pagination.setTotal(meta.totalItems);
-      }
-    } catch (err: unknown) {
-      const msg = extractApiErrorMessage(err, 'Failed to load mentees');
-      setError(msg);
-      toast.error(msg);
-    } finally {
-      setIsLoading(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pagination.page, pagination.limit, debouncedSearch]);
-
+  const total = data?.total;
   useEffect(() => {
-    fetchMentees();
-  }, [fetchMentees]);
+    if (total !== undefined) pagination.setTotal(total);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [total]);
 
   // Reset to page 1 on search change
   useEffect(() => {
@@ -88,12 +75,12 @@ export function useMenteesList(): UseMenteesListReturn {
   }, [debouncedSearch]);
 
   return {
-    mentees,
-    isLoading,
+    mentees: data?.mentees ?? NO_MENTEES,
+    isLoading: loading,
     error,
     pagination,
     search,
     setSearch: setSearchInput,
-    refetch: fetchMentees,
+    refetch,
   };
 }

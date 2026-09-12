@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { UploadCloud, FileText, Trash2, Loader2, CheckCircle2, AlertCircle, Bot, BookOpenCheck, HelpCircle, Lightbulb, Circle, KeyRound, Sparkles, Lock } from 'lucide-react';
 import { useAutoReply } from '@/lib/hooks/mentor';
+import { qk, useApiQuery, STALE } from '@/lib/query';
 import { messagingApi } from '@/lib/services/messaging-api';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/admin/ui';
@@ -27,6 +28,8 @@ const STEP_ICON: Record<string, typeof KeyRound> = {
   style: Sparkles,
 };
 
+const NO_DOCUMENTS: Document[] = [];
+
 export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: DocumentsTabProps = {}) {
   // Readiness comes from the server, which also enforces it. The toggle is not
   // a toggle until auto reply would actually work: switching it on early would
@@ -35,8 +38,6 @@ export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: Do
   const { status, refetch: refetchStatus } = useAutoReply();
   const canEnable = status?.canEnable ?? false;
   const steps = status?.steps ?? [];
-  const [documents, setDocuments] = useState<Document[]>([]);
-  const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [deleteDocumentId, setDeleteDocumentId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -62,30 +63,15 @@ export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: Do
     }
   };
 
-  const fetchDocuments = async () => {
-    try {
-      const data = await messagingApi.getMentorDocuments();
-      setDocuments(data);
-    } catch (err) {
-      toast.error('Failed to load documents');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchDocuments();
-    // Poll every 10s if any doc is 'processing'
-    const interval = setInterval(() => {
-      setDocuments((currentDocs) => {
-        if (currentDocs.some((d) => d.status === 'processing')) {
-          fetchDocuments();
-        }
-        return currentDocs;
-      });
-    }, 10000);
-    return () => clearInterval(interval);
-  }, []);
+  // Poll only while something is still processing, and let a 429 pause it
+  // rather than being ignored (the old setInterval swallowed every error).
+  const { data: documents = NO_DOCUMENTS, loading, refetch: fetchDocuments } = useApiQuery<Document[]>({
+    queryKey: qk.messaging.mentorDocuments,
+    queryFn: () => messagingApi.getMentorDocuments(),
+    staleTime: STALE.short,
+    refetchInterval: (docs) => (docs?.some((d) => d.status === 'processing') ? 10_000 : false),
+    errorMessage: 'Failed to load documents',
+  });
 
   const handleFileDrop = async (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -127,7 +113,7 @@ export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: Do
     try {
       await messagingApi.deleteMentorDocument(deleteDocumentId);
       toast.success('Document deleted');
-      setDocuments(documents.filter((d) => d.id !== deleteDocumentId));
+      await fetchDocuments();
     } catch (err) {
       toast.error('Failed to delete document');
     } finally {
@@ -146,10 +132,10 @@ export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: Do
       </div>
 
       {/* AI Auto-Reply Toggle Card */}
-      <div className="p-4 sm:p-5 rounded-xl border border-slate-200 bg-white">
+      <div className="p-4 sm:p-5 rounded-xl border border-slate-200 bg-card">
         <div className="flex items-start justify-between gap-4">
           <div className="flex gap-3.5">
-            <div className={`p-2.5 rounded-xl shrink-0 ${autoReplyEnabled ? 'bg-brand-50 text-brand-600' : 'bg-slate-100 text-slate-500'
+            <div className={`p-2.5 rounded-xl shrink-0 ${autoReplyEnabled ? 'bg-brand-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400' : 'bg-slate-100 text-slate-500'
               }`}>
               <Bot className="w-5 h-5" />
             </div>
@@ -159,7 +145,7 @@ export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: Do
                   AI Automatic Replies
                 </h3>
                 <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${autoReplyEnabled
-                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/50'
                     : 'bg-slate-100 text-slate-600 border border-slate-200'
                   }`}>
                   <span className={`w-1.5 h-1.5 rounded-full ${autoReplyEnabled ? 'bg-emerald-500' : 'bg-slate-400'}`} />
@@ -201,9 +187,9 @@ export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: Do
           anything is outstanding: a locked switch with no explanation is the
           most frustrating thing a settings page can do. */}
       {steps.length > 0 && !canEnable && (
-        <div className="p-4 sm:p-5 rounded-xl border border-amber-200 bg-amber-50/60">
+        <div className="p-4 sm:p-5 rounded-xl border border-amber-200 dark:border-amber-900/30 bg-amber-50/60 dark:bg-amber-950/10">
           <div className="flex items-start gap-3">
-            <Lock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
             <div className="min-w-0 flex-1">
               <h4 className="text-sm font-medium text-slate-900">Set this up first</h4>
               <p className="text-xs text-slate-600 mt-0.5 mb-3">
@@ -233,7 +219,7 @@ export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: Do
                             <p className="text-xs text-slate-600 mt-0.5">{step.why}</p>
                             {step.progress && (
                               <div className="mt-1.5 flex items-center gap-2 max-w-xs">
-                                <div className="flex-1 h-1.5 bg-white rounded-full overflow-hidden border border-amber-200">
+                                <div className="flex-1 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden border border-amber-200 dark:border-amber-900/30">
                                   <div
                                     className="h-full bg-amber-400 rounded-full"
                                     style={{ width: `${Math.min(100, (step.progress.current / step.progress.needed) * 100)}%` }}
@@ -298,10 +284,10 @@ export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: Do
         ) : (
           <div className="space-y-3">
             {documents.map((doc) => (
-              <div key={doc.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 sm:p-4 bg-white border border-slate-200 rounded-xl min-w-0">
+              <div key={doc.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 sm:p-4 bg-card border border-slate-200 rounded-xl min-w-0">
                 <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="p-2.5 sm:p-3 bg-brand-50 rounded-lg shrink-0">
-                    <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-brand-600" />
+                  <div className="p-2.5 sm:p-3 bg-brand-50 dark:bg-brand-500/10 rounded-lg shrink-0">
+                    <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-brand-600 dark:text-brand-400" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <h4 className="text-slate-900 font-medium text-sm truncate" title={doc.fileName}>
@@ -315,19 +301,19 @@ export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: Do
 
                 <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
                   {doc.status === 'processing' && (
-                    <span className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-700 rounded-full text-xs font-medium">
+                    <span className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 rounded-full text-xs font-medium">
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       Processing
                     </span>
                   )}
                   {doc.status === 'completed' && (
-                    <span className="flex items-center gap-1.5 px-2.5 py-1 bg-green-50 text-green-700 rounded-full text-xs font-medium">
+                    <span className="flex items-center gap-1.5 px-2.5 py-1 bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400 rounded-full text-xs font-medium">
                       <CheckCircle2 className="w-3.5 h-3.5" />
                       Ready
                     </span>
                   )}
                   {doc.status === 'failed' && (
-                    <span className="flex items-center gap-1.5 px-2.5 py-1 bg-red-50 text-red-700 rounded-full text-xs font-medium" title={doc.errorMessage}>
+                    <span className="flex items-center gap-1.5 px-2.5 py-1 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 rounded-full text-xs font-medium" title={doc.errorMessage}>
                       <AlertCircle className="w-3.5 h-3.5" />
                       Failed
                     </span>
@@ -335,7 +321,7 @@ export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: Do
 
                   <button
                     onClick={() => setDeleteDocumentId(doc.id)}
-                    className="p-1.5 sm:p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    className="p-1.5 sm:p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors"
                     title="Delete document"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -357,36 +343,36 @@ export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: Do
           The AI reads your uploaded PDFs to automatically answer mentee questions with high accuracy. Follow these practical tips when creating your PDFs:
         </p>
         <div className="grid sm:grid-cols-2 gap-3 text-xs sm:text-sm pt-1">
-          <div className="p-3 bg-white border border-slate-200 rounded-lg space-y-1">
+          <div className="p-3 bg-card border border-slate-200 rounded-lg space-y-1">
             <div className="font-semibold text-slate-800 flex items-center gap-1.5">
-              <BookOpenCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+              <BookOpenCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
               Clear Headings & Sections
             </div>
             <p className="text-slate-500 text-xs leading-normal">
               Use distinct section titles (e.g. <code className="bg-slate-100 px-1 py-0.5 rounded font-mono text-[11px]">Proposal Guidelines</code>, <code className="bg-slate-100 px-1 py-0.5 rounded font-mono text-[11px]">Office Hours Policy</code>) so the AI retrieves exact relevant paragraphs.
             </p>
           </div>
-          <div className="p-3 bg-white border border-slate-200 rounded-lg space-y-1">
+          <div className="p-3 bg-card border border-slate-200 rounded-lg space-y-1">
             <div className="font-semibold text-slate-800 flex items-center gap-1.5">
-              <HelpCircle className="w-4 h-4 text-brand-600 shrink-0" />
+              <HelpCircle className="w-4 h-4 text-brand-600 dark:text-brand-400 shrink-0" />
               Direct Q&A / FAQ Format
             </div>
             <p className="text-slate-500 text-xs leading-normal">
               Include explicit Q&A blocks (e.g. <em className="text-slate-700">"Q: How long should proposals be? A: Keep proposals between 3-5 pages focusing on architecture."</em>).
             </p>
           </div>
-          <div className="p-3 bg-white border border-slate-200 rounded-lg space-y-1">
+          <div className="p-3 bg-card border border-slate-200 rounded-lg space-y-1">
             <div className="font-semibold text-slate-800 flex items-center gap-1.5">
-              <FileText className="w-4 h-4 text-amber-600 shrink-0" />
+              <FileText className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
               Digital Selectable Text (No Scans)
             </div>
             <p className="text-slate-500 text-xs leading-normal">
               Export PDFs directly from Word, Google Docs, or Notion. Scanned photos or flattened images cannot be converted into searchable text chunks.
             </p>
           </div>
-          <div className="p-3 bg-white border border-slate-200 rounded-lg space-y-1">
+          <div className="p-3 bg-card border border-slate-200 rounded-lg space-y-1">
             <div className="font-semibold text-slate-800 flex items-center gap-1.5">
-              <Bot className="w-4 h-4 text-indigo-600 shrink-0" />
+              <Bot className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
               Explicit Rules & Specific Details
             </div>
             <p className="text-slate-500 text-xs leading-normal">

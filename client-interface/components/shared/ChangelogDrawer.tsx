@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { PackageOpen, X, Wrench, ArrowUpCircle, Rocket, ChevronRight, ChevronDown } from 'lucide-react';
-import { changelogApi, type ChangelogEntry } from '@/lib/services/changelog-api';
+import { type ChangelogEntry } from '@/lib/services/changelog-api';
+import { useChangelogFeed } from '@/lib/hooks/shared/useChangelogFeed';
 
 interface ChangelogDrawerProps {
   role: string;
@@ -61,50 +62,21 @@ export default function ChangelogDrawer({ role }: ChangelogDrawerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [render, setRender] = useState(false); // in the DOM (true while animating out)
   const [shown, setShown] = useState(false);   // visual open state (drives the slide)
-  const [updates, setUpdates] = useState<ChangelogEntry[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [showFixes, setShowFixes] = useState(false);
 
-  const load = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const data = await changelogApi.feed(role);
-      setUpdates(data.updates);
-      setUnreadCount(data.unreadCount);
-    } catch (e) {
-      console.error('Failed to load changelog:', e);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [role]);
+  // Shared with ChangelogMount — the modal marking seen clears this badge through
+  // the cache, so no cross-component event is needed.
+  const { feed, loading: isLoading, markSeen } = useChangelogFeed(role);
+  const updates: ChangelogEntry[] = feed.updates;
+  const unreadCount = feed.unreadCount;
 
   useEffect(() => { setIsMounted(true); }, []);
-
-  // Initial badge count.
-  useEffect(() => {
-    changelogApi.feed(role)
-      .then((d) => { setUpdates(d.updates); setUnreadCount(d.unreadCount); })
-      .catch(() => {});
-  }, [role]);
-
-  // The modal (or another tab) marking seen should clear our badge too.
-  useEffect(() => {
-    const onSeen = () => { setUnreadCount(0); setUpdates((prev) => prev.map((u) => ({ ...u, unread: false }))); };
-    window.addEventListener('pathment:changelog-seen', onSeen);
-    return () => window.removeEventListener('pathment:changelog-seen', onSeen);
-  }, []);
 
   // Opening the drawer = the user has seen what's new → clear badge + persist.
   const open = () => {
     setIsOpen(true);
-    load();
-    if (unreadCount > 0) {
-      changelogApi.markSeen().catch(() => {});
-      setUnreadCount(0);
-      window.dispatchEvent(new CustomEvent('pathment:changelog-seen'));
-    }
+    if (unreadCount > 0) markSeen();
   };
 
   // Drive the enter/exit animation off `isOpen`: mount → next frame slide in;

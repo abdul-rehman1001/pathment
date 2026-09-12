@@ -33,13 +33,33 @@ exports.retryEmail = async (req, res) => {
   res.json({ success: true, data: { id: row.id } });
 };
 
-/** Requeue every dead email (e.g. after fixing a provider/config issue). */
+/**
+ * Requeue every dead email (e.g. after fixing a provider/config issue).
+ *
+ * Stagger the wake-ups. Setting next_attempt_at=NOW() on the whole DLQ makes a
+ * single button the biggest thundering herd in the system: 400 dead rows all
+ * came due in the same second, and the worker would try to push 200 of them in
+ * one 15s tick straight into a provider we have only just stopped upsetting.
+ * Spreading them over a window costs the admin nothing and asks the provider for
+ * a steady trickle instead of a spike.
+ */
 exports.retryAllDead = async (req, res) => {
+  const spreadMs = Number(process.env.EMAIL_REQUEUE_SPREAD_MS) || 10 * 60 * 1000;
   const [, affected] = await models.EmailQueue.update(
-    { status: 'pending', nextAttemptAt: new Date(), attemptCount: 0, failedAt: null, errorCategory: null },
+    {
+      status: 'pending',
+      // random() is per-row in Postgres, so each requeued email draws its own
+      // wake-up time inside the window.
+      nextAttemptAt: models.EmailQueue.sequelize.literal(
+        `NOW() + make_interval(secs => random() * ${Math.floor(spreadMs / 1000)})`
+      ),
+      attemptCount: 0,
+      failedAt: null,
+      errorCategory: null,
+    },
     { where: { status: 'dead' } }
   );
-  res.json({ success: true, data: { requeued: affected ?? null } });
+  res.json({ success: true, data: { requeued: affected ?? null, spreadMs } });
 };
 
 /** Suppression list management. */

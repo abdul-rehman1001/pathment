@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+'use client';
+
 import { menteeApi } from '@/lib/services/mentee-api';
+import { qk, useApiQuery } from '@/lib/query';
 import type { MenteeProfile } from '@/lib/hooks/mentor';
 
 export interface UseMyProgressReturn {
@@ -10,27 +12,11 @@ export interface UseMyProgressReturn {
 }
 
 export function useMyProgress(): UseMyProgressReturn {
-  const [progress, setProgress] = useState<MenteeProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, loading, error, refetch } = useApiQuery<MenteeProfile | null>({
+    queryKey: qk.me.progress,
+    queryFn: async () => (await menteeApi.getMyProgress())?.data?.profile ?? null,
+    errorMessage: 'Failed to load your progress',
+  });
 
-  const fetchProgress = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await menteeApi.getMyProgress();
-      setProgress(res?.data?.profile ?? null);
-    } catch {
-      setError('Failed to load your progress');
-      setProgress(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchProgress();
-  }, [fetchProgress]);
-
-  return { progress, loading, error, refetch: fetchProgress };
+  return { progress: data ?? null, loading, error, refetch };
 }

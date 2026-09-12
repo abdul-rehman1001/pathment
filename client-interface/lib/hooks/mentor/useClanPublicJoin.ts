@@ -1,8 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
+import { qk, useApiQuery, useInvalidate } from '@/lib/query';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 import { clanApi, type ClanJoinRequestRow, type PublicJoinState } from '@/lib/services/clan-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
@@ -33,6 +35,14 @@ export interface UseClanPublicJoinReturn {
   reject: (requestId: string, note?: string) => Promise<boolean>;
 }
 
+const EMPTY_REQUESTS: ClanJoinRequestRow[] = [];
+const EMPTY_DRAFT: PublicJoinWindowDraft = {
+  startsDate: '',
+  startsTime: '',
+  endsDate: '',
+  endsTime: '',
+};
+
 export function publicJoinRequestLabel(req: ClanJoinRequestRow) {
   if (!req.user) return 'Unknown user';
   return `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || req.user.email;
@@ -56,20 +66,52 @@ export function publicJoinRequesterLocation(req: ClanJoinRequestRow): string | n
   return parts.length ? parts.join(', ') : null;
 }
 
+function draftFromState(next: PublicJoinState): PublicJoinWindowDraft {
+  const starts = splitLocal(next.publicJoinStartsAt);
+  const ends = splitLocal(next.publicJoinEndsAt);
+  return {
+    startsDate: starts.date,
+    startsTime: starts.time,
+    endsDate: ends.date,
+    endsTime: ends.time,
+  };
+}
+
 /** Lead-mentor public joining link, join window, and pending request decisions. */
 export function useClanPublicJoin(clanId: string): UseClanPublicJoinReturn {
   const confirm = useConfirm();
-  const [state, setState] = useState<PublicJoinState | null>(null);
-  const [requests, setRequests] = useState<ClanJoinRequestRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const invalidate = useInvalidate();
   const [busy, setBusy] = useState(false);
   const [actingId, setActingId] = useState<string | null>(null);
-  const [windowDraft, setWindowDraftState] = useState<PublicJoinWindowDraft>({
-    startsDate: '',
-    startsTime: '',
-    endsDate: '',
-    endsTime: '',
+  const [windowDraft, setWindowDraftState] = useState<PublicJoinWindowDraft>(EMPTY_DRAFT);
+
+  const enabled = !!clanId;
+  const requestsKey = qk.clan.joinRequests(clanId, 'pending');
+
+  const { data: state = null, loading: stateLoading, error: stateError } = useApiQuery<PublicJoinState | null>({
+    queryKey: qk.clan.publicJoin(clanId),
+    queryFn: () => clanApi.getPublicJoinState(clanId),
+    enabled,
+    errorMessage: 'Could not load public joining settings',
   });
+
+  const { data: requests = EMPTY_REQUESTS, loading: requestsLoading } = useApiQuery<ClanJoinRequestRow[]>({
+    queryKey: requestsKey,
+    queryFn: () => clanApi.listJoinRequests(clanId, 'pending').catch(() => []),
+    enabled,
+  });
+
+  useEffect(() => {
+    if (stateError) toast.error(stateError);
+  }, [stateError]);
+
+  // Only overwrite the form when the server window actually changes, so a
+  // background refetch cannot wipe in-progress edits.
+  useEffect(() => {
+    setWindowDraftState(state ? draftFromState(state) : EMPTY_DRAFT);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on window fields, not object identity
+  }, [clanId, state?.publicJoinStartsAt, state?.publicJoinEndsAt]);
 
   const setWindowDraft = useCallback((patch: Partial<PublicJoinWindowDraft>) => {
     setWindowDraftState((prev) => ({ ...prev, ...patch }));
@@ -82,38 +124,6 @@ export function useClanPublicJoin(clanId: string): UseClanPublicJoinReturn {
     endsDate: windowDraft.endsDate || null,
     endsTime: windowDraft.endsTime || null,
   }), [windowDraft]);
-
-  const applyState = useCallback((next: PublicJoinState) => {
-    setState(next);
-    const starts = splitLocal(next.publicJoinStartsAt);
-    const ends = splitLocal(next.publicJoinEndsAt);
-    setWindowDraftState({
-      startsDate: starts.date,
-      startsTime: starts.time,
-      endsDate: ends.date,
-      endsTime: ends.time,
-    });
-  }, []);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [joinState, pending] = await Promise.all([
-        clanApi.getPublicJoinState(clanId),
-        clanApi.listJoinRequests(clanId, 'pending').catch(() => []),
-      ]);
-      applyState(joinState);
-      setRequests(pending);
-    } catch (e) {
-      toast.error(extractApiErrorMessage(e, 'Could not load public joining settings'));
-      setState(null);
-      setRequests([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [clanId, applyState]);
-
-  useEffect(() => { load(); }, [load]);
 
   const copyLink = useCallback(async () => {
     if (!state?.publicJoinUrl) return;
@@ -128,14 +138,15 @@ export function useClanPublicJoin(clanId: string): UseClanPublicJoinReturn {
   const updateLink = useCallback(async (action: () => Promise<PublicJoinState>, success: string, fallback: string) => {
     setBusy(true);
     try {
-      applyState(await action());
+      const next = await action();
+      queryClient.setQueryData(qk.clan.publicJoin(clanId), next);
       toast.success(success);
     } catch (e) {
       toast.error(extractApiErrorMessage(e, fallback));
     } finally {
       setBusy(false);
     }
-  }, [applyState]);
+  }, [clanId, queryClient]);
 
   const generate = useCallback(
     () => updateLink(
@@ -175,46 +186,57 @@ export function useClanPublicJoin(clanId: string): UseClanPublicJoinReturn {
     );
   }, [clanId, confirm, updateLink, windowPayload]);
 
-  const approve = useCallback(async (requestId: string) => {
+  const decide = useCallback(async (
+    requestId: string,
+    action: () => Promise<unknown>,
+    success: string,
+    fallback: string,
+  ) => {
     setActingId(requestId);
-    const previous = requests;
-    setRequests((prev) => prev.filter((r) => r.id !== requestId));
+    const previous = queryClient.getQueryData<ClanJoinRequestRow[]>(requestsKey);
+    queryClient.setQueryData<ClanJoinRequestRow[]>(
+      requestsKey,
+      (prev: ClanJoinRequestRow[] | undefined) => (prev ?? []).filter((r) => r.id !== requestId)
+    );
     try {
-      await clanApi.approveJoinRequest(clanId, requestId);
-      toast.success('Join request approved');
+      await action();
+      toast.success(success);
+      await invalidate(requestsKey, qk.admin.clans, qk.clan.detail(clanId));
       return true;
     } catch (e) {
-      setRequests(previous);
-      toast.error(extractApiErrorMessage(e, 'Could not approve'));
+      queryClient.setQueryData(requestsKey, previous);
+      toast.error(extractApiErrorMessage(e, fallback));
       return false;
     } finally {
       setActingId(null);
     }
-  }, [clanId, requests]);
+  }, [clanId, invalidate, queryClient, requestsKey]);
 
-  const reject = useCallback(async (requestId: string, note?: string) => {
-    setActingId(requestId);
-    const previous = requests;
-    setRequests((prev) => prev.filter((r) => r.id !== requestId));
-    try {
-      const trimmed = note?.trim();
-      await clanApi.rejectJoinRequest(clanId, requestId, trimmed || undefined);
-      toast.success('Join request rejected');
-      return true;
-    } catch (e) {
-      setRequests(previous);
-      toast.error(extractApiErrorMessage(e, 'Could not reject'));
-      return false;
-    } finally {
-      setActingId(null);
-    }
-  }, [clanId, requests]);
+  const approve = useCallback(
+    (requestId: string) => decide(
+      requestId,
+      () => clanApi.approveJoinRequest(clanId, requestId),
+      'Join request approved',
+      'Could not approve',
+    ),
+    [clanId, decide],
+  );
+
+  const reject = useCallback((requestId: string, note?: string) => {
+    const trimmed = note?.trim();
+    return decide(
+      requestId,
+      () => clanApi.rejectJoinRequest(clanId, requestId, trimmed || undefined),
+      'Join request rejected',
+      'Could not reject',
+    );
+  }, [clanId, decide]);
 
   return {
     state,
     requests,
     pendingCount: requests.length,
-    loading,
+    loading: stateLoading || requestsLoading,
     busy,
     actingId,
     windowDraft,

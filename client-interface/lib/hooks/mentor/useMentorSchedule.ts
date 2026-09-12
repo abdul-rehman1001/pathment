@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+'use client';
+
+import { qk, useApiQuery } from '@/lib/query';
 import { meetingsApi } from '@/lib/services/meetings-api';
 
 export interface AvailabilitySlot {
@@ -35,34 +37,32 @@ export interface UseMentorScheduleReturn {
   refetch: () => Promise<void>;
 }
 
+interface Schedule { availability: AvailabilitySlot[]; meetings: Meeting[] }
+
+const EMPTY: Schedule = { availability: [], meetings: [] };
+
 export function useMentorSchedule(): UseMentorScheduleReturn {
-  const [availability, setAvailability] = useState<AvailabilitySlot[]>([]);
-  const [meetings, setMeetings] = useState<Meeting[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Two independent queries rather than one combined fetch, so availability and
+  // meetings can be invalidated separately after a booking or a slot edit.
+  const avail = useApiQuery<AvailabilitySlot[]>({
+    queryKey: qk.mentor.availability,
+    queryFn: async () => (await meetingsApi.listMyAvailability())?.data?.slots ?? [],
+    errorMessage: 'Failed to load your schedule',
+  });
 
-  const fetchAll = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const [availRes, meetRes] = await Promise.all([
-        meetingsApi.listMyAvailability(),
-        meetingsApi.listMeetings(),
-      ]);
-      setAvailability(availRes?.data?.slots ?? []);
-      setMeetings(meetRes?.data?.meetings ?? []);
-    } catch {
-      setError('Failed to load your schedule');
-      setAvailability([]);
-      setMeetings([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const meets = useApiQuery<Meeting[]>({
+    queryKey: qk.mentor.meetings,
+    queryFn: async () => (await meetingsApi.listMeetings())?.data?.meetings ?? [],
+    errorMessage: 'Failed to load your schedule',
+  });
 
-  useEffect(() => {
-    fetchAll();
-  }, [fetchAll]);
+  const refetch = async () => { await Promise.all([avail.refetch(), meets.refetch()]); };
 
-  return { availability, meetings, loading, error, refetch: fetchAll };
+  return {
+    availability: avail.data ?? EMPTY.availability,
+    meetings: meets.data ?? EMPTY.meetings,
+    loading: avail.loading || meets.loading,
+    error: avail.error ?? meets.error,
+    refetch,
+  };
 }

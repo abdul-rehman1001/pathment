@@ -22,7 +22,7 @@ async function addColumn(qi, table, column, spec, t) {
 async function up() {
   const qi = sequelize.getQueryInterface();
   const S = Sequelize;
-  console.log('▶ Running migration 097: clan public join window');
+  console.log('▶ Running migration 099: clan public join window');
 
   await sequelize.transaction(async (t) => {
     // UTC instants (wall-clock + timezone converted on write, same as cohort apply window).
@@ -31,12 +31,12 @@ async function up() {
     await addColumn(qi, 'clans', 'public_join_timezone', { type: S.STRING(64), allowNull: true }, t);
   });
 
-  console.log('✓ Migration 097 complete');
+  console.log('✓ Migration 099 complete');
 }
 
 async function down() {
   const qi = sequelize.getQueryInterface();
-  console.log('▶ Rolling back migration 097');
+  console.log('▶ Rolling back migration 099');
 
   await sequelize.transaction(async (t) => {
     for (const col of ['public_join_timezone', 'public_join_ends_at', 'public_join_starts_at']) {
@@ -47,7 +47,7 @@ async function down() {
     }
   });
 
-  console.log('✓ Rollback 097 complete');
+  console.log('✓ Rollback 099 complete');
 }
 
 if (require.main === module) {

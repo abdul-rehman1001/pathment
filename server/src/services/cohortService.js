@@ -7,6 +7,7 @@ const frictionService = require('./frictionService');
 const insightService = require('./insightService');
 const dailyLogService = require('./dailyLogService');
 const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
+const { PERMISSIONS: P } = require('../config/permissions');
 const { NotFoundError, ValidationError } = require('../utils/errors/errorTypes');
 const logger = require('../utils/logger');
 
@@ -56,8 +57,21 @@ class CohortService {
     return { clanIds, clanNameById: new Map(clans.map((c) => [c.id, c.name || 'Clan'])) };
   }
 
-  async resolveMenteeIds(mentorId) {
-    return authzService.resolveMenteeIds(mentorId);
+  /**
+   * Mentees this mentor may VIEW. The permission filter is not optional: without
+   * it the clan side falls through to `mentoredClanIds`, which ignores co-mentor
+   * deny lists — so a co-mentor whose `mentee.view` was revoked still got those
+   * mentees in the list and then 403'd on every one of them, because the detail
+   * endpoints run the full `canViewMentee`. Passing the permission the view
+   * renders keeps the list and the per-record check in agreement.
+   *
+   * Accepts a user object (cheaper - skips the hydration) or a bare id.
+   */
+  async resolveMenteeIds(mentorOrId, opts = {}) {
+    return authzService.resolveMenteeIds(mentorOrId, {
+      permission: P.MENTEE_VIEW,
+      ...opts
+    });
   }
 
   /** Active mentee userIds in ONE clan (cohort-review is now clan-scoped). */
@@ -474,6 +488,16 @@ class CohortService {
     const dailyLogs = settled(6, []);
     const lastAttendance = settled(7, null);
 
+    // Day-by-day progress per in-flight task, for the review screen's one liner.
+    // Deliberately outside the Promise.allSettled block above: it is additive,
+    // and a profile that loses this section is still a perfectly good profile.
+    let taskProgress = [];
+    try {
+      taskProgress = await require('./taskProgressService').summaryForMentee(menteeId);
+    } catch (error) {
+      logger.warn('getMenteeDetail: taskProgress failed to load', { menteeId, error: error.message });
+    }
+
     const openBlockers = allBlockers.filter((b) => b.status === 'open');
     const preloads = {
       users: { [menteeId]: mentee },
@@ -554,6 +578,10 @@ class CohortService {
         email: c.email,
         status: c.status
       })),
+      // Per-task progress, one line each, for the cohort review screen. Attached
+      // to the profile the review page already loads rather than a second
+      // request, so walking 20 mentees does not become 20 extra round trips.
+      taskProgress,
       dailyLogs: dailyLogs.map((l) => ({
         dateKey: l.dateKey,
         tasksDone: (l.tasksDone || []).length,

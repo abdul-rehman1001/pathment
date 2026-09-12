@@ -28,14 +28,24 @@ class GroqService {
    */
   async _resolve(feature = null, userId = null) {
     let cfg = null;
+    let isMentorCaller = false;
     try {
-      // Lazy require avoids any load-order cycle (db ↔ services).
       const aiConnectionService = require('./aiConnectionService');
+      if (userId) {
+        const { models } = require('../db');
+        const user = await models.User.findByPk(userId, { attributes: ['id', 'role', 'capabilities'] });
+        if (user) {
+          const caps = Array.isArray(user.capabilities) && user.capabilities.length ? user.capabilities : [user.role];
+          if (!caps.includes('admin') && user.role === 'mentor') {
+            isMentorCaller = true;
+          }
+        }
+      }
       cfg = await aiConnectionService.resolveActiveConfig(feature, userId);
     } catch (e) {
-      console.error('[AI] connection resolve failed, falling back to env:', e.message);
+      console.error('[AI] connection resolve failed:', e.message);
     }
-    if (!cfg && config.ai.apiKey) {
+    if (!cfg && config.ai.apiKey && !isMentorCaller) {
       cfg = { apiKey: config.ai.apiKey, baseURL: config.ai.baseURL, model: config.ai.model, provider: config.ai.provider };
     }
     if (!cfg) return { enabled: false };
@@ -48,6 +58,7 @@ class GroqService {
     };
   }
 
+
   /**
    * Transcribe a recorded audio answer with Whisper — far more accurate than the
    * browser's live speech-to-text, which garbles accents and pronunciation. Uses
@@ -56,7 +67,7 @@ class GroqService {
    * return null and the caller falls back to whatever transcript it already had.
    * @returns {Promise<string|null>} transcript text, or null if unavailable.
    */
-  async transcribeAudio({ audioUrl, userId = null, feature = 'feedback' } = {}) {
+  async transcribeAudio({ audioUrl, userId = null, feature = 'feedback', prompt } = {}) {
     if (!audioUrl) return null;
     const ai = await this._resolve(feature, userId);
     if (!ai.enabled) return null;
@@ -69,7 +80,16 @@ class GroqService {
     if (!resp.ok) throw new Error(`could not fetch audio (${resp.status})`);
     const buf = Buffer.from(await resp.arrayBuffer());
     const file = await OpenAI.toFile(buf, 'answer.webm', { type: 'audio/webm' });
-    const out = await ai.client.audio.transcriptions.create({ file, model });
+
+    // Anchor prompt to bias Whisper against random hallucinations in case of silence/noise
+    // and guide it towards English/Urdu/Hinglish switching.
+    const defaultPrompt = "Umm, let me think. Main isko explain karta hoon. So basically, the code does this...";
+
+    const out = await ai.client.audio.transcriptions.create({
+      file,
+      model,
+      prompt: prompt || defaultPrompt,
+    });
     return (out?.text || '').trim() || null;
   }
 
@@ -656,10 +676,12 @@ Output as JSON:
       return 'That was too much for the AI in one go. Try fewer steps/weeks or shorter instructions.';
     }
     if (/429|rate limit/i.test(msg)) return 'The AI is rate-limited right now. Wait a moment and try again.';
-    if (/401|unauthorized|invalid api key/i.test(msg)) return 'AI authentication failed. Check your key in Settings → AI Connections.';
+    if (/401|unauthorized|invalid api key|invalid_api_key/i.test(msg)) return 'AI authentication failed. Check your API key in Settings → AI Connections.';
+    if (/404|model_not_found|does not exist|access to it/i.test(msg)) return 'The selected AI model is not accessible with your key. Please verify your connection & model ID in Settings → AI Connections.';
     if (/5\d\d|temporarily|unavailable|overloaded/i.test(msg)) return 'The AI service is temporarily unavailable. Please try again shortly.';
     return `AI generation failed: ${msg}`;
   }
+
 
   /**
    * Draft a roadmap as a FLAT, ordered list of steps (the linear-roadmap model).

@@ -3,6 +3,9 @@ const { NotFoundError, ValidationError } = require('../utils/errors/errorTypes')
 const notificationOrchestrator = require('./notificationOrchestrator');
 const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
 const { todayInZone } = require('../utils/timezone');
+const authzService = require('./authzService');
+const logger = require('../utils/logger');
+const { ensureMenteeProfile } = require('./menteeProfile');
 const {
   currentStreak,
   longestStreak,
@@ -480,11 +483,36 @@ class GamificationService {
     });
   }
 
-  async getUserGamificationStats(userId) {
-    const menteeProfile = await models.MenteeProfile.findOne({ where: { userId } });
-    if (!menteeProfile) {
+  /**
+   * The profile these stats are read off, healing it when it is missing.
+   *
+   * A read has no business 404-ing because a derived row was never written: the
+   * person really is a learner (they hold the capability — an enrollment or a
+   * mentee placement says so), and the absent row is our bookkeeping, not their
+   * state. Somebody who is NOT a learner still gets the 404, because for them
+   * "no mentee profile" is the correct answer rather than a gap to fill.
+   *
+   * `clanService.addMember` writes this row at placement time so new cases
+   * cannot arise; this covers everybody placed before that, without waiting on
+   * `scripts/backfill-mentee-profiles.js` having been run against the database.
+   */
+  async #readableMenteeProfile(userId) {
+    const existing = await models.MenteeProfile.findOne({ where: { userId } });
+    if (existing) return existing;
+
+    const user = await models.User.findByPk(userId, { attributes: ['id', 'role'] });
+    if (!user) throw new NotFoundError('Mentee profile not found');
+
+    const capabilities = await authzService.getCapabilities(user);
+    if (!capabilities.includes('mentee')) {
       throw new NotFoundError('Mentee profile not found');
     }
+    logger.info('Healed a missing mentee profile on read', { userId });
+    return ensureMenteeProfile(userId);
+  }
+
+  async getUserGamificationStats(userId) {
+    const menteeProfile = await this.#readableMenteeProfile(userId);
 
     const totalBadges = await models.UserBadge.count({ where: { userId } });
     const recentBadges = await this.getUserBadges(userId);

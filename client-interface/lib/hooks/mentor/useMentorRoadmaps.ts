@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+'use client';
+
 import { mentorApi } from '@/lib/services/mentor-api';
+import { qk, useApiQuery, STALE } from '@/lib/query';
 
 export interface RoadmapStep {
   id: string;
@@ -39,31 +41,20 @@ export interface UseMentorRoadmapsReturn {
   refetch: () => Promise<void>;
 }
 
+interface Roadmaps { local: LinearRoadmap[]; org: LinearRoadmap[] }
+
+const EMPTY: Roadmaps = { local: [], org: [] };
+
 export function useMentorRoadmaps(): UseMentorRoadmapsReturn {
-  const [local, setLocal] = useState<LinearRoadmap[]>([]);
-  const [org, setOrg] = useState<LinearRoadmap[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchRoadmaps = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  const { data, loading, error, refetch } = useApiQuery<Roadmaps>({
+    queryKey: qk.mentor.roadmaps,
+    queryFn: async () => {
       const res = await mentorApi.listRoadmaps();
-      setLocal(res?.data?.local ?? []);
-      setOrg(res?.data?.org ?? []);
-    } catch {
-      setError('Failed to load roadmaps');
-      setLocal([]);
-      setOrg([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      return { local: res?.data?.local ?? [], org: res?.data?.org ?? [] };
+    },
+    staleTime: STALE.long,
+    errorMessage: 'Failed to load roadmaps',
+  });
 
-  useEffect(() => {
-    fetchRoadmaps();
-  }, [fetchRoadmaps]);
-
-  return { local, org, loading, error, refetch: fetchRoadmaps };
+  return { ...(data ?? EMPTY), loading, error, refetch };
 }

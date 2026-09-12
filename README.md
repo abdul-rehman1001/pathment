@@ -1,1103 +1,327 @@
-# Pathment - Enterprise Mentorship Platform
+<div align="center">
 
-Pathment is a comprehensive, open-source mentorship platform that helps companies save money on employee training by connecting mentees with experienced mentors through structured learning programs.
+# Pathment
 
-> **👋 New to the codebase?** Start with the two zero-to-hero guides:
-> - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — how the whole system fits together (apps, request flow, the core life-cycle, conventions).
-> - **[docs/DATABASE.md](docs/DATABASE.md)** — the full data model with ER diagrams, domain by domain.
+**The operating system for mentor-led training programs.**
 
-## 🧩 The Problem We're Solving
+Run a fellowship, bootcamp, internship or onboarding cohort in one place, instead of a
+pile of spreadsheets, Google Forms and Slack threads.
 
-**Domain:** an operating system for organizations that develop people through structured, mentor-led programs — internships, bootcamps, apprenticeships, and employee onboarding/upskilling. (EdTech / workforce development; a mentorship-centric, project-based take on a cohort learning platform.)
+[**Live app**](https://devweekends.pathment.me) · [**Watch the 2 minute intro**](#-see-it-in-action) · [**Architecture**](#-how-it-is-built) · [**Docs**](docs/ARCHITECTURE.md) · [**Contributing**](CONTRIBUTING.md)
 
-Today, organizations that run these programs do it on a patchwork of **spreadsheets, Google Forms, Slack, email, and ad-hoc docs**. That patchwork doesn't scale, isn't fair, and makes outcomes invisible. Specifically:
+![Users](https://img.shields.io/badge/users-3%2C000%2B-0052D6)
+![Status](https://img.shields.io/badge/status-live%20in%20production-success)
+![License](https://img.shields.io/badge/license-Apache--2.0-blue)
+![Node](https://img.shields.io/badge/node-20.x-green)
+![Next.js](https://img.shields.io/badge/Next.js-16-black)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)
+![Tests](https://img.shields.io/badge/tests-Jest-red)
 
-- **Intake is manual and leaky.** Applications live in forms and sheets; assessing applicants, shortlisting, and onboarding them into the right group is copy-paste work.
-- **Mentorship doesn't scale and quality varies.** A mentor can only hold so many mentees, and without structure every mentor improvises — so learners get inconsistent guidance.
-- **Progress is opaque and trust erodes.** Nobody has a reliable, real-time picture of who's on track, who's blocked, or whether a mentee actually finished.
-- **Engagement and fairness are hard.** Motivation drops over long programs, and uneven workloads or favoritism creep in unnoticed.
-- **Communication and feedback are scattered** across too many tools, so context and accountability get lost.
-
-**Pathment turns the messy, manual lifecycle of `recruit → assess → place → mentor → track → graduate` into one structured, measurable, and fair platform** for admins, mentors, and mentees:
-
-- A public program catalog, shareable cohort apply links, and admin-defined assessments replace the form-and-spreadsheet intake — then accept → invite → placement in one flow.
-- Clans (mentor-led groups), shared roadmaps, and a standardized task **submit → review → feedback** loop make mentorship repeatable and scalable.
-- Enrollment progress is computed from real assigned tasks (a single source of truth), with blockers, delays, analytics, and mentor-confirmed completion making outcomes visible.
-- Gamification, a scoped community feed, and admin fairness/clan-health lenses keep people engaged and the program equitable.
-- Real-time messaging, notifications, structured feedback, and meeting notes keep all communication in one place.
-
-> In one line: **Pathment is the operating system for mentor-led development programs — it replaces the spreadsheet-and-Slack sprawl of running structured training with a single platform that makes mentorship scalable, progress measurable, and outcomes fair.**
-
-## 🎯 Overview
-
-Pathment enables organizations to:
-- Create structured mentorship **programs**, organized into **cohorts** (intake seasons) and mentor-led **clans**
-- Run **intake**: applications, admin review, and invite-based placement into a program + clan
-- Match mentees with expert mentors based on skills and availability
-- Hand out work through **roadmaps** of **tasks** with versioned submissions and mentor review
-- Engage members with a **scoped community feed**, **real-time messaging** (delivery/read receipts + reactions), and **gamification** (points, badges, leaderboards, gift catalog)
-- Schedule **1:1s** from mentor availability and capture meeting notes
-- Personalize the experience with **per-user themes + dark mode**, and plug in AI via **bring-your-own-key** connections
-- Monitor outcomes through per-mentee/mentor/program **analytics**
-
-The platform spans **3 roles** (admin, mentor, mentee), **83 data models** across 10 domains, and a Next.js client + Express API. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the guided tour.
-
-## 📋 Table of Contents
-
-- [The Problem We're Solving](#-the-problem-were-solving)
-- [Architecture](#architecture)
-- [Understanding the System](#-understanding-the-system)
-- [Prerequisites](#prerequisites)
-- [Installation & Setup](#installation--setup)
-- [Project Structure](#project-structure)
-- [Core Concepts](#core-concepts)
-- [User Roles & Flows](#user-roles--flows)
-- [API Documentation](#api-documentation)
-- [Technologies Used](#technologies-used)
-- [Development Guide](#development-guide)
-- [Troubleshooting](#troubleshooting)
-- [Quick Start Checklist](#-quick-start-checklist)
-- [Contributing](#-contributing)
+</div>
 
 ---
 
-## 🧭 Understanding the System
+## What Pathment is
 
-If you're here to understand or contribute to Pathment, read these in order — they're
-written to take you from zero to productive:
+Pathment is an open source platform for organisations that grow people through
+structured, mentor-led programs. Someone applies to a cohort, gets placed into a small
+group called a **clan** with a mentor who is actually responsible for them, works through
+a **roadmap** of real tasks, and gets those tasks reviewed by a human. Along the way there
+is live video review, one to one scheduling, messaging, a community feed and progress
+analytics, so nobody has to guess who is on track.
+
+It is live and in production at [Dev Weekends](https://devweekends.pathment.me), with
+**3,000+ registered users** and mentors using it every week to review work, run cohort
+calls and track how their mentees are doing.
+
+The short version: it turns `apply → assess → place → mentor → track → graduate` into one
+system that is measurable and fair, instead of five tools that do not talk to each other.
+
+---
+
+## 🎬 See it in action
+
+<div align="center">
+
+[![Watch the Pathment intro](https://img.youtube.com/vi/wg1-BTJDbPE/maxresdefault.jpg)](https://youtu.be/wg1-BTJDbPE)
+
+*Two minutes on what Pathment does and why it exists.*
+
+</div>
+
+---
+
+## 📸 What it looks like
+
+### The mentor cockpit
+
+Every mentee in the clan on one screen, with progress, an on-time rate, and a plain
+English reason for anyone who needs attention. The second bar, **adjusted for
+constraints**, is progress recalculated against the delays and blockers a mentee actually
+logged, so somebody juggling a full time job is not judged against somebody who is not.
+
+![Mentor cockpit](docs/screenshots/mentor-cockpit.png)
+
+### The weekly clan review
+
+Work through all 21 mentees one at a time, with attendance, a summary of where each person
+stands, and a place to leave a coaching note. Starting the meeting puts a "Join review"
+banner in front of every mentee and marks people present as they arrive.
+
+![Weekly clan review](docs/screenshots/cohort-review.png)
+
+### The mentee roadmap
+
+A mentee sees the whole 32 step path, not just the task in front of them. Where they are,
+what is next, what it is worth, and how much of the fellowship is behind them.
+
+![Mentee roadmap](docs/screenshots/mentee-roadmap.png)
+
+---
+
+## Who it is for
+
+| Role | What they do here |
+| --- | --- |
+| **Admin** | Creates programs and cohorts, runs intake and applications, sets up clans, invites people, watches org wide health. |
+| **Lead mentor** | Owns a clan. Assigns and reviews work, runs the weekly review call, holds one to ones, decides who is struggling. |
+| **Co-mentor** | Helps run a clan with almost the same powers as the lead. The lead can switch individual permissions off per person. |
+| **Mentee** | Works the roadmap, submits real work, gets feedback from a human, sees their own progress honestly. |
+
+One account can hold several of these at once. Somebody can be a mentee in one clan while
+co-mentoring another, which is normal in real programs and something most tools get wrong.
+
+---
+
+## ✨ What it does
+
+**Intake and placement**
+A public program catalog, shareable apply links, admin built assessments with question
+pools, and accept to invite to placement in a single flow. No more copying names between
+a form and a spreadsheet.
+
+**Mentorship that scales**
+Clans keep groups small. Shared roadmaps keep guidance consistent between mentors. Every
+task goes through the same submit, review, feedback loop, so quality does not depend on
+which mentor you happened to get.
+
+**Live cohort reviews**
+Weekly review calls run on self hosted Jitsi, embedded straight into the app. Attendance
+is marked as people join, talk time feeds a contribution signal, and ending the call
+finishes the session and awards points.
+
+**Progress you can trust**
+Enrollment progress is computed from real assigned tasks, not a field somebody typed.
+Blockers, logged delays, risk scoring and mentor confirmed completion make it obvious who
+is stuck and who is fine.
+
+**Everything else in one place**
+Real time messaging with delivery and read receipts, a community feed scoped to clan,
+cohort, program or global, gamification with points, badges and a gift catalog, one to one
+scheduling from mentor availability, quizzes, mock interviews with voice and code answers,
+a shared resource library, and analytics for fairness and clan health.
+
+**AI where it helps, off where it does not**
+Bring your own API key. Roadmap generation, cohort report narratives, at risk detection and
+interview grading all route through whichever provider you connect, per feature.
+
+---
+
+## 🏗️ How it is built
+
+![Pathment architecture](docs/architecture.png)
+
+<details>
+<summary>Same diagram as editable Mermaid source</summary>
+
+```mermaid
+flowchart TB
+    subgraph clients["People"]
+        web["Web app<br/>Next.js 16"]
+        mobile["Mobile app<br/>Expo / React Native"]
+    end
+
+    subgraph edge["Hosting"]
+        vercel["Vercel<br/>CDN + SSR"]
+    end
+
+    subgraph api["Pathment API (single Node process)"]
+        express["Express 4<br/>routes → controllers → services"]
+        rbac["Scoped RBAC<br/>org / program / clan / self"]
+        socket["Socket.IO<br/>notifications, chat, live review"]
+        workers["Background workers<br/>email · reminders · AI ingest"]
+    end
+
+    subgraph data["Data"]
+        pg[("PostgreSQL 16<br/>112 models · pgvector · full text search")]
+        queue[["Job queues<br/>plain Postgres tables"]]
+    end
+
+    subgraph external["External services"]
+        jitsi["Jitsi<br/>self hosted video"]
+        cloudinary["Cloudinary<br/>files and images"]
+        resend["Resend<br/>email delivery"]
+        llm["LLM providers<br/>bring your own key"]
+    end
+
+    web --> vercel --> express
+    mobile --> express
+    web -. "WebSocket" .-> socket
+    mobile -. "WebSocket" .-> socket
+
+    express --> rbac
+    express --> pg
+    socket --> pg
+    workers --> queue
+    queue --- pg
+    workers --> resend
+    workers --> llm
+    express --> cloudinary
+
+    web == "video streams directly, never through our API" ==> jitsi
+    resend -. "bounce webhook" .-> express
+
+    style pg fill:#336791,color:#fff
+    style jitsi fill:#1d4ed8,color:#fff
+    style queue fill:#0b7a55,color:#fff
+```
+
+</details>
+
+### Stack
+
+| Layer | Technology | Why this one |
+| --- | --- | --- |
+| Web app | Next.js 16 (App Router), React 19, TypeScript, Tailwind v4 | Server rendering where it helps, one language across the whole stack. |
+| Mobile app | Expo SDK 57, React Native 0.86, TanStack Query | Same API, no second backend. Ships to both stores from one codebase. |
+| API | Node.js 20, Express 4 | Boring on purpose. The interesting parts are in the services, not the framework. |
+| Database | PostgreSQL 16, Sequelize 6 | One database doing relational data, full text search, vector search and job queues. Fewer moving parts to run. |
+| Real time | Socket.IO 4 | Notifications, chat and live review presence over one authenticated connection. |
+| Background jobs | Plain Postgres tables, no Redis | Enqueueing a job is part of the same transaction as the business write, so they can never disagree. |
+| Video | Self hosted Jitsi (Prosody, Jicofo, JVB) | Video goes browser to bridge and never touches our API, so per minute cost is zero. |
+| Email | Resend, behind our own queue | Retries, dead letter queue, suppression list and a bounce webhook. |
+| Files | Cloudinary | Avatars, submissions and mentor uploads. |
+| AI | OpenAI, Gemini, Groq, OpenRouter, Anthropic | Bring your own key, routed per feature. |
+| Hosting | Vercel (web), Heroku (API and database), Oracle Cloud (video) | Staging runs the same shape on Render and Neon. |
+
+---
+
+## 🔬 Engineering worth a look
+
+A few parts that were harder than they look, if you are reading the code to judge it.
+
+**Job queues on plain Postgres**
+No Redis and no Bull. Jobs are claimed with `SELECT ... FOR UPDATE SKIP LOCKED`, so
+multiple workers are safe with zero coordination. Retries use exponential backoff with
+jitter, failures land in a dead letter queue with the reason attached, and a suppression
+list fed by bounce webhooks protects the sending domain.
+→ [`server/src/services/emailService.js`](server/src/services/emailService.js)
+
+**Idempotency in six places, five different ways**
+Unique constraints, natural key dedupe, state guards, content hashing and check and reuse.
+Awarding contribution points twice would quietly corrupt a leaderboard forever, so that
+path is guarded by state rather than by a key.
+→ [`server/src/services/reviewMeetingService.js`](server/src/services/reviewMeetingService.js)
+
+**Auth that survives bad Wi-Fi**
+Mentors were being logged out during live video calls. The cause was treating every failed
+token refresh as an expired session, when most failures are just a dropped connection.
+Refresh failures are now classified, renewal happens before expiry rather than after a
+failure, and simultaneous retries collapse into one request.
+→ [`client-interface/lib/services/auth-session.ts`](client-interface/lib/services/auth-session.ts)
+
+**Permissions that are computed, not stored**
+Roles are bound to a scope: org, program, clan or self. Capabilities are derived on every
+request instead of read from a cached list, so removing somebody's role takes effect
+immediately. A lead mentor can also switch off individual permissions for one co-mentor.
+→ [`server/src/services/authzService.js`](server/src/services/authzService.js)
+
+---
+
+## 🚀 Try it locally
+
+```bash
+git clone https://github.com/pathment/pathment.git
+cd pathment
+
+# Backend
+cd server && npm install
+cp .env.example .env          # fill in DATABASE_URL and JWT secrets
+npm run db:sync               # build the schema from the models
+npm run seed:demo             # 26 mentees, 32 step roadmap, full demo data
+npm run dev
+
+# Frontend, in a second terminal
+cd client-interface && npm install
+echo "NEXT_PUBLIC_API_URL=http://localhost:5000/api" > .env.local
+npm run dev
+```
+
+Open http://localhost:3000 and log in with any of these. The password is `Demo@1234`.
+
+| Account | What you will see |
+| --- | --- |
+| `mentor.aisha@demo.pathment.com` | A clan of 20 mentees, mid cohort. Start here. |
+| `mentor.sam@demo.pathment.com` | The same clan as a co-mentor, with analytics switched off. |
+| `mentee.maya@demo.pathment.com` | A strong mentee, 21 of 32 steps done. |
+| `admin@demo.pathment.com` | Intake, clans, analytics and the whole org. |
+
+Full setup, environment variables and troubleshooting live in
+**[CONTRIBUTING.md](CONTRIBUTING.md)** and **[docs/SETUP.md](docs/SETUP.md)**.
+
+---
+
+## 📱 Mobile app
+
+Pathment also ships a native mobile app, built with Expo SDK 57 and React Native 0.86. It
+talks to the same API as the web app, so there is no second backend and no duplicated
+business logic. Mentees can check their roadmap, submit work, message their mentor and
+receive push notifications.
+
+The mobile source is kept in a private repository for now. The API it runs on is all here,
+in this repository.
+
+---
+
+## 📚 Documentation
 
 | Guide | What it covers |
 | --- | --- |
-| **[docs/features/](docs/features/README.md)** | **The feature manual — one deep-dive per feature** (what it is, data model, backend, frontend, and the journey for each role). Start here to understand any specific feature. |
-| **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | The big picture: the monorepo apps, how a request flows (route → controller → service → model), auth & capabilities, the core apply → accept → register → place → work life-cycle, real-time messaging, background jobs, AI, theming, and the conventions every contributor follows. |
-| **[docs/DATABASE.md](docs/DATABASE.md)** | The complete data model: a "spine" diagram of the core entities plus a per-domain ER diagram (Mermaid) for all 83 models, schema conventions, and the migration history. |
-| **[server/README.md](server/README.md)** | Backend deep-dive: modules, API endpoints, background jobs, security. |
-| **[server/docs/API_DOCUMENTATION.md](server/docs/API_DOCUMENTATION.md)** | REST endpoint reference with request/response examples. |
-| **[client-interface/README.md](client-interface/README.md)** | Frontend structure, theming, and RBAC. |
-| **[CONTRIBUTING.md](CONTRIBUTING.md)** | Fork → branch → PR workflow and code standards. |
-
----
-
-## 🏗️ Architecture
-
-Pathment is built as a monorepo with three main applications:
-
-```
-pathment/
-├── marketing-site/      # Public marketing website (Next.js)
-├── server/              # Backend API (Node.js + Express + PostgreSQL)
-└── client-interface/    # Tenant frontend app (Next.js + React + TypeScript)
-```
-
-### High-Level Architecture
-
-```
-┌─────────────────┐
-│  Client (Next)  │
-│   Port: 3000    │
-└────────┬────────┘
-         │ REST API
-         ▼
-┌─────────────────┐
-│ Server (Express)│
-│   Port: 5000    │
-└────────┬────────┘
-         │ Sequelize ORM
-         ▼
-┌─────────────────┐
-│   PostgreSQL    │
-│   Port: 5432    │
-└─────────────────┘
-```
-
-### Tech Stack
-
-**Backend:**
-- Node.js + Express.js
-- PostgreSQL + Sequelize ORM
-- JWT Authentication
-- AI Integration (Groq/OpenAI)
-- Cloudinary for file uploads
-
-**Frontend:**
-- Next.js 14 (App Router)
-- TypeScript
-- Tailwind CSS
-- shadcn/ui components
-- React Context for state management
-
----
-
-## ⚙️ Prerequisites
-
-Before you begin, ensure you have the following installed:
-
-### Required Software
-
-- **Node.js** (v18.x or higher) - [Download](https://nodejs.org/)
-- **npm** or **yarn** (comes with Node.js)
-- **PostgreSQL** (v14.x or higher) - [Download](https://www.postgresql.org/download/)
-- **Git** - [Download](https://git-scm.com/)
-
-### Optional Tools
-
-- **Postman** - For API testing
-- **pgAdmin** or **DBeaver** - For database management
-- **VS Code** - Recommended IDE
-
----
-
-## 🚀 Installation & Setup
-
-### 1. Clone the Repository
-
-```bash
-git clone <repository-url>
-cd pathment
-```
-
-### 2. Backend Setup
-
-#### 2.1 Navigate to Server Directory
-
-```bash
-cd server
-```
-
-#### 2.2 Install Dependencies
-
-```bash
-npm install
-```
-
-#### 2.3 Create PostgreSQL Database
-
-```bash
-# Login to PostgreSQL
-psql -U postgres
-
-# Create database
-CREATE DATABASE pathment_db;
-
-# Create user (optional)
-CREATE USER pathment_user WITH PASSWORD 'your_password';
-GRANT ALL PRIVILEGES ON DATABASE pathment_db TO pathment_user;
-
-# Exit
-\q
-```
-
-#### 2.4 Configure Environment Variables
-
-Create `.env` file in the `server/` directory:
-
-```env
-# Server Configuration
-NODE_ENV=development
-PORT=5000
-
-# Database Configuration
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=pathment_db
-DB_USER=postgres
-DB_PASSWORD=your_password
-DB_DIALECT=postgres
-
-# JWT Configuration
-JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
-JWT_EXPIRES_IN=7d
-JWT_REFRESH_SECRET=your-refresh-secret-key
-JWT_REFRESH_EXPIRES_IN=30d
-
-# Email Configuration (for email verification)
-EMAIL_HOST=smtp.gmail.com
-EMAIL_PORT=587
-EMAIL_USER=your-email@gmail.com
-EMAIL_PASSWORD=your-app-password
-EMAIL_FROM=noreply@pathment.com
-
-# Cloudinary Configuration (for file uploads)
-CLOUDINARY_CLOUD_NAME=your-cloud-name
-CLOUDINARY_API_KEY=your-api-key
-CLOUDINARY_API_SECRET=your-api-secret
-
-# AI Configuration (for roadmap generation)
-GROQ_API_KEY=your-groq-api-key
-OPENAI_API_KEY=your-openai-api-key
-
-# Frontend URL (for CORS)
-CLIENT_URL=http://localhost:3000
-```
-
-#### 2.5 Initialize Database
-
-```bash
-# Sync database and create tables
-node scripts/syncDatabase.js
-
-# Seed initial data (skills)
-node scripts/seedSkills.js
-
-# Create admin user
-node scripts/seedAdmin.js
-```
-
-**Default Admin Credentials:**
-- Email: `admin@pathment.com`
-- Password: `Admin@123!ChangeMeNow`
-
-#### 2.6 Start Backend Server
-
-```bash
-# Development mode (with nodemon)
-npm run dev
-
-# Production mode
-npm start
-```
-
-Server will run at: `http://localhost:5000`
-
-### 3. Frontend Setup
-
-#### 3.1 Navigate to Client Directory
-
-```bash
-cd ../client-interface
-```
-
-#### 3.2 Install Dependencies
-
-```bash
-npm install
-```
-
-#### 3.3 Configure Environment Variables
-
-Create `.env.local` file in the `client-interface/` directory:
-
-```env
-# API Configuration
-NEXT_PUBLIC_API_URL=http://localhost:5000/api
-
-# App Configuration
-NEXT_PUBLIC_APP_NAME=Pathment
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-```
-
-#### 3.4 Start Frontend Application
-
-```bash
-# Development mode
-npm run dev
-
-# Build for production
-npm run build
-npm start
-```
-
-Frontend will run at: `http://localhost:3000`
-
----
-
-## 📁 Project Structure
-
-### Backend Structure (`server/`)
-
-```
-server/
-├── config/
-│   └── config.json              # Database configuration
-├── docs/                        # API reference + quick start + testing guides
-│   ├── API_DOCUMENTATION.md
-│   ├── QUICK_START.md
-│   └── TESTING_AUTH.md
-├── postman/                     # Postman collection for API testing
-├── scripts/                     # Database and utility scripts
-│   ├── createTables.js
-│   ├── seedAdmin.js
-│   ├── seedSkills.js
-│   ├── syncDatabase.js
-│   └── recalculateMentorCounts.js
-└── src/
-    ├── index.js                 # Application entry point
-    ├── config/
-    │   └── database.js          # Database connection
-    ├── controllers/             # Request handlers
-    │   ├── authController.js
-    │   ├── programController.js
-    │   ├── enrollmentController.js
-    │   ├── matchingController.js
-    │   └── ...
-    ├── db/
-    │   └── index.js             # Database initialization
-    ├── middlewares/             # Express middlewares
-    │   ├── auth.js              # Authentication
-    │   ├── errorHandler.js      # Error handling
-    │   └── validate.js          # Request validation
-    ├── models/                  # Sequelize models
-    │   ├── users/               # User-related models
-    │   ├── programs/            # Program-related models
-    │   ├── tasks/               # Task and enrollment models
-    │   └── index.js
-    ├── routes/                  # API routes
-    │   ├── auth.js
-    │   ├── programs.js
-    │   ├── enrollments.js
-    │   └── ...
-    ├── services/                # Business logic
-    │   ├── authService.js
-    │   ├── programService.js
-    │   ├── matchingService.js
-    │   └── ...
-    ├── utils/                   # Utilities
-    │   ├── errors/              # Custom error classes
-    │   ├── responses/           # Response helpers
-    │   └── cloudinaryUpload.js
-    └── validations/             # Input validation schemas
-```
-
-### Frontend Structure (`client-interface/`)
-
-```
-client-interface/
-├── app/                         # Next.js App Router
-│   ├── layout.tsx               # Root layout
-│   ├── page.tsx                 # Landing page
-│   ├── (auth)/                  # Auth routes (grouped)
-│   │   ├── login/
-│   │   ├── register/
-│   │   └── verify-email/
-│   ├── admin/                   # Admin dashboard
-│   │   ├── dashboard/
-│   │   ├── programs/
-│   │   ├── enrollment/
-│   │   ├── matching/
-│   │   └── settings/
-│   ├── mentor/                  # Mentor dashboard
-│   │   ├── dashboard/
-│   │   ├── mentees/
-│   │   ├── tasks/
-│   │   └── settings/
-│   └── mentee/                  # Mentee dashboard
-│       ├── dashboard/
-│       ├── programs/
-│       ├── tasks/
-│       └── settings/
-├── components/                  # React components
-│   ├── admin/                   # Admin-specific components
-│   ├── mentor/                  # Mentor-specific components
-│   ├── mentee/                  # Mentee-specific components
-│   ├── shared/                  # Shared components
-│   │   ├── Navigation.tsx
-│   │   ├── RoleGuard.tsx
-│   │   └── OnboardingGuard.tsx
-│   └── ui/                      # shadcn/ui components
-├── lib/                         # Libraries and utilities
-│   ├── config/
-│   │   └── api.ts               # API configuration
-│   ├── context/
-│   │   └── AuthContext.tsx      # Authentication context
-│   ├── services/                # API service layer
-│   │   ├── api-client.ts
-│   │   ├── auth-api.ts
-│   │   └── program-api.ts
-│   ├── types/
-│   │   └── index.ts             # TypeScript types
-│   └── utils/
-│       └── cn.ts                # Utility functions
-└── styles/
-    └── globals.css              # Global styles
-```
-
----
-
-## 💡 Core Concepts
-
-### 1. **Users & Roles**
-
-Three primary user roles:
-
-- **Admin**: System administrator who manages programs, enrollments, and mentor assignments
-- **Mentor**: Experienced professional who guides mentees through programs
-- **Mentee**: Learner enrolled in programs seeking mentorship
-
-### 2. **Programs**
-
-Programs are structured learning paths with:
-- **Multiple Levels**: Each program has sequential levels (e.g., Beginner → Intermediate → Advanced)
-- **Prerequisites**: Skills required to join
-- **Skill Tags**: Topics covered in the program
-- **Status**: Draft, Published, Archived
-
-### 3. **Program Levels**
-
-Each level contains:
-- **Level Order**: Sequential ordering (1, 2, 3...)
-- **Duration**: Duration in weeks
-- **Learning Outcomes**: What mentees will learn
-- **Prerequisites**: Requirements to start this level
-- **Target Audience**: Who the level is for
-
-### 4. **Enrollments**
-
-The enrollment flow:
-
-```
-Mentee → Browses Programs → Requests Enrollment
-       ↓
-Admin → Reviews Request → Approves Enrollment
-       ↓
-Status: pending_match → matched → active → completed
-```
-
-**Enrollment Statuses:**
-- `pending_match`: Approved, awaiting mentor assignment
-- `matched`: Mentor assigned, ready to start
-- `active`: Currently in progress
-- `level_completed`: Current level finished, moving to next
-- `program_completed`: All levels completed
-- `dropped`: Mentee left the program
-
-### 5. **Mentor-Mentee Matching**
-
-Matching process:
-
-```
-Admin → Selects Enrollment → Gets AI Suggestions
-      ↓
-Chooses Mentor for Level → Creates Match
-      ↓
-Match Status: active → completed
-```
-
-**Important**: 
-- Mentors are assigned **per level**, not per program
-- One mentee can have different mentors for different levels
-- `currentMenteeCount` counts **unique active mentees** across all levels
-
-### 6. **Roadmaps**
-
-AI-generated learning paths:
-- Created per program level
-- Contains weekly breakdown
-- Each week has multiple tasks
-- Tasks can be: Assignment, Project, Quiz, Reading, Video, Discussion
-
-### 7. **Tasks**
-
-Task lifecycle:
-
-```
-Created → Assigned → In Progress → Submitted → Under Review → Completed
-```
-
-**Task Types:**
-- `assignment`: Written work
-- `project`: Coding/practical project
-- `quiz`: Knowledge assessment
-- `reading`: Study material
-- `video`: Watch tutorial
-- `discussion`: Engage in discussion
-
----
-
-## 👥 User Roles & Flows
-
-### 🔴 Admin Flow
-
-#### Initial Setup
-1. **Login** with admin credentials
-2. Complete profile in settings
-3. Navigate to Programs section
-
-#### Creating a Program
-1. Go to **Admin → Programs → Create**
-2. Fill in program details:
-   - Name
-   - Description
-   - Type (technical/business/design)
-   - Prerequisites
-   - Skill tags
-   - Duration
-   - Difficulty level
-3. **Save as Draft**
-4. Add **Program Levels**:
-   - For each level, define:
-     - Name
-     - Order
-     - Duration (weeks)
-     - Description
-     - Learning outcomes
-     - Prerequisites
-     - Target audience
-5. **Publish Program**
-
-#### Managing Enrollments
-1. Go to **Admin → Enrollments**
-2. View pending enrollment requests
-3. Review mentee profile:
-   - Learning goals
-   - Prior experience
-   - Current education/occupation
-4. **Approve** or **Reject** enrollment
-5. Once approved, status becomes `pending_match`
-
-#### Assigning Mentors to Levels
-1. Go to **Admin → Matching → Mentor Assignment**
-2. Select a program
-3. For each level:
-   - Click **Assign Mentor**
-   - View available mentors
-   - Check mentor:
-     - Specialization match
-     - Current mentee count
-     - Max capacity
-     - `isAcceptingMentees` status
-   - **Assign** mentor to level
-
-#### Creating Mentor-Mentee Matches
-1. Go to **Admin → Matching → Create Match**
-2. Select an enrollment (status: `pending_match`)
-3. Click **Get AI Suggestions**
-4. Review suggested mentors:
-   - Match score (skill alignment + availability)
-   - Current mentee count
-   - Match reasons
-5. Select mentor
-6. **Create Match**
-7. Enrollment status → `matched`
-
-#### Generating Roadmaps
-1. Go to **Admin → Roadmap**
-2. Select program level
-3. Click **Generate Roadmap with AI**
-4. AI creates:
-   - Weekly breakdown
-   - Tasks for each week
-   - Task descriptions and resources
-5. Review and edit if needed
-6. **Save Roadmap**
-
-#### System Settings
-1. Go to **Admin → Settings**
-2. Configure:
-   - **System**: Auto-approve enrollments, maintenance mode
-   - **User Management**: Mentor approval requirements, AI matching
-   - **Notifications**: Alerts and reports
-   - **Security**: Password, 2FA
-
-### 🟢 Mentor Flow
-
-#### Initial Setup
-1. **Register** as mentor
-2. **Verify email**
-3. Complete **Onboarding**:
-   - **Step 1**: Mentor Profile
-     - Title, organization
-     - Years of experience
-     - Specialization
-     - LinkedIn/GitHub/Portfolio
-   - **Step 2**: Skills
-     - Add your expertise
-     - Proficiency levels
-
-#### Managing Availability
-1. Go to **Mentor → Settings → Availability**
-2. Set:
-   - **Accepting Mentees**: Toggle ON/OFF
-   - **Max Mentees**: Set capacity (e.g., 10)
-3. System prevents new assignments when:
-   - `isAcceptingMentees` = false
-   - Current mentees ≥ maxMentees
-
-#### Dashboard Overview
-View:
-- **Current Mentees**: Unique active mentees
-- **Active Programs**: Programs you're teaching
-- **Pending Tasks**: Tasks awaiting your review
-- **Completion Rate**: Success metrics
-
-#### Working with Mentees
-1. Go to **Mentor → Mentees**
-2. View all your mentees (across all levels)
-3. For each mentee:
-   - View their progress
-   - Current level
-   - Tasks completed/pending
-   - Performance metrics
-
-#### Reviewing Tasks
-1. Go to **Mentor → Tasks**
-2. Filter by status: `submitted`, `under_review`
-3. For each submission:
-   - View task details
-   - Check submission:
-     - Text content
-     - File attachments
-     - Links
-   - **Review**:
-     - Approve or Request Changes
-     - Add feedback
-     - Rate (0-5 stars)
-4. Task status → `completed` or `revision_needed`
-
-#### Communication
-- View mentee messages
-- Provide feedback on tasks
-- Set office hours
-- Schedule 1-on-1 sessions
-
-### 🔵 Mentee Flow
-
-#### Registration & Onboarding
-1. **Register** as mentee
-2. **Verify email**
-3. Complete **Onboarding**:
-   - **Step 1**: Mentee Profile
-     - Learning goals
-     - Prior experience
-     - Current education
-     - Current occupation
-   - **Step 2**: Skills
-     - Your current skills
-     - Proficiency levels
-
-#### Browsing Programs
-1. Go to **Mentee → Programs**
-2. View available programs
-3. Filter by:
-   - Type
-   - Difficulty level
-   - Duration
-4. Click on program to view:
-   - Program description
-   - All levels with details
-   - Learning outcomes per level
-   - Prerequisites
-   - Duration
-
-#### Enrolling in a Program
-1. Select a program
-2. Click **Request Enrollment**
-3. Review program details
-4. **Submit Request**
-5. Wait for admin approval
-6. Status: `pending_match` → `matched` → `active`
-
-#### Dashboard Overview
-View:
-- **Enrolled Programs**: Your active programs
-- **Current Level**: What you're working on
-- **Tasks**: Pending and completed tasks
-- **Progress**: Completion percentage
-- **Mentor Info**: Your assigned mentor
-
-#### Working on Tasks
-1. Go to **Mentee → Tasks**
-2. View your roadmap with weekly tasks
-3. For each task:
-   - Read description
-   - Check resources
-   - **Start Task**
-   - Work on it
-   - **Submit**:
-     - Add text content
-     - Upload files
-     - Add links
-4. Task status: `in_progress` → `submitted`
-5. Wait for mentor review
-6. If approved: `completed`
-7. If changes needed: `revision_needed` → Update → Resubmit
-
-#### Requesting Extensions
-1. Find task that's overdue
-2. Click **Request Extension**
-3. Provide reason
-4. Mentor approves/rejects
-5. If approved: New deadline set
-
-#### Settings & Preferences
-1. Go to **Mentee → Settings**
-2. Configure:
-   - **Profile**: Update personal info
-   - **Learning Info**: Update goals, experience
-   - **Preferences**: 
-     - Learning style
-     - Time commitment
-     - Schedule preferences
-   - **Notifications**: Email alerts for tasks, messages
-
----
-
-## 📚 API Documentation
-
-### Authentication Endpoints
-
-```
-POST   /api/auth/register          - Register new user
-POST   /api/auth/login             - Login
-POST   /api/auth/verify-email      - Verify email
-POST   /api/auth/forgot-password   - Request password reset
-POST   /api/auth/reset-password    - Reset password
-POST   /api/auth/refresh           - Refresh access token
-GET    /api/auth/me                - Get current user
-POST   /api/auth/logout            - Logout
-```
-
-### Program Endpoints
-
-```
-GET    /api/programs               - List all programs
-POST   /api/programs               - Create program (admin)
-GET    /api/programs/:id           - Get program by ID
-PUT    /api/programs/:id           - Update program (admin)
-DELETE /api/programs/:id           - Delete program (admin)
-POST   /api/programs/:id/publish   - Publish program (admin)
-GET    /api/programs/:id/levels    - Get program levels
-POST   /api/programs/:id/levels    - Create level (admin)
-```
-
-### Enrollment Endpoints
-
-```
-GET    /api/enrollments            - List enrollments
-POST   /api/enrollments            - Create enrollment (mentee)
-GET    /api/enrollments/:id        - Get enrollment details
-PATCH  /api/enrollments/:id/status - Update status (admin)
-```
-
-### Matching Endpoints
-
-```
-GET    /api/matches                       - List matches
-POST   /api/matches                       - Create match (admin)
-GET    /api/matches/suggestions/:id       - AI match suggestions
-GET    /api/matches/levels/:id/mentors    - Get level mentors
-PATCH  /api/matches/:id/status            - Update match status
-```
-
-### Profile Endpoints
-
-```
-GET    /api/profile                       - Get user profile
-PUT    /api/profile                       - Update profile
-POST   /api/profile/complete-mentee       - Complete mentee profile
-POST   /api/profile/complete-mentor       - Complete mentor profile
-POST   /api/profile/add-skills            - Add skills
-PATCH  /api/profile/mentor/availability   - Update mentor availability
-```
-
-### Task Endpoints
-
-```
-GET    /api/tasks                  - List tasks
-POST   /api/tasks                  - Create custom task (mentor)
-GET    /api/tasks/:id              - Get task details
-PUT    /api/tasks/:id              - Update task
-POST   /api/tasks/:id/submit       - Submit task (mentee)
-POST   /api/tasks/:id/review       - Review task (mentor)
-```
-
-For detailed API documentation, see: [server/docs/API_DOCUMENTATION.md](server/docs/API_DOCUMENTATION.md)
-
----
-
-## 🛠️ Technologies Used
-
-### Backend
-- **Node.js** - Runtime environment
-- **Express.js** - Web framework
-- **Sequelize** - ORM for PostgreSQL
-- **PostgreSQL** - Database
-- **JWT** - Authentication
-- **bcrypt** - Password hashing
-- **Joi** - Input validation
-- **Nodemailer** - Email sending
-- **Cloudinary** - File storage
-- **Groq/OpenAI** - AI roadmap generation
-- **dotenv** - Environment variables
-
-### Frontend
-- **Next.js 14** - React framework (App Router)
-- **TypeScript** - Type safety
-- **Tailwind CSS** - Styling
-- **shadcn/ui** - UI components
-- **Lucide Icons** - Icons
-- **Sonner** - Toast notifications
-- **React Hook Form** - Form handling
-- **Axios** - HTTP client
-
----
-
-## 👨‍💻 Development Guide
-
-### Code Style
-
-**Backend:**
-- Use ES6+ features
-- Async/await for async operations
-- Error handling with custom error classes
-- Service layer for business logic
-- Controller layer for request handling
-
-**Frontend:**
-- Functional components with hooks
-- TypeScript for type safety
-- Component composition
-- Custom hooks for reusable logic
-
-### Database Migrations
-
-When making database changes:
-
-```bash
-# Create new migration
-cd server
-node scripts/createMigration.js migration-name
-
-# Run migrations
-node scripts/runMigrations.js
-
-# Reset database (development only!)
-node scripts/resetDatabase.js
-```
-
-### Adding New Features
-
-1. **Backend:**
-   - Add model in `server/src/models/`
-   - Create service in `server/src/services/`
-   - Add controller in `server/src/controllers/`
-   - Define routes in `server/src/routes/`
-   - Add validation in `server/src/validations/`
-
-2. **Frontend:**
-   - Add page in `client-interface/app/`
-   - Create components in `client-interface/components/`
-   - Add API service in `client-interface/lib/services/`
-   - Update types in `client-interface/lib/types/`
-
-### Testing
-
-**Backend:**
-```bash
-cd server
-npm test                    # Run tests
-npm run test:watch          # Watch mode
-```
-
-**Frontend:**
-```bash
-cd client-interface
-npm test                    # Run tests
-npm run test:e2e            # E2E tests
-```
-
-Use Postman collection in `server/postman/` for API testing.
-
-### Common Development Tasks
-
-**Add a new user role:**
-1. Update User model enum
-2. Create profile model
-3. Add to authentication middleware
-4. Create role-specific routes
-5. Add frontend pages
-
-**Create new task type:**
-1. Update Task model enum
-2. Modify task service logic
-3. Update frontend task components
-4. Add validation rules
-
-**Integrate new AI provider:**
-1. Create service in `server/src/services/`
-2. Implement roadmap generation interface
-3. Add API keys to .env
-4. Update roadmapService.js
-
----
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-**Database Connection Failed:**
-```bash
-# Check PostgreSQL is running
-sudo service postgresql status
-
-# Restart PostgreSQL
-sudo service postgresql restart
-
-# Check credentials in .env
-DB_HOST=localhost
-DB_PORT=5432
-DB_USER=postgres
-DB_PASSWORD=your_password
-```
-
-**JWT Token Expired:**
-```bash
-# Logout and login again
-# Or refresh token using /api/auth/refresh
-```
-
-**CORS Errors:**
-```bash
-# Ensure FRONTEND_URL in server/.env matches your client URL
-FRONTEND_URL=http://localhost:3000
-```
-
-**Port Already in Use:**
-```bash
-# Kill process on port 5000
-lsof -ti:5000 | xargs kill -9
-
-# Kill process on port 3000
-lsof -ti:3000 | xargs kill -9
-```
-
-**Mentor Count Not Updating:**
-```bash
-# Run recalculation script
-cd server
-node scripts/recalculateMentorCounts.js
-
-# Or use API endpoint
-POST /api/admin/recalculate-mentor-counts
-```
-
-**AI Roadmap Generation Fails:**
-```bash
-# Check API keys are set
-echo $GROQ_API_KEY
-echo $OPENAI_API_KEY
-
-# Ensure at least one is configured in .env
-```
-
-### Database Reset (Development Only!)
-
-```bash
-cd server
-
-# Complete reset
-node scripts/resetDatabase.js
-
-# Re-sync tables
-node scripts/syncDatabase.js
-
-# Re-seed data
-node scripts/seedSkills.js
-node scripts/seedAdmin.js
-```
-
-### Logs
-
-**Backend Logs:**
-```bash
-cd server
-tail -f logs/app.log        # Application logs
-tail -f logs/error.log      # Error logs
-```
-
-**Frontend Logs:**
-Check browser console for client-side errors.
-
----
-
-## 📝 Environment Variables Reference
-
-### Backend (.env)
-
-| Variable | Required | Description | Example |
-|----------|----------|-------------|---------|
-| NODE_ENV | Yes | Environment | development |
-| PORT | Yes | Server port | 5000 |
-| DB_HOST | Yes | Database host | localhost |
-| DB_PORT | Yes | Database port | 5432 |
-| DB_NAME | Yes | Database name | pathment_db |
-| DB_USER | Yes | Database user | postgres |
-| DB_PASSWORD | Yes | Database password | your_password |
-| JWT_SECRET | Yes | JWT secret key | random-secret-key |
-| JWT_EXPIRES_IN | Yes | Token expiration | 7d |
-| FRONTEND_URL | Yes | Client URL | http://localhost:3000 |
-| GROQ_API_KEY | Optional | Groq AI key | gsk_xxx |
-| OPENAI_API_KEY | Optional | OpenAI key | sk-xxx |
-| CLOUDINARY_CLOUD_NAME | Optional | Cloudinary name | your-cloud |
-| EMAIL_HOST | Optional | Email server | smtp.gmail.com |
-
-### Frontend (.env.local)
-
-| Variable | Required | Description | Example |
-|----------|----------|-------------|---------|
-| NEXT_PUBLIC_API_URL | Yes | Backend API URL | http://localhost:5000/api |
-| NEXT_PUBLIC_APP_NAME | Yes | App name | Pathment |
-| NEXT_PUBLIC_APP_URL | Yes | Frontend URL | http://localhost:3000 |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the system fits together, how a request flows, the conventions every contributor follows. |
+| [docs/DATABASE.md](docs/DATABASE.md) | The full data model, domain by domain, with diagrams. |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Setup, branch names, pull request flow, review expectations. |
 
 ---
 
 ## 🤝 Contributing
 
-We welcome external contributions and use a structured OSS workflow.
+Contributions are genuinely welcome, and there are already 15 people in the commit history.
 
-- Read the full guide: [CONTRIBUTING.md](CONTRIBUTING.md)
-- Use branch prefixes:
-  - `feature/<name>`
-  - `fix/<name>`
-  - `docs/<name>`
-- Follow the repository templates:
-  - Pull Request template: [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md)
-  - Issue templates: [`.github/ISSUE_TEMPLATE/`](.github/ISSUE_TEMPLATE/)
-
-Quick PR flow:
 1. Fork the repository
-2. Create a branch (`feature/...`, `fix/...`, or `docs/...`)
-3. Make focused changes and run relevant checks
-4. Open a pull request with linked issue and context
+2. Branch as `feature/...`, `fix/...` or `docs/...`
+3. Make focused changes and run the tests in `server/`
+4. Open a pull request that explains the problem, not just the diff
+
+Full guide, including local setup and what a good pull request looks like:
+**[CONTRIBUTING.md](CONTRIBUTING.md)**
 
 ---
 
 ## 📄 License
 
-Pathment is open source. A specific license (e.g. MIT or Apache-2.0) is being finalized —
-once chosen, the full text will live in a top-level `LICENSE` file and this section will
-point to it. Until then, treat external contributions under the inbound-equals-outbound
-model described in [CONTRIBUTING.md](CONTRIBUTING.md).
+Apache License 2.0. See [LICENSE](LICENSE).
+
+You can use, modify and distribute this, including commercially. Apache 2.0 also grants
+patent rights explicitly, which is why serious open source infrastructure tends to prefer
+it over MIT.
 
 ---
 
-## 📧 Support
+<div align="center">
 
-For questions or issues:
-- Check documentation in `server/docs/`
-- Review API documentation
-- Check troubleshooting section
-- Contact development team
+Built by [Sheryar Ahmed](https://github.com/Sheryar-Ahmed) and
+[15 contributors](https://github.com/pathment/pathment/graphs/contributors).
 
----
+If Pathment is useful to you, a star helps other people find it.
 
-## 🎓 Quick Start Checklist
-
-- [ ] Install Node.js, PostgreSQL
-- [ ] Clone repository
-- [ ] Setup database
-- [ ] Configure backend .env
-- [ ] Run `npm install` in server/
-- [ ] Sync database and seed data
-- [ ] Start backend server
-- [ ] Configure frontend .env.local
-- [ ] Run `npm install` in client-interface/
-- [ ] Start frontend server
-- [ ] Run `npm install` in marketing-site/
-- [ ] Start marketing-site server
-- [ ] Login with admin credentials
-- [ ] Create first program
-- [ ] Test complete flow
-
----
-
-**Happy Coding! 🚀**
+</div>

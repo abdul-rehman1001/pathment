@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+'use client';
+
+import { qk, useApiQuery } from '@/lib/query';
 import { cohortApi } from '@/lib/services/intake-api';
 
 export type CohortStatus = 'planning' | 'open' | 'closed' | 'running' | 'completed';
@@ -35,28 +37,14 @@ export interface UseCohortsReturn {
   refetch: () => Promise<void>;
 }
 
+const EMPTY: Cohort[] = [];
+
 export function useCohorts(programId?: string): UseCohortsReturn {
-  const [cohorts, setCohorts] = useState<Cohort[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, loading, error, refetch } = useApiQuery<Cohort[]>({
+    queryKey: qk.admin.cohorts(programId),
+    queryFn: async () => (await cohortApi.list(programId ? { programId } : undefined))?.data?.cohorts ?? [],
+    errorMessage: 'Failed to load cohorts',
+  });
 
-  const fetchCohorts = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await cohortApi.list(programId ? { programId } : undefined);
-      setCohorts(res?.data?.cohorts ?? []);
-    } catch {
-      setError('Failed to load cohorts');
-      setCohorts([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [programId]);
-
-  useEffect(() => {
-    fetchCohorts();
-  }, [fetchCohorts]);
-
-  return { cohorts, loading, error, refetch: fetchCohorts };
+  return { cohorts: data ?? EMPTY, loading, error, refetch };
 }

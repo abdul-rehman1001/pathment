@@ -10,6 +10,7 @@ const promotionController = require('../controllers/promotionController');
 const feedbackController = require('../controllers/feedbackController');
 const mentorshipPauseController = require('../controllers/mentorshipPauseController');
 const menteeTransferController = require('../controllers/menteeTransferController');
+const taskProgressController = require('../controllers/taskProgressController');
 const { authenticate, authorize } = require('../middlewares/auth');
 const { requirePermission } = require('../middlewares/authz');
 const { PERMISSIONS } = require('../config/permissions');
@@ -52,6 +53,10 @@ router.get('/transfers/outgoing', mentorOnly, menteeTransferController.outgoing)
 router.post('/transfers', mentorOnly, menteeTransferController.create);
 router.post('/transfers/:id/respond', mentorOnly, menteeTransferController.respond);
 router.post('/transfers/:id/cancel', mentorOnly, menteeTransferController.cancel);
+
+// A mentee's day-by-day progress on one task, read only. Gated on canViewMentee
+// inside the service, the same check the rest of the mentor surface uses.
+router.get('/tasks/:id/progress', mentorOnly, taskProgressController.forMentor);
 
 // Rich profile bundle for a single mentee.
 router.get('/mentee/:id', authenticate, authorize(['mentor', 'admin']), cohortController.getMenteeProfile);

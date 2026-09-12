@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { Op } = require('sequelize');
 const { models, sequelize } = require('../db');
 const { NotFoundError, ForbiddenError, ValidationError, ConflictError } = require('../utils/errors/errorTypes');
+const { snapToDifficultyPoints } = require('../config/points');
 
 const QUESTION_KINDS = ['single', 'multi', 'boolean', 'short'];
 const CHOICE_KINDS = ['single', 'multi', 'boolean'];
@@ -36,7 +37,9 @@ class QuizKitService {
       position,
       kind,
       prompt,
-      points: Math.max(0, toPosInt(raw?.points, 5)),
+      // Snapped to the difficulty curve rather than taken as typed. See
+      // config/points.js: the same difficulty is worth the same to everybody.
+      points: snapToDifficultyPoints(toPosInt(raw?.points, 5)),
       required: raw?.required !== false,
       options: [],
       correctOptionIds: [],

@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
 import { enrollmentApi, matchingApi, mentorApi } from '@/lib/services/enrollment-api';
 import { programManagementApi } from '@/lib/services/program-api';
 import { useDebounce } from '@/lib/hooks/shared/useDebounce';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
+import { qk, useApiQuery } from '@/lib/query';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 
 const MENTOR_LIMIT = 10;
@@ -59,106 +60,90 @@ export interface UseMentorAssignmentReturn {
   refetchEnrollments: () => Promise<void>;
 }
 
+interface MentorPage {
+  mentors: MentorAssignmentMentor[];
+  totalPages: number;
+  total: number;
+}
+
+const NO_PROGRAMS: MentorAssignmentProgram[] = [];
+const NO_ENROLLMENTS: MentorAssignmentEnrollment[] = [];
+const NO_MENTOR_PAGE: MentorPage = { mentors: [], totalPages: 1, total: 0 };
+const NO_SUGGESTIONS: Record<string, MentorAssignmentSuggestion[]> = {};
+
 export function useMentorAssignment(): UseMentorAssignmentReturn {
   const confirm = useConfirm();
-  // ── programs ──────────────────────────────────────────────────────────────
-  const [programs, setPrograms] = useState<MentorAssignmentProgram[]>([]);
-  const [selectedProgram, setSelectedProgram] = useState('');
-
-  // ── pending matches ────────────────────────────────────────────────────────
-  const [enrollments, setEnrollments] = useState<MentorAssignmentEnrollment[]>([]);
-  const [suggestions, setSuggestions] = useState<Record<string, MentorAssignmentSuggestion[]>>({});
-  const [loading, setLoading] = useState(true);
-
-  // ── available mentors ──────────────────────────────────────────────────────
-  const [allMentors, setAllMentors] = useState<MentorAssignmentMentor[]>([]);
-  const [mentorsLoading, setMentorsLoading] = useState(false);
+  const [programOverride, setSelectedProgram] = useState('');
   const [mentorSearch, setMentorSearch] = useState('');
   const [mentorPage, setMentorPage] = useState(1);
-  const [mentorTotalPages, setMentorTotalPages] = useState(1);
-  const [mentorTotal, setMentorTotal] = useState(0);
-  const debouncedMentorSearch = useDebounce(mentorSearch, 400);
-
-  // ── match actions ──────────────────────────────────────────────────────────
   const [matching, setMatching] = useState<string | null>(null);
   const [autoMatching, setAutoMatching] = useState(false);
+  const debouncedMentorSearch = useDebounce(mentorSearch, 400);
 
-  // ── fetch programs (once) ──────────────────────────────────────────────────
-  useEffect(() => {
-    const fetchPrograms = async () => {
-      try {
-        setLoading(true);
-        const response = await programManagementApi.programs.getAll();
-        const list = Array.isArray(response?.data) ? response.data : [];
-        setPrograms(list);
-        if (list.length > 0) setSelectedProgram(list[0].id);
-      } catch {
-        toast.error('Failed to load programs');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchPrograms();
-  }, []);
+  const programsQuery = useApiQuery<MentorAssignmentProgram[]>({
+    queryKey: qk.admin.programs,
+    queryFn: async () => {
+      const response = await programManagementApi.programs.getAll();
+      return Array.isArray(response?.data) ? response.data : [];
+    },
+    errorMessage: 'Failed to load programs',
+  });
 
-  // ── fetch enrollments whenever selected program changes ───────────────────
-  const fetchEnrollments = useCallback(async () => {
-    if (!selectedProgram) return;
-    try {
-      setLoading(true);
-      const response = await enrollmentApi.getAll({
-        programId: selectedProgram,
-        status: 'pending_match',
-      });
-      const list = response?.data?.enrollments || response?.enrollments || [];
-      setEnrollments(list);
+  const programs = programsQuery.data ?? NO_PROGRAMS;
+  // Default to the first program; an explicit pick wins. Derived, so there is no
+  // effect to fall out of step with the list.
+  const selectedProgram = programOverride || programs[0]?.id || '';
 
-      // AI mentor suggestions per enrollment
-      for (const enrollment of list) {
+  const enrollmentsQuery = useApiQuery<MentorAssignmentEnrollment[]>({
+    queryKey: qk.admin.pendingMatches(selectedProgram),
+    queryFn: async () => {
+      const response = await enrollmentApi.getAll({ programId: selectedProgram, status: 'pending_match' });
+      return response?.data?.enrollments || response?.enrollments || [];
+    },
+    enabled: !!selectedProgram,
+    errorMessage: 'Failed to load enrollments',
+  });
+
+  const enrollments = enrollmentsQuery.data ?? NO_ENROLLMENTS;
+  const enrollmentIds = useMemo(() => enrollments.map((e) => e.id), [enrollments]);
+
+  // AI suggestions for the pending enrollments. Fetched in parallel — the old
+  // code awaited them one at a time, so a long queue trickled in slowly.
+  const suggestionsQuery = useApiQuery<Record<string, MentorAssignmentSuggestion[]>>({
+    queryKey: qk.admin.matchSuggestions(enrollmentIds),
+    queryFn: async () => {
+      const entries = await Promise.all(enrollmentIds.map(async (id) => {
         try {
-          const sRes = await matchingApi.getSuggestions(enrollment.id);
-          const suggestionsList = sRes?.data?.suggestions || sRes?.suggestions || [];
-          setSuggestions(prev => ({ ...prev, [enrollment.id]: suggestionsList }));
-        } catch { /* non-fatal */ }
-      }
-    } catch {
-      toast.error('Failed to load enrollments');
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedProgram]);
+          const sRes = await matchingApi.getSuggestions(id);
+          return [id, sRes?.data?.suggestions || sRes?.suggestions || []] as const;
+        } catch {
+          return [id, []] as const; // non-fatal
+        }
+      }));
+      return Object.fromEntries(entries);
+    },
+    enabled: enrollmentIds.length > 0,
+  });
 
-  useEffect(() => {
-    fetchEnrollments();
-  }, [fetchEnrollments]);
-
-  // ── reset mentor page on search change ────────────────────────────────────
-  useEffect(() => {
-    setMentorPage(1);
-  }, [debouncedMentorSearch]);
-
-  // ── fetch available mentors (paginated + search) ───────────────────────────
-  const fetchAllMentors = useCallback(async () => {
-    try {
-      setMentorsLoading(true);
+  const mentorsQuery = useApiQuery<MentorPage>({
+    queryKey: qk.admin.availableMentors(mentorPage, debouncedMentorSearch.trim()),
+    queryFn: async () => {
       const response = await mentorApi.getAll({
         ...(debouncedMentorSearch.trim() && { search: debouncedMentorSearch.trim() }),
         page: mentorPage,
         limit: MENTOR_LIMIT,
       });
-      setAllMentors(Array.isArray(response?.data?.mentors) ? response.data.mentors : []);
-      setMentorTotalPages(response?.pagination?.totalPages ?? 1);
-      setMentorTotal(response?.pagination?.totalItems ?? 0);
-    } catch {
-      // silent - search errors shouldn't block the page
-    } finally {
-      setMentorsLoading(false);
-    }
-  }, [debouncedMentorSearch, mentorPage]);
+      return {
+        mentors: Array.isArray(response?.data?.mentors) ? response.data.mentors : [],
+        totalPages: response?.pagination?.totalPages ?? 1,
+        total: response?.pagination?.totalItems ?? 0,
+      };
+    },
+  });
 
-  useEffect(() => {
-    fetchAllMentors();
-  }, [fetchAllMentors]);
+  const mentorsPage = mentorsQuery.data ?? NO_MENTOR_PAGE;
+  const loading = programsQuery.loading || enrollmentsQuery.loading;
+  const fetchEnrollments = enrollmentsQuery.refetch;
 
   // ── manually create a single match ────────────────────────────────────────
   const handleCreateMatch = useCallback(async (
@@ -201,16 +186,16 @@ export function useMentorAssignment(): UseMentorAssignmentReturn {
     selectedProgram,
     setSelectedProgram,
     enrollments,
-    suggestions,
+    suggestions: suggestionsQuery.data ?? NO_SUGGESTIONS,
     loading,
-    allMentors,
-    mentorsLoading,
+    allMentors: mentorsPage.mentors,
+    mentorsLoading: mentorsQuery.loading,
     mentorSearch,
     setMentorSearch,
     mentorPage,
     setMentorPage,
-    mentorTotalPages,
-    mentorTotal,
+    mentorTotalPages: mentorsPage.totalPages,
+    mentorTotal: mentorsPage.total,
     matching,
     autoMatching,
     handleCreateMatch,
