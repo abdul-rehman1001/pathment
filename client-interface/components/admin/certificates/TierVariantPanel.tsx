@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Award, Layers, Loader2, Trash2, Upload, X } from 'lucide-react';
+import { Award, ChevronDown, Layers, Loader2, Trash2, Upload, X } from 'lucide-react';
 import { certificatesApi, type CertificateElement } from '@/lib/services/certificates-api';
 import { FileDragDrop } from '@/components/shared/FileDragDrop';
 import type { TierCriteria } from './certificate-constants';
@@ -130,19 +130,38 @@ export function TierVariantPanel({ element, criteria, onChange }: TierVariantPan
       </div>
 
       {/* ── Per-tier content ──────────────────────────────────────────────── */}
+      {/* This used to be a muted uppercase label with a tiny "Set up" on the
+          right — it read as a section heading rather than something you could
+          open, sat below every font control, and was collapsed by default. The
+          feature was unfindable. It is a real button now, and it says what it
+          does while still closed. */}
       <div className="space-y-2">
         <button
           type="button"
           onClick={() => setExpanded(e => !e)}
-          className="w-full flex items-center justify-between text-[10px] font-bold text-muted-foreground uppercase hover:text-foreground transition-colors"
+          className={`w-full rounded-xl border px-3 py-2 text-left transition-colors ${
+            expanded || hasVariants
+              ? 'border-brand-500/40 bg-brand-500/5'
+              : 'border-border bg-background hover:border-brand-500/40 hover:bg-brand-500/5'
+          }`}
         >
-          <span className="flex items-center gap-1.5">
-            <Award className="w-3 h-3 text-brand-500" />
-            {isBadge ? 'Badge per type' : 'Wording per type'}
+          <span className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-1.5 text-[11px] font-bold text-foreground">
+              <Award className="w-3.5 h-3.5 text-brand-500" />
+              {isBadge ? 'Different badge per type' : 'Different wording per type'}
+            </span>
+            <span className="flex items-center gap-1 text-[9px] font-bold text-brand-600 dark:text-brand-400 shrink-0">
+              {hasVariants ? `${Object.keys(tierValues).length} set` : expanded ? 'Close' : 'Set up'}
+              <ChevronDown className={`w-3 h-3 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+            </span>
           </span>
-          <span className="text-[9px] font-bold text-brand-600 dark:text-brand-400">
-            {hasVariants ? `${Object.keys(tierValues).length} set` : expanded ? 'Hide' : 'Set up'}
-          </span>
+          {!expanded && (
+            <span className="mt-1 block text-[9px] font-normal leading-relaxed text-muted-foreground">
+              {isBadge
+                ? 'Show a different badge on Gold, Silver, Bronze…'
+                : 'Say something different on Gold, Silver, Bronze…'}
+            </span>
+          )}
         </button>
 
         {expanded && (

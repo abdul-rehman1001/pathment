@@ -1006,6 +1006,14 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
               <div>
                 <h3 className="text-xs font-bold text-foreground uppercase tracking-wide">Variables</h3>
                 <p className="text-[10px] text-muted-foreground mt-0.5">Click variables tags below to add them to certificate.</p>
+                {/* This card is where people look for "dynamic text", so it has
+                    to point at the other half of it: {{tier_name}} prints the
+                    type's name, but wording that differs per type is authored on
+                    the layer itself, which is a panel away and easy to miss. */}
+                <p className="text-[10px] text-muted-foreground mt-1.5 leading-relaxed">
+                  Need the text to differ per certificate type? Select a text layer, then use
+                  <span className="font-semibold text-foreground"> Different wording per type</span> in Layer Settings.
+                </p>
               </div>
 
               <div className="flex flex-col gap-2">
