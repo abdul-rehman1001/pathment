@@ -1093,15 +1093,39 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                   </div>
                 ) : (selectedElement.type === 'badge' || selectedElement.type === 'image') ? (
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase">Image Width: {selectedElement.widthPercent || 15}%</label>
-                    <input
-                      type="range"
-                      min="5"
-                      max="40"
-                      value={selectedElement.widthPercent || 15}
-                      onChange={e => updateSelectedElement('widthPercent', Number(e.target.value))}
-                      className="w-full accent-brand-500"
-                    />
+                    <label className="text-[10px] font-bold text-muted-foreground uppercase">
+                      Image Width: {selectedElement.widthPercent || 15}%
+                      <span className="ml-1 font-normal normal-case text-muted-foreground/70">of the certificate</span>
+                    </label>
+                    {/* Up to the full width of the certificate. The cap used to
+                        be 40%, which was not a limit of anything — the stored
+                        value and both renderers have always accepted 0-100 — so
+                        a full-width banner or a large seal simply could not be
+                        placed. The number input is there because dragging to an
+                        exact value is guesswork. */}
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="range"
+                        min="1"
+                        max="100"
+                        value={selectedElement.widthPercent || 15}
+                        onChange={e => updateSelectedElement('widthPercent', Number(e.target.value))}
+                        className="flex-1 accent-brand-500"
+                      />
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={selectedElement.widthPercent || 15}
+                        onChange={e => {
+                          // Clamp to what the server accepts, so a typed 500
+                          // cannot become a save that fails validation.
+                          const next = Math.min(100, Math.max(1, Number(e.target.value) || 1));
+                          updateSelectedElement('widthPercent', next);
+                        }}
+                        className="w-14 px-2 py-1 text-xs font-semibold bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-1 focus:ring-brand-500"
+                      />
+                    </div>
                   </div>
                 ) : (
                   <div>
