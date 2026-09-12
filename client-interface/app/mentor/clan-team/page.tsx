@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useClan, ALL_CLANS } from '@/lib/context/ClanContext';
 import { Check, ChevronDown, ChevronUp, Crown, HeartHandshake, Inbox, Link2, Loader2, Search, Shield, SlidersHorizontal, Trash2, UserPlus, Users2, X, Copy, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -47,6 +48,11 @@ const initials = (u: { firstName: string; lastName: string; email: string }) =>
 export default function ClanTeamPage() {
   const [memberships, setMemberships] = useState<MyMembership[]>([]);
   const [loading, setLoading] = useState(true);
+  // The sidebar picker is the ONLY clan control. This page used to stack every
+  // clan the mentor runs, one full roster after another, so picking "Viral Loop"
+  // still left Core Team's 37 mentees above it — a wall to scroll past and a
+  // contradiction of the control they had just used.
+  const { clans, activeClanId } = useClan();
 
   useEffect(() => {
     clanApi.myMemberships()
@@ -58,6 +64,14 @@ export default function ClanTeamPage() {
       .catch(() => toast.error('Could not load your clans'))
       .finally(() => setLoading(false));
   }, []);
+
+  // 'All clans' is a deliberate choice, so it still shows every roster.
+  const visible = useMemo(
+    () => (activeClanId === ALL_CLANS ? memberships : memberships.filter((m) => m.clan.id === activeClanId)),
+    [memberships, activeClanId]
+  );
+  const hiddenByClan = memberships.length - visible.length;
+  const activeClanName = clans.find((c) => c.id === activeClanId)?.name ?? null;
 
   return (
     <div className="space-y-6">
@@ -78,9 +92,16 @@ export default function ClanTeamPage() {
         <div className="rounded-2xl border border-dashed border-slate-200 bg-card p-12 text-center text-slate-400">
           You&apos;re not part of any clan as a mentor yet.
         </div>
+      ) : visible.length === 0 ? (
+        // Selected a clan they mentor but hold no team role in. Say so rather
+        // than rendering nothing.
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-card p-12 text-center text-slate-400">
+          You don&apos;t manage a team in {activeClanName || 'this clan'}.
+          {hiddenByClan > 0 && ` Switch clans in the sidebar to see your other ${hiddenByClan === 1 ? 'one' : hiddenByClan}.`}
+        </div>
       ) : (
         <div className="space-y-5">
-          {memberships.map((m) => (
+          {visible.map((m) => (
             <ClanTeamCard key={m.clan.id} clanId={m.clan.id} myRole={m.role} />
           ))}
         </div>

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useClan, ALL_CLANS } from '@/lib/context/ClanContext';
 import { useRouter } from 'next/navigation';
-import { Loader2, Search, Users, Users2, Inbox, ListPlus } from 'lucide-react';
+import { Loader2, Search, Users, Inbox, ListPlus } from 'lucide-react';
 import { useMentorCohort } from '@/lib/hooks/mentor';
 import { MenteeCard } from '@/components/mentor/MenteeCard';
 import { PausedMenteesPanel } from '@/components/mentor/PausedMenteesPanel';
@@ -17,7 +17,6 @@ export default function MentorMentees() {
   const { clans: mentoredClans, activeClanId, setActiveClanId } = useClan();
   const activeClanName = mentoredClans.find((c) => c.id === activeClanId)?.name ?? null;
   const [search, setSearch] = useState('');
-  const [clan, setClan] = useState('all');
   const [filter, setFilter] = useState<Filter>('all');
   // Assign drawer: 'single' targets one mentee, 'bulk' targets everyone in view.
   const [assign, setAssign] = useState<{ mode: 'single' | 'bulk'; mentee?: AssignDrawerMentee } | null>(null);
@@ -29,7 +28,10 @@ export default function MentorMentees() {
     if (f === 'no_tasks' || f === 'attention' || f === 'on_track') setFilter(f as Filter);
   }, []);
 
-  // Distinct clans across the cohort, for the clan filter.
+  // Distinct clans present in the (already clan-scoped) cohort — for the
+  // subtitle only. This page used to carry its own clan chips on top of the
+  // sidebar picker: two controls for one choice, which could disagree and left
+  // the mentor unsure which one was in charge. The sidebar is the only one.
   const clans = useMemo(() => {
     const map = new Map<string, string>();
     cohort.forEach((m) => { if (m.clan) map.set(m.clan.id, m.clan.name); });
@@ -37,22 +39,18 @@ export default function MentorMentees() {
   }, [cohort]);
 
   // How many of the (clan-scoped) mentees have never been given any work.
-  const noTaskCount = useMemo(
-    () => cohort.filter((m) => m.taskCount === 0 && (clan === 'all' || m.clan?.id === clan)).length,
-    [cohort, clan]
-  );
+  const noTaskCount = useMemo(() => cohort.filter((m) => m.taskCount === 0).length, [cohort]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return cohort.filter((m) => {
-      if (clan !== 'all' && m.clan?.id !== clan) return false;
       if (filter === 'attention' && !(m.risk !== 'low' || m.openBlockers > 0 || m.pendingApprovals > 0)) return false;
       if (filter === 'on_track' && !(m.risk === 'low' && m.momentum !== 'down')) return false;
       if (filter === 'no_tasks' && m.taskCount !== 0) return false;
       if (q && !(m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q))) return false;
       return true;
     });
-  }, [cohort, search, clan, filter]);
+  }, [cohort, search, filter]);
 
   const FILTERS: { key: Filter; label: string; count?: number }[] = [
     { key: 'all', label: 'Everyone' },
@@ -98,22 +96,6 @@ export default function MentorMentees() {
         </div>
       </div>
 
-      {/* Clan filter chips */}
-      {clans.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center gap-1 text-xs text-slate-400"><Users2 className="w-3.5 h-3.5" />Clan:</span>
-          <button onClick={() => setClan('all')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${clan === 'all' ? 'bg-brand-600 text-white' : 'bg-card border border-slate-200 text-slate-600 hover:border-slate-300'}`}>
-            All clans
-          </button>
-          {clans.map((c) => (
-            <button key={c.id} onClick={() => setClan(c.id)}
-              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${clan === c.id ? 'bg-brand-600 text-white' : 'bg-card border border-slate-200 text-slate-600 hover:border-slate-300'}`}>
-              {c.name}
-            </button>
-          ))}
-        </div>
-      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-brand-600" /></div>

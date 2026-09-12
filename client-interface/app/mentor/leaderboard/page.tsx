@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import Link from 'next/link';
 import { Award, Crown, Info, Loader2, Trophy } from 'lucide-react';
 import { useClanPerformance } from '@/lib/hooks/mentor';
@@ -64,11 +64,12 @@ function Avatar({
 export default function MentorLeaderboard() {
   const { clans, activeClanId } = useClan();
 
-  // Scores only compare people who train together, so a clan has to be chosen.
-  // Merging two clans into one ranking would compare mentees who were never in
-  // the same room, judged by different mentors.
-  const [picked, setPicked] = useState<string | null>(null);
-  const clanId = picked ?? (activeClanId !== ALL_CLANS ? activeClanId : clans[0]?.id ?? null);
+  // Scores only compare people who train together, so SOME clan must be chosen:
+  // merging two clans into one ranking would compare mentees who were never in
+  // the same room, judged by different mentors. 'All clans' therefore falls back
+  // to the first clan, and the name is shown below so which one is never a guess.
+  const clanId = activeClanId !== ALL_CLANS ? activeClanId : (clans[0]?.id ?? null);
+  const clanName = clans.find((c) => c.id === clanId)?.name ?? null;
 
   const { performance, loading, error, refetch } = useClanPerformance(clanId);
 
@@ -105,19 +106,13 @@ export default function MentorLeaderboard() {
         </div>
       </div>
 
-      {clans.length > 1 && (
-        <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-100 rounded-xl w-fit">
-          {clans.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => setPicked(c.id)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                clanId === c.id ? 'bg-card text-brand-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              {c.name}
-            </button>
-          ))}
+      {/* Which clan these scores are for. The sidebar picker chooses it — this
+          page used to carry its own row of clan buttons, a second control for
+          the same choice that could sit on a different clan than the sidebar. */}
+      {clans.length > 1 && clanName && (
+        <div className="flex items-center gap-2 text-sm">
+          <span className="font-medium text-slate-700">{clanName}</span>
+          <span className="text-xs text-slate-400">· switch clans in the sidebar</span>
         </div>
       )}
 
