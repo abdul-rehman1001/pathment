@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
@@ -8,7 +8,7 @@ import {
   Image as ImageIcon, AlignLeft, AlignCenter, AlignRight,
   Bold, Loader2, ZoomIn, ZoomOut, Award,
   CheckCircle, Users, Trash, Search, Send, Info,
-  ChevronDown, X, Sparkles, CheckCircle2, XCircle, Edit3
+  ChevronDown, X, Sparkles, CheckCircle2, XCircle, Edit3, Layers
 } from 'lucide-react';
 import Link from 'next/link';
 import { certificatesApi, CertificateElement, CertificateTemplate } from '@/lib/services/certificates-api';
@@ -66,10 +66,16 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
 
   const [criteria, setCriteria] = useState<TierCriteria[]>(DEFAULT_CRITERIA);
 
-  // Which certificate type the canvas is showing. `null` = show every layer at
-  // once, which is the right default while positioning things; picking a type
-  // renders exactly what that recipient would receive.
-  const [previewTierId, setPreviewTierId] = useState<string | null>(null);
+  /**
+   * The certificate type currently being DESIGNED.
+   *
+   * Each type is its own certificate now — its own artwork, with the name, date
+   * and certificate number positioned on that artwork. So the canvas edits one
+   * type at a time rather than showing a shared background with badges stuck on
+   * top. `bgImageUrl` and `elements` are this type's working copy: switching
+   * types writes them back and loads the next one's (see `switchTier`).
+   */
+  const [activeTierId, setActiveTierId] = useState<string | null>(null);
 
   const [qualifiedData, setQualifiedData] = useState<Record<string, any[]>>({});
   const [loadingQualifications, setLoadingQualifications] = useState(false);
@@ -243,6 +249,9 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
               name:              c.name,
               priority:          c.priority ?? fallbackIdx + 1,
               badgeUrl:          c.badgeUrl ?? '',
+              // Each type's own certificate and its own placements.
+              artworkUrl:        c.artworkUrl ?? '',
+              layout:            Array.isArray(c.layout) ? c.layout : [],
               keywords:          Array.isArray(c.keywords) ? c.keywords : [],
               minScorePercent:   c.minScorePercent ?? null,
               maxOpenBlockers:   c.maxOpenBlockers ?? null,
@@ -254,6 +263,15 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
             }));
             loaded.sort((a: any, b: any) => (a.priority ?? Infinity) - (b.priority ?? Infinity));
             setCriteria(loaded);
+            // Open on the first type and check its design out onto the canvas.
+            // A template converted from the old single-background model has the
+            // same artwork and layers on every type, so this looks unchanged.
+            const first = loaded[0];
+            if (first) {
+              setActiveTierId(first.id);
+              setBgImageUrl(first.artworkUrl || t.bgImageUrl || '');
+              setElements(Array.isArray(first.layout) && first.layout.length ? first.layout : (t.config || []));
+            }
           }
           if (t.aiEvaluation?.results) {
             setAiResults(t.aiEvaluation.results);
@@ -387,7 +405,13 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
     try {
       setBgImageUrl(imageUrl);
       setActivePresetId(presetId);
-      toast.success('Preset layout applied! Remember to click "Save Template" to persist your changes.');
+      // A preset is artwork for the type being designed, not a template-wide
+      // background any more. Written onto the type directly so it survives a
+      // switch, exactly like an upload.
+      if (activeTierId) {
+        setCriteria(prev => prev.map(t => (t.id === activeTierId ? { ...t, artworkUrl: imageUrl } : t)));
+      }
+      toast.success(`Preset applied to ${criteria.find(t => t.id === activeTierId)?.name || 'this type'}. Save to keep it.`);
     } catch (err) {
       console.error(err);
       toast.error('Failed to apply preset background');
@@ -456,28 +480,10 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
     setSelectedId(id);
   };
 
-  // Several badges on one certificate is the point: a template can carry the
-  // earned-tier badge plus, say, a distinction seal only gold receives. Each
-  // badge decides for itself which types it appears on and what it shows there
-  // (see TierVariantPanel), so the old one-per-template guard is gone.
-  const addBadgeElement = () => {
-    const id = `badge-${Date.now()}`;
-    const newEl: CertificateElement = {
-      id,
-      type: 'badge',
-      text: 'Badge Layer',
-      xPercent: 50,
-      yPercent: 75,
-      widthPercent: 12,
-      fontSizePercent: 1,
-      color: '#000000',
-      fontWeight: 'normal',
-      alignment: 'center',
-      fontStyle: 'Montserrat, sans-serif'
-    };
-    setElements(prev => [...prev, newEl]);
-    setSelectedId(id);
-  };
+  // The "dynamic badge" layer is gone from the toolbar: a badge pasted onto a
+  // shared background was the old model, and each type now carries its own
+  // certificate artwork instead. The renderer still understands badge layers so
+  // templates authored before this keep working.
 
   const addPathmentLogoElement = () => {
     const id = `img-pathment-${Date.now()}`;
@@ -554,12 +560,17 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
 
     try {
       setLoading(true);
+      // Fold the canvas back into the type it belongs to before sending, or the
+      // design just made on screen is not in the payload at all.
+      const committedCriteria = commitActiveTier(criteria);
       const payload: Partial<CertificateTemplate> = {
         name: name.trim(),
+        // Kept as the fallback the renderer uses for a type whose artwork has
+        // not been uploaded yet — a half-built template still shows something.
         bgImageUrl,
         logoUrl: undefined,
         logoConfig: undefined,
-        criteria,
+        criteria: committedCriteria,
         config: elements,
         programId: selectedProgramId
       };
@@ -689,6 +700,75 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
     if (templateId) runAIEvaluation(templateId);
   };
 
+  /**
+   * Fold the canvas back into the type it belongs to.
+   *
+   * `bgImageUrl` / `elements` are the working copy of ONE type. Anything that
+   * persists or leaves the type — saving, switching, copying — has to check
+   * them in first, or the design the admin just made is dropped on the floor.
+   */
+  const commitActiveTier = useCallback((tiers: TierCriteria[]): TierCriteria[] => {
+    if (!activeTierId) return tiers;
+    return tiers.map(t => (t.id === activeTierId
+      ? { ...t, artworkUrl: bgImageUrl, layout: elements }
+      : t));
+  }, [activeTierId, bgImageUrl, elements]);
+
+  /** Check the current type in, check the next one out. */
+  const switchTier = useCallback((nextId: string) => {
+    if (nextId === activeTierId) return;
+    const committed = commitActiveTier(criteria);
+    const next = committed.find((t: TierCriteria) => t.id === nextId);
+    setCriteria(committed);
+    setBgImageUrl(next?.artworkUrl || '');
+    setElements(Array.isArray(next?.layout) ? next.layout : []);
+    setActiveTierId(nextId);
+    setSelectedId(null);
+    setActivePresetId(null);
+  }, [activeTierId, commitActiveTier, criteria]);
+
+  /**
+   * Put this type's placements on every other type.
+   *
+   * Artwork is deliberately NOT copied — the whole point of per-type artwork is
+   * that the designs differ. What usually matches is where the name and date
+   * sit, and redoing that four times by hand is the tedious part.
+   */
+  const copyLayoutToAllTiers = useCallback(() => {
+    if (!activeTierId) return;
+    const others = criteria.filter(t => t.id !== activeTierId).length;
+    if (!others) { toast.info('There is only one certificate type.'); return; }
+    setCriteria(prev => commitActiveTier(prev).map(t => (t.id === activeTierId
+      ? t
+      : { ...t, layout: elements.map(el => ({ ...el, id: `${el.id}-${t.id}` })) })));
+    toast.success(`Placements copied to ${others} other type${others === 1 ? '' : 's'}.`);
+  }, [activeTierId, criteria, elements, commitActiveTier]);
+
+  const activeTierName = criteria.find(t => t.id === activeTierId)?.name || null;
+
+  /** Upload this type's certificate artwork. */
+  const handleTierArtworkUpload = useCallback(async (files: File[]) => {
+    if (!files.length || !activeTierId) return;
+    try {
+      setUploadingBg(true);
+      const res = await certificatesApi.uploadAsset(files[0]);
+      if (res.success && res.url) {
+        setBgImageUrl(res.url);
+        setActivePresetId(null);
+        // Straight onto the type as well, so the artwork survives a switch even
+        // if the admin never saves from this type.
+        setCriteria(prev => prev.map(t => (t.id === activeTierId ? { ...t, artworkUrl: res.url } : t)));
+        toast.success(`Artwork set for ${activeTierName || 'this type'}`);
+      } else {
+        toast.error('Upload did not return an image URL');
+      }
+    } catch {
+      toast.error('Could not upload that artwork');
+    } finally {
+      setUploadingBg(false);
+    }
+  }, [activeTierId, activeTierName]);
+
   const deleteTier = (tierId: string) => {
     setCriteria(prev => prev.filter(t => t.id !== tierId));
     // Drop the departed type from every layer too. The renderer tolerates a key
@@ -704,7 +784,12 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
         visibleForTiers: visibleForTiers?.length ? visibleForTiers : undefined,
       };
     }));
-    if (previewTierId === tierId) setPreviewTierId(null);
+    if (activeTierId === tierId) {
+      const next = criteria.find((t: TierCriteria) => t.id !== tierId);
+      setActiveTierId(next?.id ?? null);
+      setBgImageUrl(next?.artworkUrl || '');
+      setElements(Array.isArray(next?.layout) ? next.layout : []);
+    }
     toast.success('Certificate type removed.');
   };
 
@@ -722,9 +807,10 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
     dateIssued:  new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
     issuerName:  'Issuer Name',
     issuerTitle: 'Issuer Title',
-    tier:        previewTierId ?? undefined,
-    tierName:    criteria.find(t => t.id === previewTierId)?.name || undefined,
-  }), [previewTierId, criteria, programs, selectedProgramId]);
+    tier:        activeTierId ?? undefined,
+    tierName:    criteria.find(t => t.id === activeTierId)?.name || undefined,
+    certificateNumber: 'ABCD1234EFGH',
+  }), [activeTierId, criteria, programs, selectedProgramId]);
 
 
   if (fetching) {
@@ -835,7 +921,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
             {/* See what each certificate type actually produces. Without this,
                 per-type wording and badges are authored blind. */}
             <div className="w-full">
-              <TierPreviewSwitcher criteria={criteria} value={previewTierId} onChange={setPreviewTierId} />
+              <TierPreviewSwitcher criteria={criteria} value={activeTierId} onChange={switchTier} />
             </div>
 
             {}
@@ -963,7 +1049,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                       {/* With a type selected the canvas shows the real wording
                           for it; with none selected the raw {{tag}} stays, which
                           is the more useful thing to see while positioning. */}
-                      {previewTierId
+                      {activeTierId
                         ? (resolveText(el, canvasRenderData) || el.text)
                         : (el.type === 'dynamic' ? `{{${el.dynamicKey}}}` : (el.tierValues && Object.values(el.tierValues).find(Boolean)) || el.text)}
                     </div>
@@ -975,27 +1061,68 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
             {}
             <div className="space-y-3 w-full animate-fade-in">
               <div className="flex items-center justify-between border-b border-border pb-2">
-                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Background template paper</label>
+                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                  Certificate artwork{activeTierName ? ` — ${activeTierName}` : ''}
+                </label>
                 <span className="text-[9px] font-bold text-brand-600 bg-brand-500/10 px-2 py-0.5 rounded-full uppercase tracking-wider select-none">Design Setup</span>
               </div>
 
-              {}
-              <div className="w-full">
+              {/* Each certificate type IS a certificate: you upload its artwork
+                  here and then place the recipient's name, the date and the
+                  certificate number on top of it. There is no shared background
+                  with badges stuck on — that was the old model and it forced
+                  every type to look the same. */}
+              <p className="text-[10px] text-muted-foreground leading-relaxed -mt-1">
+                Upload the full certificate image for <span className="font-semibold text-foreground">{activeTierName || 'this type'}</span>,
+                then drop Member Name, Date and Certificate No. onto it. Switch types above to design the others.
+              </p>
+
+              <div className="grid grid-cols-2 gap-2">
+                <FileDragDrop onFilesSelected={handleTierArtworkUpload} accept="image/*" multiple={false}>
+                  {({ openFilePicker }) => (
+                    <button
+                      type="button"
+                      onClick={openFilePicker}
+                      disabled={uploadingBg || !activeTierId}
+                      className="px-3 py-2.5 rounded-xl border border-brand-500/40 bg-brand-500/10 text-brand-700 hover:bg-brand-500/20 text-xs font-bold transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+                    >
+                      {uploadingBg
+                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        : <ImageIcon className="w-3.5 h-3.5" />}
+                      {bgImageUrl ? 'Replace artwork' : 'Upload artwork'}
+                    </button>
+                  )}
+                </FileDragDrop>
+
                 <button
                   type="button"
                   onClick={() => setIsPresetsDrawerOpen(true)}
-                  className={`w-full px-3 py-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${activePresetId
-                    ? 'border-brand-500 bg-brand-500/5 text-brand-700'
-                    : 'border-border bg-background hover:bg-muted/40 text-foreground'
-                    }`}
+                  className="px-3 py-2.5 rounded-xl border border-border bg-background hover:bg-muted/40 text-foreground text-xs font-bold transition-all flex items-center justify-center gap-1.5"
                 >
-                  <Award className="w-3.5 h-3.5 text-brand-500" />
-                  {activePresetId
-                    ? BACKGROUND_PRESETS.find(p => p.id === activePresetId)?.name || 'Preset Selected'
-                    : 'Browse Presets & Custom Backgrounds'
-                  }
+                  <Award className="w-3.5 h-3.5 text-brand-500" /> Browse presets
                 </button>
               </div>
+
+              {/* Laying the same three fields out four times by hand is the
+                  tedious part; the artwork is deliberately not copied. */}
+              {criteria.length > 1 && elements.length > 0 && (
+                <button
+                  type="button"
+                  onClick={copyLayoutToAllTiers}
+                  className="w-full px-3 py-2 rounded-xl border border-dashed border-border hover:border-brand-500/40 hover:bg-brand-500/5 text-[11px] font-bold text-muted-foreground hover:text-foreground transition-all flex items-center justify-center gap-1.5"
+                >
+                  <Layers className="w-3.5 h-3.5" /> Copy these placements to all other types
+                </button>
+              )}
+
+              {/* An artwork-less type has no certificate to issue. Say it here,
+                  where it can still be fixed, not at download time. */}
+              {!bgImageUrl && activeTierId && (
+                <p className="text-[10px] font-semibold text-amber-600 flex items-center gap-1.5">
+                  <Info className="w-3.5 h-3.5 shrink-0" />
+                  No artwork yet — certificates of this type will render blank.
+                </p>
+              )}
             </div>
           </div>
 
@@ -1045,13 +1172,6 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                   <Type className="w-3.5 h-3.5" /> Static Text
                 </button>
 
-                <button
-                  type="button"
-                  onClick={addBadgeElement}
-                  className="flex items-center justify-center gap-1.5 py-2 px-3 bg-muted hover:bg-muted/70 text-foreground rounded-xl text-[10px] font-bold border border-border"
-                >
-                  <Award className="w-3.5 h-3.5" /> Dynamic Badge
-                </button>
 
                 <button
                   type="button"

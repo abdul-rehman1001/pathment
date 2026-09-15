@@ -8,6 +8,8 @@ interface TierCriteria {
   name: string;
   priority?: number;
   badgeUrl?: string;
+  /** The type's own certificate image — what actually gets issued. */
+  artworkUrl?: string;
   keywords?: string[] | null;
   minScorePercent?: number | null;
   maxOpenBlockers?: number | null;
@@ -145,14 +147,27 @@ export function CriteriaTable({ criteria, onAdd, onEdit, onDelete, onReorder }: 
 
                 {}
                 <div className="col-span-4 flex items-center gap-2">
-                  {tier.badgeUrl ? (
-                    <img src={tier.badgeUrl} className="w-7 h-7 object-contain rounded-md" alt={tier.name} />
+                  {/* The type's own certificate artwork, which is the thing that
+                      gets issued. Falls back to its badge icon, then initials. */}
+                  {tier.artworkUrl || tier.badgeUrl ? (
+                    <img
+                      src={tier.artworkUrl || tier.badgeUrl}
+                      className="w-10 h-7 object-cover rounded-md border border-border"
+                      alt={tier.name}
+                    />
                   ) : (
-                    <div className="w-7 h-7 rounded-md bg-brand-500/10 flex items-center justify-center font-bold text-brand-500 text-[10px]">
+                    <div className="w-10 h-7 rounded-md bg-brand-500/10 flex items-center justify-center font-bold text-brand-500 text-[10px]">
                       {tier.name.slice(0, 2).toUpperCase()}
                     </div>
                   )}
-                  <span className="font-bold text-foreground">{tier.name}</span>
+                  <div className="min-w-0">
+                    <span className="font-bold text-foreground block truncate">{tier.name}</span>
+                    {/* A type with no artwork cannot produce a certificate. Flag
+                        it in the list, not at download time. */}
+                    {!tier.artworkUrl && (
+                      <span className="text-[9px] font-bold text-amber-600 uppercase tracking-wider">No artwork</span>
+                    )}
+                  </div>
                 </div>
 
                 {}

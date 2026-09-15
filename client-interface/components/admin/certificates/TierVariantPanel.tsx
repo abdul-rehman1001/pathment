@@ -238,9 +238,13 @@ export function TierVariantPanel({ element, criteria, onChange }: TierVariantPan
 }
 
 /**
- * The tier the canvas is previewing, so an admin can see what each certificate
- * type actually produces while they lay it out. Without it, per-tier content is
- * authored blind — the canvas would only ever show one of the variants.
+ * Which certificate type you are designing.
+ *
+ * Each type is its own certificate — its own artwork, with the name, date and
+ * number placed on that artwork — so this picks the one the canvas edits. There
+ * is deliberately no "all types" option: there is no such thing as a certificate
+ * belonging to every type at once, and offering one invited people to lay out a
+ * design that belonged to nothing.
  */
 export function TierPreviewSwitcher({
   criteria,
@@ -249,39 +253,37 @@ export function TierPreviewSwitcher({
 }: {
   criteria: TierCriteria[];
   value: string | null;
-  onChange: (tierId: string | null) => void;
+  onChange: (tierId: string) => void;
 }) {
   if (criteria.length === 0) return null;
 
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
-      <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider mr-0.5">Previewing</span>
-      <button
-        type="button"
-        onClick={() => onChange(null)}
-        className={`px-2 py-1 rounded-lg border text-[10px] font-bold transition-colors flex items-center gap-1 ${
-          value === null
-            ? 'border-brand-500 bg-brand-500/10 text-brand-700 dark:text-brand-400'
-            : 'border-border bg-background text-muted-foreground hover:text-foreground'
-        }`}
-      >
-        {value === null && <X className="w-2.5 h-2.5" />}
-        All layers
-      </button>
-      {criteria.map(tier => (
-        <button
-          key={tier.id}
-          type="button"
-          onClick={() => onChange(tier.id)}
-          className={`px-2 py-1 rounded-lg border text-[10px] font-bold transition-colors ${
-            value === tier.id
-              ? 'border-brand-500 bg-brand-500/10 text-brand-700 dark:text-brand-400'
-              : 'border-border bg-background text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          {tier.name}
-        </button>
-      ))}
+      <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider mr-0.5">Designing</span>
+      {criteria.map(tier => {
+        const active = value === tier.id;
+        const ready = Boolean(tier.artworkUrl);
+        return (
+          <button
+            key={tier.id}
+            type="button"
+            onClick={() => onChange(tier.id)}
+            className={`px-2 py-1 rounded-lg border text-[10px] font-bold transition-colors flex items-center gap-1.5 ${
+              active
+                ? 'border-brand-500 bg-brand-500/10 text-brand-700 dark:text-brand-400'
+                : 'border-border bg-background text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {/* A type with no artwork yet has no certificate to issue — say so
+                here rather than letting it surface as a blank download. */}
+            <span
+              className={`inline-block w-1.5 h-1.5 rounded-full ${ready ? 'bg-emerald-500' : 'bg-amber-500'}`}
+              title={ready ? 'Artwork uploaded' : 'No artwork yet'}
+            />
+            {tier.name}
+          </button>
+        );
+      })}
     </div>
   );
 }
