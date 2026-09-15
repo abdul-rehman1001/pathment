@@ -21,6 +21,8 @@ export interface CertificateRenderData {
   tier?:           string;
   /** That tier's display name, for the {{tier_name}} variable. */
   tierName?:       string;
+  /** The credential's public number, printed on it. */
+  certificateNumber?: string;
 }
 
 // ==================== ASSET PRE-FETCHING ====================
@@ -49,8 +51,16 @@ async function prefetchTemplateAssets(
 
   if (template.bgImageUrl)  urls.add(template.bgImageUrl);
   if (template.logoUrl)     urls.add(template.logoUrl);
+  // Each tier's own certificate artwork.
+  for (const tier of template.criteria ?? []) {
+    if (tier.artworkUrl) urls.add(tier.artworkUrl);
+  }
 
-  for (const el of template.config ?? []) {
+  const everyLayer = [
+    ...(template.config ?? []),
+    ...(template.criteria ?? []).flatMap(tier => tier.layout ?? []),
+  ];
+  for (const el of everyLayer) {
     if (el.type === 'badge' && el.badgeUrl) urls.add(el.badgeUrl);
     if (el.type === 'image' && el.imageUrl) urls.add(el.imageUrl);
     // Per-tier badge art. Every tier's URL is fetched, not just the one being
@@ -164,6 +174,38 @@ async function ensureFontsLoaded(): Promise<void> {
 /** The tier a certificate is being rendered for. Empty string = none stated. */
 const tierOf = (data: CertificateRenderData): string => data.tier || '';
 
+/** The tier definition a certificate is being rendered against, if it has one. */
+function tierOfTemplate(template: CertificateTemplate, data: CertificateRenderData) {
+  const tier = tierOf(data);
+  if (!tier) return undefined;
+  return (template.criteria || []).find(c => c.id === tier);
+}
+
+/**
+ * The image this certificate is drawn on.
+ *
+ * Each tier owns its whole design now, so the artwork comes from the tier
+ * rather than from one background shared by all of them. `bgImageUrl` remains
+ * the fallback for a tier whose artwork has not been uploaded yet, and for
+ * rendering with no tier stated at all (the builder canvas) — a half-configured
+ * template should still show something rather than a blank page.
+ */
+export function resolveArtworkUrl(template: CertificateTemplate, data: CertificateRenderData): string {
+  return tierOfTemplate(template, data)?.artworkUrl || template.bgImageUrl || '';
+}
+
+/**
+ * The layers to draw. Per tier, because two tiers' artwork rarely puts the
+ * recipient's name in the same place — which is the entire reason each tier
+ * carries its own design. Falls back to the template-wide `config` for a tier
+ * with no layout of its own.
+ */
+export function resolveLayout(template: CertificateTemplate, data: CertificateRenderData): CertificateElement[] {
+  const layout = tierOfTemplate(template, data)?.layout;
+  if (Array.isArray(layout) && layout.length) return layout;
+  return Array.isArray(template.config) ? template.config : [];
+}
+
 /**
  * Is this element part of THIS tier's certificate?
  *
@@ -258,6 +300,9 @@ export function resolveText(el: CertificateElement, data: CertificateRenderData)
       case 'tier_name':
         text = data.tierName || text;
         break;
+      case 'certificate_number':
+        text = data.certificateNumber || text;
+        break;
     }
   }
 
@@ -270,7 +315,8 @@ export function resolveText(el: CertificateElement, data: CertificateRenderData)
       .replace(/\{\{\s*issuer_name\s*\}\}/gi, data.issuerName || '')
       .replace(/\{\{\s*mentor_name\s*\}\}/gi, data.issuerName || '')
       .replace(/\{\{\s*issuer_title\s*\}\}/gi, data.issuerTitle || '')
-      .replace(/\{\{\s*tier_name\s*\}\}/gi, data.tierName || '');
+      .replace(/\{\{\s*tier_name\s*\}\}/gi, data.tierName || '')
+      .replace(/\{\{\s*certificate_number\s*\}\}/gi, data.certificateNumber || '');
   }
 
   return text;
@@ -306,8 +352,8 @@ export async function renderCertificateToBlobUrl(
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-  // 1. Draw Background Image
-  const bgImg = imageMap.get(template.bgImageUrl || '');
+  // 1. Draw the certificate artwork — this tier's, not one shared background.
+  const bgImg = imageMap.get(resolveArtworkUrl(template, data));
   if (bgImg) {
     ctx.drawImage(bgImg, 0, 0, WIDTH, HEIGHT);
   }
@@ -324,8 +370,8 @@ export async function renderCertificateToBlobUrl(
     ctx.drawImage(logoImg, lx - lw / 2, ly - lh / 2, lw, lh);
   }
 
-  // 3. Draw Elements (Badges, Images, Text)
-  const elements = Array.isArray(template.config) ? template.config : [];
+  // 3. Draw the layers this tier positions on its own artwork.
+  const elements = resolveLayout(template, data);
 
   for (const el of elements) {
     // A layer this tier does not get is simply not drawn.

@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const { models, sequelize } = require('../db');
 const certificateService = require('../services/certificateService');
+const certificateVerificationService = require('../services/certificateVerificationService');
 const { enrichEvaluationResults } = require('../utils/certificateUtils');
 const { emitToUser } = require('../socket');
 const logger = require('../utils/logger');
@@ -10,6 +11,11 @@ const logger = require('../utils/logger');
 const AI_EVAL_POLL_MS = Number(process.env.AI_EVAL_WORKER_POLL_MS) || 1000;
 
 const MAX_AI_EVAL_ATTEMPTS = 3;
+
+// How long mentors get to review a fresh set of grades. A working week: long
+// enough to fit around teaching, short enough that issuance is not held for a
+// fortnight. Tunable, and only ever a nudge — nothing issues on expiry.
+const VERIFICATION_WINDOW_DAYS = Number(process.env.CERTIFICATE_VERIFICATION_WINDOW_DAYS) || 7;
 const BATCH_SIZE = 10;
 const CONCURRENT_BATCHES = 4;
 
@@ -58,6 +64,20 @@ async function checkRunCompletion(runId, triggeredBy) {
         { aiEvaluation: { results: enrichedResults, ranAt }, aiEvaluationRanAt: ranAt },
         { where: { id: templateId } }
       );
+
+      // Grading is a proposal, not a decision. Open the mentor review round so
+      // somebody who knows these people confirms the grades before anything is
+      // issued. Failure here must not fail the run — the results are already
+      // saved, and an admin can reopen the round.
+      try {
+        const deadline = new Date(Date.now() + VERIFICATION_WINDOW_DAYS * 86400000);
+        const round = await certificateVerificationService.open(templateId, enrichedResults, { deadline });
+        logger.info('[certificateWorker] verification round opened', {
+          templateId, created: round.created, updated: round.updated, mentorsNotified: round.notified
+        });
+      } catch (err) {
+        logger.warn(`[certificateWorker] could not open verification round: ${err.message}`);
+      }
     }
 
     emitToUser(triggeredBy, 'ai-eval:complete', {

@@ -185,4 +185,52 @@ describe('certificate scope for mentors and co-mentors', () => {
       await expect(certificateService.listMenteeCertificates(myMentee.id, myMentee)).resolves.toBeDefined();
     });
   });
+
+  describe('the role shown in the issuance log', () => {
+    // `users.role` records what an account SIGNED UP as and never changes on
+    // promotion, so a co-mentor promoted from a mentee account appeared as
+    // MENTEE beside the certificates he had just issued.
+    it('labels a promoted co-mentor by the role they hold in the programme', async () => {
+      await certificateService.issueCertificates(
+        { templateId: template.id, recipients: [{ menteeId: myMentee.id, tier: 'participation' }] },
+        promotedCoMentor.id,
+        promotedCoMentor
+      );
+
+      const [row] = await certificateService.getTemplateHistory(template.id, admin);
+      expect(promotedCoMentor.role).toBe('mentee');      // the account is still a mentee account
+      expect(row.issuedBy.id).toBe(promotedCoMentor.id);
+      expect(row.issuedBy.role).toBe('co_mentor');       // …but he issued as a co-mentor
+    });
+
+    it('labels the lead mentor as lead_mentor', async () => {
+      await certificateService.issueCertificates(
+        { templateId: template.id, recipients: [{ menteeId: myMentee.id, tier: 'participation' }] },
+        lead.id,
+        lead
+      );
+      const [row] = await certificateService.getTemplateHistory(template.id, admin);
+      expect(row.issuedBy.role).toBe('lead_mentor');
+    });
+
+    it('labels an admin issuer as admin, whatever clans they are in', async () => {
+      await certificateService.issueCertificates(
+        { templateId: template.id, recipients: [{ menteeId: myMentee.id, tier: 'participation' }] },
+        admin.id,
+        admin
+      );
+      const [row] = await certificateService.getTemplateHistory(template.id, admin);
+      expect(row.issuedBy.role).toBe('admin');
+    });
+
+    it('still labels the recipient as a mentee', async () => {
+      await certificateService.issueCertificates(
+        { templateId: template.id, recipients: [{ menteeId: myMentee.id, tier: 'participation' }] },
+        lead.id,
+        lead
+      );
+      const [row] = await certificateService.getTemplateHistory(template.id, admin);
+      expect(row.recipient.role).toBe('mentee');
+    });
+  });
 });

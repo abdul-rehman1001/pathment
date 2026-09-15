@@ -49,7 +49,11 @@ EXTENSION_HANDLED: 'extension_handled',
   REVIEW_REMINDER: 'review_reminder',
   ADMIN_MEETING_INVITE: 'admin_meeting_invite',
   ADMIN_MEETING_REMINDER: 'admin_meeting_reminder',
-  CERTIFICATE_AWARDED: 'certificate_awarded'
+  CERTIFICATE_AWARDED: 'certificate_awarded',
+  // Certificates are graded by AI and then signed off by the mentor who
+  // actually knows the person. These two carry that round.
+  CERTIFICATE_VERIFICATION_REQUESTED: 'certificate_verification_requested',
+  CERTIFICATE_VERIFICATION_COMPLETED: 'certificate_verification_completed'
 };
 
 // Which role's "hat" a notification concerns, so the bell + list can scope to the
@@ -236,6 +240,22 @@ const NOTIFICATION_MATRIX = {
     audience: 'mentee',
     preferenceKey: 'certificate_awarded',
     channels: { inApp: true, email: true, chat: false }
+  },
+  // "Your mentees have been graded — check the grades before they go out."
+  // Emailed as well as belled: it carries a deadline and the mentor may not
+  // open Pathment that day.
+  [NOTIFICATION_EVENTS.CERTIFICATE_VERIFICATION_REQUESTED]: {
+    type: 'milestone',
+    audience: 'mentor',
+    preferenceKey: 'certificate_verification_requested',
+    channels: { inApp: true, email: true, chat: false }
+  },
+  // "That clan has signed off." Tells the admin a clan is clear to issue.
+  [NOTIFICATION_EVENTS.CERTIFICATE_VERIFICATION_COMPLETED]: {
+    type: 'milestone',
+    audience: 'admin',
+    preferenceKey: 'certificate_verification_completed',
+    channels: { inApp: true, email: false, chat: false }
   },
   [NOTIFICATION_EVENTS.MENTOR_FEEDBACK_REQUESTED]: {
     type: 'feedback',

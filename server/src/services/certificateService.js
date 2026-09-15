@@ -18,7 +18,15 @@ const {
   enrichEvaluationResults
 } = require('../utils/certificateUtils');
 const { sortCriteriaByPriority } = require('../utils/criteriaUtils');
+const {
+  generateCertificateNumber,
+  normalizeCertificateNumber,
+  isCertificateNumber,
+  MAX_ATTEMPTS: NUMBER_MAX_ATTEMPTS
+} = require('../utils/certificateNumber');
 const authzService = require('./authzService');
+const certificateVerificationService = require('./certificateVerificationService');
+const { VISIBLE_MEMBERSHIP_STATUSES, strongestClanRole } = require('../config/membership');
 const { PERMISSIONS } = require('../config/permissions');
 
 // A per-tier value is either a line of certificate wording or an image URL.
@@ -294,6 +302,53 @@ class CertificateService {
     return result;
   }
 
+  /**
+   * Resolve a certificate number for the PUBLIC verification page.
+   *
+   * Unauthenticated by design — the whole point of printing a number on a
+   * credential is that a stranger reading a CV can check it. So the response is
+   * deliberately thin: enough to confirm the claim (who, what, which programme,
+   * when) and nothing more. No email, no ids, no scores, no internal state —
+   * anybody on the internet can call this with a guessed code.
+   *
+   * A malformed code is refused before it reaches the database, so the endpoint
+   * cannot be used to probe with junk.
+   */
+  async verifyByNumber(rawNumber) {
+    if (!isCertificateNumber(rawNumber)) return { valid: false };
+    const certificateNumber = normalizeCertificateNumber(rawNumber);
+
+    const instance = await models.CertificateInstance.findOne({
+      where: { certificateNumber },
+      include: [
+        { model: models.User, as: 'mentee', attributes: ['firstName', 'lastName'] },
+        {
+          model: models.CertificateTemplate,
+          as: 'template',
+          attributes: ['name', 'criteria'],
+          include: [{ model: models.Program, as: 'program', attributes: ['name'], required: false }]
+        }
+      ]
+    });
+    if (!instance) return { valid: false };
+
+    const criteria = Array.isArray(instance.template?.criteria) ? instance.template.criteria : [];
+    const tierName = criteria.find((c) => c.id === instance.tier)?.name || instance.tier;
+
+    return {
+      valid: true,
+      certificateNumber,
+      recipientName: instance.mentee
+        ? `${instance.mentee.firstName || ''} ${instance.mentee.lastName || ''}`.trim()
+        : null,
+      tier: instance.tier,
+      tierName,
+      programName: instance.template?.program?.name || null,
+      templateName: instance.template?.name || null,
+      issuedAt: instance.createdAt
+    };
+  }
+
   async getTemplateHistory(id, user) {
     const template = await models.CertificateTemplate.findOne({ where: { id } });
     if (!template) throw new NotFoundError('Certificate template not found');
@@ -315,29 +370,77 @@ class CertificateService {
       order: [['createdAt', 'DESC']]
     });
 
-    return instances.map(inst => {
-      const issuerObj = inst.issuer || inst.mentor;
-      return {
-        id:        inst.id,
-        tier:      inst.tier,
-        createdAt: inst.createdAt,
-        status:    'issued',
-        recipient: inst.mentee ? {
-          id:        inst.mentee.id,
-          firstName: inst.mentee.firstName,
-          lastName:  inst.mentee.lastName,
-          email:     inst.mentee.email,
-          role:      inst.mentee.role
-        } : null,
-        issuedBy: issuerObj ? {
-          id:        issuerObj.id,
-          firstName: issuerObj.firstName,
-          lastName:  issuerObj.lastName,
-          email:     issuerObj.email,
-          role:      issuerObj.role
-        } : null
-      };
+    // What role did these people hold IN THIS PROGRAMME? `users.role` answers a
+    // different question — what an account was created as — so a co-mentor
+    // promoted from a mentee account was labelled MENTEE next to certificates
+    // he had issued. The label has to come from the clan, which is where the
+    // authority to issue came from too.
+    const peopleIds = [...new Set(
+      instances.flatMap((inst) => [inst.mentee?.id, inst.issuer?.id, inst.mentor?.id]).filter(Boolean)
+    )];
+    const roleInProgram = await this.resolveProgramRoles(peopleIds, template.programId);
+
+    const describe = (u) => (u ? {
+      id:        u.id,
+      firstName: u.firstName,
+      lastName:  u.lastName,
+      email:     u.email,
+      role:      roleInProgram.get(u.id) || u.role
+    } : null);
+
+    return instances.map(inst => ({
+      id:        inst.id,
+      tier:      inst.tier,
+      createdAt: inst.createdAt,
+      status:    'issued',
+      recipient: describe(inst.mentee),
+      issuedBy:  describe(inst.issuer || inst.mentor)
+    }));
+  }
+
+  /**
+   * The role each of these people holds inside one programme, as a label the UI
+   * can show: 'admin', 'lead_mentor', 'co_mentor', 'core_team' or 'mentee'.
+   *
+   * Resolved from clan membership rather than `users.role`, because the account
+   * column records only what somebody signed up as and never changes when they
+   * are promoted. Somebody in several clans of the programme gets their most
+   * senior hat. Anyone with no membership at all is left out of the map so the
+   * caller can fall back to whatever it already had.
+   */
+  async resolveProgramRoles(userIds, programId) {
+    const out = new Map();
+    if (!userIds.length) return out;
+
+    // An org-level admin outranks any clan role — they issue as the org.
+    const admins = await models.User.findAll({
+      where: { id: { [Op.in]: userIds }, role: 'admin' },
+      attributes: ['id'],
+      raw: true
     });
+    admins.forEach((a) => out.set(a.id, 'admin'));
+
+    const where = { userId: { [Op.in]: userIds }, status: { [Op.in]: VISIBLE_MEMBERSHIP_STATUSES } };
+    const memberships = await models.ClanMembership.findAll({
+      where,
+      attributes: ['userId', 'role'],
+      include: programId
+        ? [{ model: models.Clan, as: 'clan', where: { programId }, attributes: [] }]
+        : [],
+      raw: true
+    });
+
+    const byUser = new Map();
+    for (const m of memberships) {
+      if (!byUser.has(m.userId)) byUser.set(m.userId, []);
+      byUser.get(m.userId).push(m.role);
+    }
+    for (const [userId, roles] of byUser) {
+      if (out.has(userId)) continue; // admin already decided
+      const strongest = strongestClanRole(roles);
+      if (strongest) out.set(userId, strongest);
+    }
+    return out;
   }
 
 
@@ -1157,6 +1260,12 @@ class CertificateService {
         }
       }
 
+      // The mentor's sign-off wins over whatever tier the caller sent. The
+      // review round exists precisely so a human's correction is what gets
+      // issued — an admin clicking Issue from a stale screen must not quietly
+      // revert it to the AI's grade.
+      const verifiedTiers = await certificateVerificationService.resolveTiers(templateId, requested);
+
       let instancesData = [];
       if (Array.isArray(recipients) && recipients.length > 0) {
         instancesData = recipients.map(r => ({
@@ -1166,7 +1275,7 @@ class CertificateService {
           mentorId:  mentorId || null,
           issuedBy:  userId,
           imageUrl:  null,
-          tier:      r.tier || 'participation',
+          tier:      verifiedTiers.get(r.menteeId) || r.tier || 'participation',
           metadata:  {}
         }));
       } else {
@@ -1180,12 +1289,16 @@ class CertificateService {
           mentorId: mentorId || null,
           issuedBy: userId,
           imageUrl: null,
-          tier:     tier || 'participation',
+          tier:     verifiedTiers.get(menteeId) || tier || 'participation',
           metadata: {}
         }));
       }
 
-      const instances = await models.CertificateInstance.bulkCreate(instancesData, { transaction: t });
+      // Every credential gets its public number here, at the moment it becomes
+      // real. Generated per row and retried on the unique index: the odds of a
+      // collision are negligible, but "negligible" is not "never" and a clash
+      // must not fail somebody else's issuance.
+      const instances = await this._createWithNumbers(instancesData, t);
       await t.commit();
 
       // Fire-and-forget: send notifications + emails immediately (no image — user downloads from dashboard)
@@ -1201,6 +1314,37 @@ class CertificateService {
       await t.rollback();
       throw err;
     }
+  }
+
+  /**
+   * Create the instances, giving each a unique certificate number.
+   *
+   * bulkCreate in one shot would make a single collision fail the whole batch,
+   * so rows are inserted individually and only the clashing row is retried. The
+   * unique index is the authority — checking for existence first would race.
+   */
+  async _createWithNumbers(instancesData, transaction) {
+    const created = [];
+    for (const data of instancesData) {
+      let lastError = null;
+      for (let attempt = 0; attempt < NUMBER_MAX_ATTEMPTS; attempt += 1) {
+        try {
+          created.push(await models.CertificateInstance.create(
+            { ...data, certificateNumber: generateCertificateNumber() },
+            { transaction }
+          ));
+          lastError = null;
+          break;
+        } catch (err) {
+          const isNumberClash = err?.name === 'SequelizeUniqueConstraintError'
+            && String(err?.parent?.constraint || '').includes('certificate_number');
+          if (!isNumberClash) throw err;
+          lastError = err;
+        }
+      }
+      if (lastError) throw lastError;
+    }
+    return created;
   }
 
   async _notifyRecipients(instances, template, mentorId) {

@@ -1,10 +1,17 @@
 
 
+import type { CertificateElement } from '@/lib/services/certificates-api';
+
 export interface TierCriteria {
   id: string;
   name: string;
   priority?: number;
+  /** Small icon for tables and chips — not the certificate itself. */
   badgeUrl?: string;
+  /** This tier's certificate artwork: the whole design, full bleed. */
+  artworkUrl?: string;
+  /** Where the name / date / number sit on THIS tier's artwork. */
+  layout?: CertificateElement[];
   keywords?: string[] | null;
   minScorePercent?: number | null;
   maxOpenBlockers?: number | null;
@@ -43,7 +50,10 @@ export const DYNAMIC_SHORTCUTS = [
   // The one-line version of per-type wording: drop it in and the title reads
   // correctly on every tier without authoring each one by hand. When the wording
   // needs to differ by more than the name, use the layer's "Wording per type".
-  { key: 'tier_name', label: 'Certificate Type', tag: '{{tier_name}}' }
+  { key: 'tier_name', label: 'Certificate Type', tag: '{{tier_name}}' },
+  // The credential's public number. Printed on the certificate and resolvable
+  // by anyone at /verify/<number>, which is what makes it worth printing.
+  { key: 'certificate_number', label: 'Certificate No.', tag: '{{certificate_number}}' }
 ] as const;
 
 

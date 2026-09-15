@@ -131,4 +131,45 @@ router.get(
   certificateController.getAIEvaluationStatus
 );
 
+// ── Mentor verification of AI-assigned tiers ────────────────────────────────
+// Mentors sign off on their own clans; admins see and can act on everything.
+// Scope is enforced in the service (clan-derived, never the base role).
+
+router.get(
+  '/templates/:id/verifications',
+  authenticate,
+  authorize(['admin', 'mentor']),
+  certificateController.listVerifications
+);
+
+router.post(
+  '/templates/:id/verifications/bulk',
+  authenticate,
+  authorize(['admin', 'mentor']),
+  certificateController.verifyMany
+);
+
+router.post(
+  '/templates/:id/verifications/:menteeId',
+  authenticate,
+  authorize(['admin', 'mentor']),
+  certificateController.verifyOne
+);
+
+// The admin's banner: who has signed off, who is outstanding, what is overdue.
+router.get(
+  '/templates/:id/verification-summary',
+  authenticate,
+  authorize(['admin', 'mentor']),
+  certificateController.verificationSummary
+);
+
+// Re-open / re-notify the round, optionally moving the deadline.
+router.post(
+  '/templates/:id/verifications-remind',
+  authenticate,
+  authorize(['admin']),
+  certificateController.remindReviewers
+);
+
 module.exports = router;

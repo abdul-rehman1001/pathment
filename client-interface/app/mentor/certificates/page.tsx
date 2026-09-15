@@ -155,6 +155,7 @@ export default function MentorCertificatesPage() {
     // resolve against this, so it has to travel with the render data.
     tier:        cert.tier,
     tierName:    cert.template?.criteria?.find(c => c.id === cert.tier)?.name || cert.tier,
+    certificateNumber: cert.certificateNumber,
   });
 
   const getBadgeUrl = (cert: CertificateInstance): string | null => {

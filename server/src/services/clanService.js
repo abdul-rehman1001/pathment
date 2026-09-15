@@ -4,7 +4,7 @@ const { createAuditLog } = require('../utils/auditContext');
 const { ROLES } = require('../config/roles');
 const authzService = require('./authzService');
 const { PERMISSIONS: P } = require('../config/permissions');
-const { VISIBLE_MEMBERSHIP_STATUSES } = require('../config/membership');
+const { VISIBLE_MEMBERSHIP_STATUSES, strongestClanRole } = require('../config/membership');
 const { ensureMenteeProfile } = require('./menteeProfile');
 
 // The permissions a co-mentor holds by default — and therefore the exact set a
@@ -32,9 +32,9 @@ const MENTOR_CLAN_ROLES = ['lead_mentor', 'co_mentor', 'core_team'];
 
 // Most → least authority, for collapsing a dual-role member to the single role
 // a UI needs to name ("what am I here?").
-const ROLE_RANK = { lead_mentor: 3, core_team: 2, co_mentor: 1, mentee: 0 };
-const strongestRole = (roles) =>
-  [...roles].sort((a, b) => (ROLE_RANK[b] ?? -1) - (ROLE_RANK[a] ?? -1))[0] || null;
+// Shared with anything else that has to answer "what is this person in this
+// clan?" — see config/membership.
+const strongestRole = strongestClanRole;
 
 class ClanService {
   /**

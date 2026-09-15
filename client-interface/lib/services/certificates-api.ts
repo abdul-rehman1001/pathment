@@ -4,7 +4,7 @@ export interface CertificateElement {
   id: string;
   text: string;
   type: 'static' | 'dynamic' | 'badge' | 'image';
-  dynamicKey?: 'mentee_name' | 'mentor_name' | 'date_issued' | 'program_name' | 'fellowship_name' | 'issuer_name' | 'issuer_title' | 'tier_name';
+  dynamicKey?: 'mentee_name' | 'mentor_name' | 'date_issued' | 'program_name' | 'fellowship_name' | 'issuer_name' | 'issuer_title' | 'tier_name' | 'certificate_number';
   xPercent: number;
   yPercent: number;
   fontSizePercent: number;
@@ -55,6 +55,14 @@ export interface CertificateTemplate {
     id: string;
     name: string;
     badgeUrl?: string;
+    /**
+     * This tier's certificate — the whole artwork, not a badge pasted onto a
+     * shared background. Each tier is its own design, so the recipient's name,
+     * the date and the certificate number are positioned per tier in `layout`
+     * rather than once for the template.
+     */
+    artworkUrl?: string;
+    layout?: CertificateElement[];
     keywords?: string[] | null;
     minScorePercent?: number | null;
     maxOpenBlockers?: number | null;
@@ -92,6 +100,8 @@ export interface CertificateInstance {
 
   imageUrl?: string;
   tier: string;
+  /** The credential's public identity, printed on it and resolvable at /verify. */
+  certificateNumber?: string;
   metadata: any;
   template?: CertificateTemplate;
   mentee?: { id: string; firstName: string; lastName: string; email: string };

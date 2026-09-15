@@ -4,6 +4,8 @@ import type { CertificateTemplate } from '@/lib/services/certificates-api';
 import {
   resolveText,
   resolveBadgeUrl,
+  resolveArtworkUrl,
+  resolveLayout,
   isElementVisibleForTier,
   type CertificateRenderData,
 } from '@/lib/utils/certificate-renderer';
@@ -24,10 +26,12 @@ export function CertificatePreview({
   badgeUrlOverride,
   className,
 }: CertificatePreviewProps) {
-  const bgImageUrl = template.bgImageUrl || '';
+  // This tier's artwork and this tier's layers — shared with the PNG renderer
+  // so the preview cannot promise something the download does not produce.
+  const bgImageUrl = resolveArtworkUrl(template, recipientData);
   const logoUrl = template.logoUrl || '';
   const logoConfig = template.logoConfig || { xPercent: 10, yPercent: 10, widthPercent: 15 };
-  const elements = Array.isArray(template.config) ? template.config : [];
+  const elements = resolveLayout(template, recipientData);
 
   return (
 

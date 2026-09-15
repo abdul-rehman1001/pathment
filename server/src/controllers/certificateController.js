@@ -2,6 +2,7 @@ const { catchAsync } = require('../middlewares/errorHandler');
 const { successResponse } = require('../utils/responses');
 const certificateService = require('../services/certificateService');
 const { portalOf } = require('../middlewares/portalScope');
+const certificateVerificationService = require('../services/certificateVerificationService');
 
 const createTemplate = catchAsync(async (req, res) => {
   const template = await certificateService.createTemplate(req.body, req.user.id);
@@ -106,6 +107,47 @@ const getAIEvaluationStatus = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('AI evaluation status', status));
 });
 
+
+// ── Mentor verification of AI-assigned tiers ────────────────────────────────
+
+const listVerifications = catchAsync(async (req, res) => {
+  const result = await certificateVerificationService.listForReviewer(
+    req.params.id, req.user, { clanId: req.query.clanId || portalOf(req).clanId }
+  );
+  res.status(200).json(successResponse('Verification queue retrieved', result));
+});
+
+const verifyOne = catchAsync(async (req, res) => {
+  const row = await certificateVerificationService.verify(
+    req.params.id, req.params.menteeId,
+    { finalTier: req.body.finalTier, reason: req.body.reason },
+    req.user
+  );
+  res.status(200).json(successResponse('Grade verified', { verification: row }));
+});
+
+const verifyMany = catchAsync(async (req, res) => {
+  const result = await certificateVerificationService.verifyMany(
+    req.params.id, req.body.decisions, req.user
+  );
+  res.status(200).json(successResponse(`Verified ${result.verified} grade(s)`, result));
+});
+
+const verificationSummary = catchAsync(async (req, res) => {
+  const summary = await certificateVerificationService.summary(req.params.id);
+  res.status(200).json(successResponse('Verification summary retrieved', summary));
+});
+
+const remindReviewers = catchAsync(async (req, res) => {
+  const template = await certificateService.getTemplate(req.params.id);
+  const result = await certificateVerificationService.open(
+    req.params.id,
+    (template.aiEvaluation?.results) || [],
+    { deadline: req.body.deadline || null }
+  );
+  res.status(200).json(successResponse(`Reminded ${result.notified} mentor(s)`, result));
+});
+
 module.exports = {
   createTemplate,
   listTemplates,
@@ -124,5 +166,10 @@ module.exports = {
   revokeAllTemplateCertificates,
   resendAllTemplateCertificates,
   runAIEvaluation,
-  getAIEvaluationStatus
+  getAIEvaluationStatus,
+  listVerifications,
+  verifyOne,
+  verifyMany,
+  verificationSummary,
+  remindReviewers
 };
