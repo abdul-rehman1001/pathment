@@ -6,11 +6,12 @@ import {
   Loader2, Award, Calendar, ArrowLeft, Search,
   Users, Send, Eye, CheckCircle2, XCircle, AlertCircle,
   TrendingUp, ShieldOff, Download, ExternalLink, Linkedin, ShieldCheck, X, ShieldAlert, Info,
-  ChevronDown, Sparkles, Edit3
+  ChevronDown, Sparkles, Edit3, Clock
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/context/AuthContext';
-import { certificatesApi, CertificateTemplate, CertificateInstance } from '@/lib/services/certificates-api';
+import { extractApiErrorMessage } from '@/lib/utils/api-error';
+import { certificatesApi, CertificateTemplate, CertificateInstance, type ReviewerClanState } from '@/lib/services/certificates-api';
 import CertificateHistoryLog from '@/components/admin/certificates/CertificateHistoryLog';
 import { DuplicateWarnModal } from '@/components/shared';
 import { getTierBadgeColor, getTierButtonColor, getTierIconColor } from '@/lib/utils/certificates';
@@ -91,6 +92,14 @@ export default function MentorCertificatesPage() {
   const [sortBy, setSortBy] = useState<'none' | 'score_desc' | 'score_asc'>('none');
   const [personalNote, setPersonalNote] = useState('');
   const [issuing, setIssuing] = useState(false);
+  /**
+   * Whether the admin has released this template for the mentor's clans.
+   *
+   * Sending is gated server-side, so without this the button was simply a way
+   * to earn a 403: the mentor pressed Issue and got an error instead of being
+   * told the admin has not approved yet. `null` = not loaded.
+   */
+  const [release, setRelease] = useState<ReviewerClanState[] | null>(null);
 
   const [mentorTiers, setMentorTiers] = useState<Record<string, string>>({});
   const [aiDetailMentee, setAiDetailMentee] = useState<any | null>(null);
@@ -189,6 +198,33 @@ export default function MentorCertificatesPage() {
   };
 
   const currentTemplate = templates.find(t => t.id === activeTemplateId) ?? null;
+
+  // Refreshed whenever the template changes, and after issuing, so the gate
+  // reflects an approval that landed while this page was open.
+  const loadRelease = useCallback(async () => {
+    if (!activeTemplateId) { setRelease(null); return; }
+    try {
+      const res = await certificatesApi.listVerifications(activeTemplateId);
+      setRelease(res.data?.clans ?? []);
+    } catch {
+      // Advisory: a failed lookup must not strand the page. The server is the
+      // real gate, so the worst case is a button that 403s as it did before.
+      setRelease([]);
+    }
+  }, [activeTemplateId]);
+
+  useEffect(() => { loadRelease(); }, [loadRelease]);
+
+  /**
+   * A clan is releasable when the admin has approved it. With no review round
+   * at all (`release` empty) the template predates this flow, so the old
+   * behaviour stands rather than locking a mentor out of a cycle already
+   * under way.
+   */
+  const noReviewRound = release !== null && release.length === 0;
+  const approvedClans = (release ?? []).filter(c => c.canSend);
+  const canIssue = noReviewRound || approvedClans.length > 0;
+  const awaitingApproval = (release ?? []).filter(c => !c.canSend);
   const criteria = currentTemplate?.criteria ?? [];
 
   const fetchMyCertificates = async () => {
@@ -508,12 +544,29 @@ export default function MentorCertificatesPage() {
         mentorId: user?.id
       });
       if (res.success) {
-        toast.success(`Queued ${recipientsList.length} certificate(s) for issuance`);
+        // Report what the server actually did. Some of the selection may
+        // already hold this certificate — those are skipped, not sent — and
+        // claiming "queued 20" when 18 were duplicates is a lie the mentor
+        // only discovers by counting.
+        const issued = res.data?.count ?? recipientsList.length;
+        const skipped = res.data?.skipped ?? 0;
+        if (issued === 0) {
+          toast.info(`Everyone selected already has this certificate.`);
+        } else {
+          toast.success(
+            skipped > 0
+              ? `Sent ${issued} certificate(s) — ${skipped} already had one`
+              : `Sent ${issued} certificate(s)`
+          );
+        }
         setSelectedIds(new Set());
         setRefreshKey(prev => prev + 1);
+        loadRelease();
       }
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to issue certificates');
+    } catch (err) {
+      // The server's own words matter here: a refusal explains that the clan
+      // has not been approved yet, which a generic message would throw away.
+      toast.error(extractApiErrorMessage(err, 'Failed to issue certificates'));
     } finally {
       setIssuing(false);
     }
@@ -1108,14 +1161,29 @@ export default function MentorCertificatesPage() {
                     <span className="text-foreground font-extrabold">{selectedIds.size}</span> / {filtered.length} selected
                   </span>
                 </div>
-                <button
-                  onClick={handleIssue}
-                  disabled={issuing || selectedIds.size === 0}
-                  className="flex items-center gap-1.5 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed rounded-xl text-xs font-bold transition-all shadow-sm"
-                >
-                  {issuing ? <Loader2 className="animate-spin w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />}
-                  Issue Certificates
-                </button>
+                {/* Sending is unlocked by the admin approving the clan, after
+                    its grades are verified. Showing the button regardless just
+                    produced a 403 — the mentor pressed it and got an error
+                    rather than an explanation. */}
+                {canIssue ? (
+                  <button
+                    onClick={handleIssue}
+                    disabled={issuing || selectedIds.size === 0}
+                    className="flex items-center gap-1.5 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed rounded-xl text-xs font-bold transition-all shadow-sm"
+                  >
+                    {issuing ? <Loader2 className="animate-spin w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />}
+                    Issue Certificates
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/5 px-3.5 py-2.5">
+                    <Clock className="w-3.5 h-3.5 shrink-0 text-amber-500" />
+                    <span className="text-[11px] font-semibold text-foreground">
+                      {awaitingApproval.some(c => c.pending > 0)
+                        ? 'Verify the grades, then an admin approves your clan before you can send.'
+                        : 'Verified — waiting for an admin to approve your clan.'}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           )}

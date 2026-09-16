@@ -376,7 +376,19 @@ export const certificatesApi = {
     tier?: string;
     recipients?: Array<{ menteeId: string; tier: string }>
   }) => 
-    apiClient.post<{ success: boolean; message: string; data: { instances: any[]; jobs: any[] } }>('/certificates/instances', data, { timeout: 120000 }),
+    apiClient.post<{
+      success: boolean;
+      message: string;
+      data: {
+        instances: Array<{ id: string; menteeId: string }>;
+        /** Actually issued. */
+        count: number;
+        /** Recipients skipped because they already hold this certificate. */
+        skipped: number;
+        /** True when every recipient was already issued, so nothing was sent. */
+        alreadyIssued?: boolean;
+      };
+    }>('/certificates/instances', data, { timeout: 120000 }),
     
   listMenteeCertificates: (menteeId: string) => 
     apiClient.get<{ success: boolean; data: CertificateInstance[] }>(`/certificates/instances/mentee/${menteeId}`),
