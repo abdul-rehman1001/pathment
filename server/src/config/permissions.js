@@ -33,6 +33,12 @@ const PERMISSIONS = {
   TASK_ASSIGN: 'task.assign',
   TASK_REVIEW: 'task.review',
 
+  // Certificates
+  // Signing off on the grade a mentee's certificate will be issued at. Held by
+  // lead mentors and, by default, co-mentors — a lead can revoke it per person
+  // the same way they revoke any other co-mentor permission.
+  CERTIFICATE_VERIFY: 'certificate.verify',
+
   // Shared resource library (org-global documents/links)
   LIBRARY_MANAGE: 'library.manage',
 
@@ -106,6 +112,7 @@ const PERMISSION_GROUPS = [
     permissions: [
       { key: P.TASK_ASSIGN, label: 'Set work' },
       { key: P.TASK_REVIEW, label: 'Mark work' },
+      { key: P.CERTIFICATE_VERIFY, label: 'Sign off certificate grades' },
       { key: P.LIBRARY_MANAGE, label: 'Manage the library' }
     ]
   },

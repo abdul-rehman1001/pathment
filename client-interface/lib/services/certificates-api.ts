@@ -249,6 +249,18 @@ export const certificatesApi = {
       `/certificates/templates/${templateId}/verification-summary`
     ),
 
+  /**
+   * Hand the graded mentees to their clans' mentors for sign-off, with a
+   * deadline. Explicit rather than automatic: an admin usually re-runs the AI
+   * while tuning the criteria, and notifying on every run is noise.
+   */
+  sendToClans: (templateId: string, body: { deadline?: string; clanIds?: string[] } = {}) =>
+    apiClient.post<{
+      success: boolean;
+      message: string;
+      data: { created: number; updated: number; notified: number; deadline: string };
+    }>(`/certificates/templates/${templateId}/send-to-clans`, body, { timeout: 120000 }),
+
   /** Re-notify mentors, optionally moving the deadline. */
   remindReviewers: (templateId: string, deadline?: string) =>
     apiClient.post<{ success: boolean; message: string; data: { notified: number } }>(

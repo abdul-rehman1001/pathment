@@ -164,6 +164,14 @@ router.get(
   certificateController.verificationSummary
 );
 
+// Hand the grades to the clans that must sign them off, with a deadline.
+router.post(
+  '/templates/:id/send-to-clans',
+  authenticate,
+  authorize(['admin']),
+  certificateController.sendToClans
+);
+
 // Re-open / re-notify the round, optionally moving the deadline.
 router.post(
   '/templates/:id/verifications-remind',

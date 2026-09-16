@@ -97,6 +97,44 @@ class CertificateVerificationService {
   }
 
   /**
+   * The admin hands a template's grades to the clans that must sign them off.
+   *
+   * Explicit rather than automatic. Grading and asking people to review are two
+   * different decisions: an admin often runs the AI more than once while tuning
+   * the criteria, and mailing every mentor on each run would train them to
+   * ignore the notification. So the round opens when the admin says so, and
+   * they set the deadline when they know their own cycle.
+   *
+   * Sending again is a reminder, not a reset — already-signed-off rows keep
+   * their decision (see `open`).
+   */
+  async sendToClans(templateId, { deadline = null, clanIds = null } = {}, user) {
+    const template = await models.CertificateTemplate.findByPk(templateId);
+    if (!template) throw new NotFoundError('Certificate template not found');
+
+    const results = Array.isArray(template.aiEvaluation?.results) ? template.aiEvaluation.results : [];
+    if (!results.length) {
+      throw new ValidationError('Run the AI evaluation first — there are no grades to review yet.');
+    }
+
+    // An admin can send to a subset of clans; everyone else is confined to
+    // the clans they may sign off in anyway.
+    let scopedResults = results;
+    if (Array.isArray(clanIds) && clanIds.length) {
+      const menteeIds = results.map((r) => r.mentee_id || r.id).filter(Boolean);
+      const clanOf = await this._clanOfMentees(menteeIds, template.programId);
+      const wanted = new Set(clanIds);
+      scopedResults = results.filter((r) => wanted.has(clanOf.get(r.mentee_id || r.id)));
+    }
+
+    const round = await this.open(templateId, scopedResults, { deadline, notify: true });
+    logger.info('[certificateVerification] round sent to clans', {
+      templateId, by: user?.id, ...round
+    });
+    return round;
+  }
+
+  /**
    * The mentees this user must sign off on for a template, with what the AI
    * proposed and what has been decided so far.
    */
@@ -285,7 +323,10 @@ class CertificateVerificationService {
 
   /** Clans in this programme where the user may sign off. */
   async _reviewableClanIds(user, programId, onlyClanId = null) {
-    let clanIds = await authzService.clansWhereCan(user, PERMISSIONS.MENTEE_VIEW);
+    // `certificate.verify`, not `mentee.view`: a lead mentor can revoke signing
+    // off from an individual co-mentor without taking away their ability to see
+    // the mentee at all. It is on by default for co-mentors.
+    let clanIds = await authzService.clansWhereCan(user, PERMISSIONS.CERTIFICATE_VERIFY);
     if (!clanIds.length) return [];
     if (programId) {
       const inProgram = await models.Clan.findAll({

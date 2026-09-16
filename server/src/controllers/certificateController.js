@@ -4,6 +4,11 @@ const certificateService = require('../services/certificateService');
 const { portalOf } = require('../middlewares/portalScope');
 const certificateVerificationService = require('../services/certificateVerificationService');
 
+// The default review window when an admin sends without naming a date. A
+// working week: long enough to fit around teaching, short enough that issuance
+// is not held for a fortnight.
+const VERIFICATION_WINDOW_DAYS = Number(process.env.CERTIFICATE_VERIFICATION_WINDOW_DAYS) || 7;
+
 const createTemplate = catchAsync(async (req, res) => {
   const template = await certificateService.createTemplate(req.body, req.user.id);
   res.status(201).json(successResponse('Certificate template created successfully', template, 201));
@@ -52,6 +57,24 @@ const uploadAsset = catchAsync(async (req, res) => {
 const getQualification = catchAsync(async (req, res) => {
   const result = await certificateService.getQualification(req.params.id, req.query.mentorId, req.user, { clanId: portalOf(req).clanId });
   res.status(200).json(successResponse('Qualification calculation complete', result));
+});
+
+/**
+ * The admin hands the grades to the clans that must sign them off.
+ *
+ * `deadline` is optional: without one the mentors get the default review
+ * window, which is a nudge and never a gate.
+ */
+const sendToClans = catchAsync(async (req, res) => {
+  const deadline = req.body?.deadline
+    || new Date(Date.now() + VERIFICATION_WINDOW_DAYS * 86400000).toISOString();
+  const result = await certificateVerificationService.sendToClans(
+    req.params.id, { deadline, clanIds: req.body?.clanIds || null }, req.user
+  );
+  res.status(200).json(successResponse(
+    `Sent to ${result.notified} mentor(s) for verification`,
+    { ...result, deadline }
+  ));
 });
 
 const sendToMentors = catchAsync(async (req, res) => {
@@ -171,5 +194,6 @@ module.exports = {
   verifyOne,
   verifyMany,
   verificationSummary,
-  remindReviewers
+  remindReviewers,
+  sendToClans
 };

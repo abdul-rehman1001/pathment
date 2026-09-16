@@ -1266,9 +1266,25 @@ class CertificateService {
       // revert it to the AI's grade.
       const verifiedTiers = await certificateVerificationService.resolveTiers(templateId, requested);
 
+      // Nobody gets the same certificate twice.
+      //
+      // Both an admin and a mentor can issue for a clan, and either may be
+      // looking at a roster loaded before the other pressed the button — so a
+      // second send for the same people is expected traffic, not a mistake to
+      // reject outright. The already-issued are skipped and reported; the rest
+      // go out. Refusing the whole batch would mean one duplicate stopped
+      // everybody else's certificate.
+      const alreadyIssued = await models.CertificateInstance.findAll({
+        where: { templateId, menteeId: { [Op.in]: requested.length ? requested : [null] } },
+        attributes: ['menteeId'],
+        raw: true,
+        transaction: t
+      });
+      const alreadyIssuedIds = new Set(alreadyIssued.map((r) => r.menteeId));
+
       let instancesData = [];
       if (Array.isArray(recipients) && recipients.length > 0) {
-        instancesData = recipients.map(r => ({
+        instancesData = recipients.filter(r => !alreadyIssuedIds.has(r.menteeId)).map(r => ({
           id: crypto.randomUUID(),
           templateId,
           menteeId:  r.menteeId,
@@ -1282,7 +1298,7 @@ class CertificateService {
         if (!Array.isArray(menteeIds) || menteeIds.length === 0) {
           throw new ValidationError('At least one mentee ID or recipients list is required');
         }
-        instancesData = menteeIds.map(menteeId => ({
+        instancesData = menteeIds.filter(menteeId => !alreadyIssuedIds.has(menteeId)).map(menteeId => ({
           id: crypto.randomUUID(),
           templateId,
           menteeId,
@@ -1298,6 +1314,12 @@ class CertificateService {
       // real. Generated per row and retried on the unique index: the odds of a
       // collision are negligible, but "negligible" is not "never" and a clash
       // must not fail somebody else's issuance.
+      const skipped = requested.length - instancesData.length;
+      if (instancesData.length === 0) {
+        await t.rollback();
+        return { instances: [], count: 0, skipped, alreadyIssued: true };
+      }
+
       const instances = await this._createWithNumbers(instancesData, t);
       await t.commit();
 
@@ -1308,7 +1330,8 @@ class CertificateService {
 
       return {
         instances: instances.map(i => ({ id: i.id, menteeId: i.menteeId })),
-        count: instances.length
+        count: instances.length,
+        skipped
       };
     } catch (err) {
       await t.rollback();

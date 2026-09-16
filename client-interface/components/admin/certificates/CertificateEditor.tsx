@@ -15,6 +15,7 @@ import { certificatesApi, CertificateElement, CertificateTemplate } from '@/lib/
 import { FileDragDrop } from '@/components/shared/FileDragDrop';
 import { DuplicateWarnModal } from '@/components/shared';
 import { Drawer } from '@/components/shared/Drawer';
+import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { orgRoadmapApi } from '@/lib/services/roadmap-api';
 import { programsApi } from '@/lib/services/program-api';
 import { getTierButtonColor, getTierIconColor } from '@/lib/utils/certificates';
@@ -60,6 +61,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
   const [activePresetId, setActivePresetId] = useState<string | null>(null);
   const [isPresetsDrawerOpen, setIsPresetsDrawerOpen] = useState(false);
   const [isPreviewGalleryOpen, setIsPreviewGalleryOpen] = useState(false);
+  const [isSendDrawerOpen, setIsSendDrawerOpen] = useState(false);
   const [logoUrl, setLogoUrl] = useState('');
   const [logoConfig, setLogoConfig] = useState({ xPercent: 50, yPercent: 20, widthPercent: 12 });
 
@@ -665,14 +667,26 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
     }
   };
 
-  const handleSendToMentors = async () => {
-    if (!templateId || !selectedProgramId) return;
+  /**
+   * Hand the AI's grades to the clans that must sign them off.
+   *
+   * A deliberate step, not a side effect of grading: an admin usually re-runs
+   * the AI while tuning the criteria, and notifying every mentor each time
+   * would train them to ignore it. Sending again later is a reminder — mentors
+   * who have already signed off keep their decisions.
+   */
+  const handleSendToClans = async (deadline: string) => {
+    if (!templateId) return;
     try {
       setSendingToMentors(true);
-      const res = await certificatesApi.sendToMentors(templateId, selectedProgramId);
-      if (res.success) toast.success(res.message);
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to send to mentors');
+      const res = await certificatesApi.sendToClans(templateId, { deadline });
+      if (res.success) {
+        toast.success(res.message);
+        setIsSendDrawerOpen(false);
+        setRefreshKey(prev => prev + 1);   // refresh the verification banner
+      }
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, 'Could not send the grades for verification'));
     } finally {
       setSendingToMentors(false);
     }
@@ -1403,6 +1417,13 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
       </div>
 
       {}
+      <SendToClansDrawer
+        open={isSendDrawerOpen}
+        onClose={() => setIsSendDrawerOpen(false)}
+        sending={sendingToMentors}
+        onSend={handleSendToClans}
+      />
+
       <TierPreviewGallery
         open={isPreviewGalleryOpen}
         onClose={() => setIsPreviewGalleryOpen(false)}
@@ -1446,12 +1467,13 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
             {templateId && selectedProgramId && (
               <button
                 type="button"
-                onClick={handleSendToMentors}
-                disabled={sendingToMentors}
+                onClick={() => setIsSendDrawerOpen(true)}
+                disabled={sendingToMentors || !aiRanAt}
+                title={aiRanAt ? undefined : 'Run the AI evaluation first'}
                 className="flex items-center gap-1.5 px-3.5 py-2 bg-brand-500/10 hover:bg-brand-500/20 text-brand-600 rounded-xl text-xs font-bold transition-colors disabled:opacity-50"
               >
                 {sendingToMentors ? <Loader2 className="animate-spin w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />}
-                Send to Mentors
+                Send to Clans
               </button>
             )}
           </div>
@@ -1994,5 +2016,88 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
         </div>
       </Drawer>
     </div>
+  );
+}
+
+
+/**
+ * Choosing when the clans should have finished reviewing.
+ *
+ * The deadline is a nudge, never a gate: nothing issues on its own when it
+ * passes and the admin is never blocked. It exists so mentors know what is
+ * expected of them and so the admin's banner can say "overdue" rather than
+ * leaving a round hanging silently.
+ */
+function SendToClansDrawer({
+  open, onClose, sending, onSend,
+}: {
+  open: boolean;
+  onClose: () => void;
+  sending: boolean;
+  onSend: (deadlineIso: string) => void;
+}) {
+  const [days, setDays] = useState(7);
+  const due = new Date(Date.now() + days * 86_400_000);
+
+  return (
+    <Drawer
+      open={open}
+      onClose={onClose}
+      title="Send grades to clans"
+      subtitle="Mentors review the AI's grades for their own mentees before anything is issued."
+      footer={
+        <>
+          <button
+            onClick={onClose}
+            className="rounded-xl border border-border px-4 py-2 text-sm text-foreground hover:bg-muted/50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => onSend(due.toISOString())}
+            disabled={sending}
+            className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2 text-sm text-white hover:bg-brand-700 disabled:opacity-50"
+          >
+            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            Send for verification
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <label className="text-[10px] font-bold uppercase text-muted-foreground">Review window</label>
+          <div className="flex flex-wrap gap-1.5">
+            {[3, 5, 7, 14].map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => setDays(option)}
+                className={`rounded-lg border px-3 py-1.5 text-xs font-bold transition-colors ${
+                  days === option
+                    ? 'border-brand-500 bg-brand-500/10 text-brand-700'
+                    : 'border-border bg-background text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {option} days
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Due {due.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-border bg-muted/30 p-3 text-[11px] leading-relaxed text-muted-foreground">
+          <p className="font-semibold text-foreground">What happens next</p>
+          <ul className="mt-1.5 list-disc space-y-1 pl-4">
+            <li>Every clan&apos;s mentors and co-mentors are notified.</li>
+            <li>They confirm each grade, or change it with a reason.</li>
+            <li>You are notified as each clan finishes.</li>
+            <li>The deadline is a nudge — you can still issue at any time.</li>
+          </ul>
+        </div>
+      </div>
+    </Drawer>
   );
 }
