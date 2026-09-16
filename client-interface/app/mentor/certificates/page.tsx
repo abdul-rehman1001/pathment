@@ -79,7 +79,7 @@ export default function MentorCertificatesPage() {
   const [loadingTemplates, setLoadingTemplates] = useState(true);
 
   const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null);
-  const [workspaceTab, setWorkspaceTab] = useState<'issue' | 'history'>('issue');
+  const [workspaceTab, setWorkspaceTab] = useState<'issue' | 'verify' | 'history'>('issue');
 
   const [qualifiedData, setQualifiedData] = useState<QualifiedData>({});
   const [loadingQualifications, setLoadingQualifications] = useState(false);
@@ -225,6 +225,8 @@ export default function MentorCertificatesPage() {
   const approvedClans = (release ?? []).filter(c => c.canSend);
   const canIssue = noReviewRound || approvedClans.length > 0;
   const awaitingApproval = (release ?? []).filter(c => !c.canSend);
+  /** Grades still needing this mentor's sign-off, for the tab's badge. */
+  const pendingReviewCount = (release ?? []).reduce((sum, c) => sum + c.pending, 0);
   const criteria = currentTemplate?.criteria ?? [];
 
   const fetchMyCertificates = async () => {
@@ -923,6 +925,27 @@ export default function MentorCertificatesPage() {
           >
             Issue Credentials
           </button>
+          {/* Reviewing is the step BEFORE issuing, so it belongs on the same
+              screen. Sending it back to a separate tab on the list page meant
+              the gate below could tell a mentor to verify with no way to get
+              there. */}
+          {release !== null && release.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setWorkspaceTab('verify')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${workspaceTab === 'verify'
+                ? 'bg-background border border-border shadow-2xs text-brand-600'
+                : 'text-muted-foreground hover:text-foreground'
+                }`}
+            >
+              Review Grades
+              {pendingReviewCount > 0 && (
+                <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-extrabold text-amber-600">
+                  {pendingReviewCount}
+                </span>
+              )}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setWorkspaceTab('history')}
@@ -985,7 +1008,23 @@ export default function MentorCertificatesPage() {
 
       {}
       <div className="w-full">
-        {workspaceTab === 'history' ? (
+        {workspaceTab === 'verify' ? (
+          <div className="bg-card border border-border/80 rounded-3xl p-6 shadow-2xs min-h-[560px]">
+            <div className="mb-4 border-b border-border pb-3">
+              <p className="text-sm font-bold text-foreground">Review grades before they go out</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                The AI grades from the record. You know the people — confirm each grade, or change it.
+                An admin approves your clan once you are done, and sending unlocks then.
+              </p>
+            </div>
+            {activeTemplateId && (
+              <VerificationQueue
+                templateId={activeTemplateId}
+                onChanged={loadRelease}
+              />
+            )}
+          </div>
+        ) : workspaceTab === 'history' ? (
           <div className="bg-card border border-border/80 rounded-3xl p-6 shadow-2xs flex flex-col min-h-[560px]">
             <div className="flex items-center justify-between mb-4 border-b border-border pb-3">
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Template History Logs</p>
@@ -1177,11 +1216,26 @@ export default function MentorCertificatesPage() {
                 ) : (
                   <div className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/5 px-3.5 py-2.5">
                     <Clock className="w-3.5 h-3.5 shrink-0 text-amber-500" />
-                    <span className="text-[11px] font-semibold text-foreground">
-                      {awaitingApproval.some(c => c.pending > 0)
-                        ? 'Verify the grades, then an admin approves your clan before you can send.'
-                        : 'Verified — waiting for an admin to approve your clan.'}
-                    </span>
+                    {awaitingApproval.some(c => c.pending > 0) ? (
+                      <>
+                        <span className="text-[11px] font-semibold text-foreground">
+                          {pendingReviewCount} grade{pendingReviewCount === 1 ? '' : 's'} still need your review.
+                        </span>
+                        {/* Telling somebody to do a thing without a way to do it
+                            is how the previous version of this stranded them. */}
+                        <button
+                          type="button"
+                          onClick={() => setWorkspaceTab('verify')}
+                          className="rounded-lg bg-amber-500/15 px-2 py-1 text-[11px] font-bold text-amber-700 hover:bg-amber-500/25"
+                        >
+                          Review now
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-[11px] font-semibold text-foreground">
+                        Verified — waiting for an admin to approve your clan.
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
