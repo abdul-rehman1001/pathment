@@ -18,7 +18,7 @@ import { Drawer } from '@/components/shared/Drawer';
 import { orgRoadmapApi } from '@/lib/services/roadmap-api';
 import { programsApi } from '@/lib/services/program-api';
 import { getTierButtonColor, getTierIconColor } from '@/lib/utils/certificates';
-import { AIDetailDrawer, AIEvaluationBanner, CriteriaTable, RecipientRosterTable } from '@/components/certificates/shared';
+import { AIDetailDrawer, AIEvaluationBanner, CriteriaTable, RecipientRosterTable, VerificationBanner } from '@/components/certificates/shared';
 import CertificateHistoryLog from './CertificateHistoryLog';
 import {
   TierCriteria, FONTS, DYNAMIC_SHORTCUTS, BACKGROUND_PRESETS,
@@ -1411,6 +1411,19 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
             )}
           </div>
         </div>
+
+        {/* Where the mentor sign-off stands. Advisory only — an admin is never
+            blocked from issuing, because one mentor on leave must not strand a
+            whole cohort. See VerificationBanner. */}
+        {templateId && (
+          <VerificationBanner
+            templateId={templateId}
+            refreshKey={refreshKey}
+            onIssueAnyway={() => {
+              document.getElementById('certificate-recipients')?.scrollIntoView({ behavior: 'smooth' });
+            }}
+          />
+        )}
 
         {!templateId ? (
           <div className="bg-muted/20 border border-border p-6 rounded-2xl text-center text-xs text-muted-foreground font-semibold">

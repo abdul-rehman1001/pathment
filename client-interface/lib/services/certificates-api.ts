@@ -167,7 +167,109 @@ export interface AIEvaluationResult {
   reasoning: string;
 }
 
+
+// ── Mentor verification of AI-assigned grades ───────────────────────────────
+
+/** One mentee awaiting (or carrying) a mentor's sign-off on their grade. */
+export interface CertificateVerification {
+  id: string;
+  menteeId: string;
+  mentee: { id: string; firstName: string; lastName: string; email: string; profilePictureUrl?: string } | null;
+  clanId: string | null;
+  clanName: string | null;
+  /** What the AI proposed — kept after an override so the change stays visible. */
+  aiTier: string | null;
+  aiMatchScore: number | null;
+  /** What will actually be issued. */
+  finalTier: string | null;
+  overridden: boolean;
+  overrideReason: string | null;
+  status: 'pending' | 'verified';
+  verifiedAt: string | null;
+  verifiedBy: string | null;
+}
+
+/** Per-clan progress through the review round — what the admin's banner shows. */
+export interface VerificationClanStatus {
+  clanId: string | null;
+  clanName: string;
+  total: number;
+  verified: number;
+  pending: number;
+  overridden: number;
+  complete: boolean;
+}
+
+export interface VerificationSummary {
+  deadline: string | null;
+  /** The deadline has passed AND work is outstanding. Never blocks issuing. */
+  overdue: boolean;
+  total: number;
+  verified: number;
+  pending: number;
+  overridden: number;
+  allVerified: boolean;
+  clans: VerificationClanStatus[];
+}
+
 export const certificatesApi = {
+
+  // ── Verification round ────────────────────────────────────────────────────
+
+  /** The mentees this user must sign off on. Scoped to their clans server-side. */
+  listVerifications: (templateId: string, clanId?: string) => {
+    const qs = clanId ? `?clanId=${encodeURIComponent(clanId)}` : '';
+    return apiClient.get<{
+      success: boolean;
+      data: {
+        template: { id: string; name: string; criteria: CertificateTemplate['criteria']; verificationDeadline: string | null };
+        rows: CertificateVerification[];
+      };
+    }>(`/certificates/templates/${templateId}/verifications${qs}`);
+  },
+
+  /**
+   * Confirm or change one mentee's grade. Omit `finalTier` to accept the AI's.
+   * A different tier is an override and the server requires a reason.
+   */
+  verifyOne: (templateId: string, menteeId: string, body: { finalTier?: string; reason?: string }) =>
+    apiClient.post<{ success: boolean; data: { verification: CertificateVerification } }>(
+      `/certificates/templates/${templateId}/verifications/${menteeId}`, body
+    ),
+
+  /** Sign off several at once — "these all look right". */
+  verifyMany: (templateId: string, decisions: Array<{ menteeId: string; finalTier?: string; reason?: string }>) =>
+    apiClient.post<{ success: boolean; message: string; data: { verified: number } }>(
+      `/certificates/templates/${templateId}/verifications/bulk`, { decisions }, { timeout: 120000 }
+    ),
+
+  /** Per-clan progress, for the admin banner. */
+  getVerificationSummary: (templateId: string) =>
+    apiClient.get<{ success: boolean; data: VerificationSummary }>(
+      `/certificates/templates/${templateId}/verification-summary`
+    ),
+
+  /** Re-notify mentors, optionally moving the deadline. */
+  remindReviewers: (templateId: string, deadline?: string) =>
+    apiClient.post<{ success: boolean; message: string; data: { notified: number } }>(
+      `/certificates/templates/${templateId}/verifications-remind`, { deadline }
+    ),
+
+  /** Resolve a certificate number. Public — no auth, used by /verify. */
+  verifyCertificateNumber: (number: string) =>
+    apiClient.get<{
+      success: boolean;
+      data: {
+        valid: boolean;
+        certificateNumber?: string;
+        recipientName?: string | null;
+        tier?: string;
+        tierName?: string;
+        programName?: string | null;
+        templateName?: string | null;
+        issuedAt?: string;
+      };
+    }>(`/public/verify/${encodeURIComponent(number)}`),
 
   listTemplates: (programId?: string) => {
     const qs = new URLSearchParams();

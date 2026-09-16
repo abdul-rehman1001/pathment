@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   Loader2, Award, Calendar, ArrowLeft, Search,
   Users, Send, Eye, CheckCircle2, XCircle, AlertCircle,
@@ -14,7 +15,7 @@ import CertificateHistoryLog from '@/components/admin/certificates/CertificateHi
 import { DuplicateWarnModal } from '@/components/shared';
 import { getTierBadgeColor, getTierButtonColor, getTierIconColor } from '@/lib/utils/certificates';
 import { Drawer } from '@/components/shared/Drawer';
-import { AIDetailDrawer, AIEvaluationBanner, RecipientRosterTable, CertificatePreview, type CertificateRenderData } from '@/components/certificates/shared';
+import { AIDetailDrawer, AIEvaluationBanner, RecipientRosterTable, CertificatePreview, VerificationQueue, type CertificateRenderData } from '@/components/certificates/shared';
 import { useAIEvaluationProgress } from '@/components/admin/certificates/hooks';
 import { downloadCertificateAsPng } from '@/lib/utils/certificate-renderer';
 
@@ -136,7 +137,13 @@ export default function MentorCertificatesPage() {
 
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const [activeTab, setActiveTab] = useState<'issue' | 'my'>('issue');
+  const [activeTab, setActiveTab] = useState<'issue' | 'verify' | 'my'>('issue');
+  /**
+   * Which template's grades this mentor is reviewing. The notification links
+   * here with ?verify=<templateId>, so arriving from the email lands straight
+   * on the right round rather than on a picker.
+   */
+  const [verifyTemplateId, setVerifyTemplateId] = useState<string | null>(null);
 
   const [myCertificates, setMyCertificates] = useState<CertificateInstance[]>([]);
   const [loadingMyCertificates, setLoadingMyCertificates] = useState(true);
@@ -574,6 +581,15 @@ export default function MentorCertificatesPage() {
               Issue Certificates
             </button>
             <button
+              onClick={() => setActiveTab('verify')}
+              className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all ${activeTab === 'verify'
+                ? 'bg-background border border-border shadow-2xs text-brand-600'
+                : 'text-muted-foreground hover:text-foreground'
+                }`}
+            >
+              Review Grades
+            </button>
+            <button
               onClick={() => setActiveTab('my')}
               className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all ${activeTab === 'my'
                 ? 'bg-background border border-border shadow-2xs text-brand-600'
@@ -585,7 +601,13 @@ export default function MentorCertificatesPage() {
           </div>
         </div>
 
-        {activeTab === 'my' ? (
+        {activeTab === 'verify' ? (
+          <ReviewGradesTab
+            templates={templates}
+            templateId={verifyTemplateId}
+            onSelectTemplate={setVerifyTemplateId}
+          />
+        ) : activeTab === 'my' ? (
           loadingMyCertificates ? (
             <div className="flex flex-col items-center justify-center min-h-[300px] gap-3">
               <Loader2 className="animate-spin h-8 w-8 text-brand-500" />
@@ -1206,6 +1228,76 @@ export default function MentorCertificatesPage() {
           await executeIssuance(cleanRecipients);
         }}
       />
+    </div>
+  );
+}
+
+/**
+ * The grades waiting on this mentor.
+ *
+ * A mentor usually runs one certificate cycle at a time, so a single template
+ * opens straight into its queue — being made to pick from a list of one is
+ * friction, not choice. More than one gets a picker.
+ */
+function ReviewGradesTab({
+  templates, templateId, onSelectTemplate,
+}: {
+  templates: CertificateTemplate[];
+  templateId: string | null;
+  onSelectTemplate: (id: string) => void;
+}) {
+  const searchParams = useSearchParams();
+
+  // Arriving from the notification email lands on the right round directly.
+  useEffect(() => {
+    const fromLink = searchParams.get('verify');
+    if (fromLink) { onSelectTemplate(fromLink); return; }
+    if (!templateId && templates.length === 1) onSelectTemplate(templates[0].id);
+  }, [searchParams, templates, templateId, onSelectTemplate]);
+
+  if (templates.length === 0) {
+    return (
+      <div className="rounded-2xl border border-dashed border-border bg-card p-10 text-center">
+        <Award className="w-10 h-10 text-brand-300 mx-auto mb-3" />
+        <p className="text-sm font-bold text-foreground">No certificate cycles yet</p>
+        <p className="text-xs text-muted-foreground mt-1">
+          Grades to review appear here once an admin runs an AI evaluation.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-sm font-bold text-foreground">Review grades before they go out</h2>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          The AI grades from the record. You know the people — confirm each grade, or change it.
+        </p>
+      </div>
+
+      {templates.length > 1 && (
+        <div className="flex flex-wrap gap-1.5">
+          {templates.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => onSelectTemplate(t.id)}
+              className={`rounded-lg border px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                templateId === t.id
+                  ? 'border-brand-500 bg-brand-500/10 text-brand-700'
+                  : 'border-border bg-background text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {t.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {templateId
+        ? <VerificationQueue templateId={templateId} />
+        : <p className="text-xs text-muted-foreground">Pick a certificate cycle to review.</p>}
     </div>
   );
 }

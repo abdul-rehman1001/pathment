@@ -5,7 +5,7 @@ import { useAuth } from '@/lib/context/AuthContext';
 import { toast } from 'sonner';
 import {
   Award, Download, Linkedin,
-  Loader2, Calendar, ShieldCheck, X, Eye
+  Loader2, Calendar, ShieldCheck, X, Eye, BadgeCheck
 } from 'lucide-react';
 import { certificatesApi, CertificateInstance } from '@/lib/services/certificates-api';
 import { CertificatePreview, type CertificateRenderData } from '@/components/certificates/shared';
@@ -180,6 +180,21 @@ export default function MenteeCertificatesPage() {
                         <ShieldCheck className="w-3 h-3 text-brand-500" />
                         Verified by: {cert.mentor ? `${cert.mentor.firstName} ${cert.mentor.lastName}` : 'Pathment Admin'}
                       </div>
+                      {/* The credential's public identity. Shown as a link so a
+                          mentee can open the page anyone else would see when
+                          they check it — and copy the number from there. */}
+                      {cert.certificateNumber && (
+                        <a
+                          href={`/verify/${cert.certificateNumber}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex items-center gap-1.5 text-[9px] font-semibold text-brand-600 hover:underline"
+                        >
+                          <BadgeCheck className="w-3 h-3" />
+                          <span className="font-mono tracking-wider">{cert.certificateNumber}</span>
+                        </a>
+                      )}
                     </div>
                   </div>
 
