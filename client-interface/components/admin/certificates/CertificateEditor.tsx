@@ -8,7 +8,7 @@ import {
   Image as ImageIcon, AlignLeft, AlignCenter, AlignRight,
   Bold, Loader2, ZoomIn, ZoomOut, Award,
   CheckCircle, Users, Trash, Search, Send, Info,
-  ChevronDown, X, Sparkles, CheckCircle2, XCircle, Edit3, Layers
+  ChevronDown, X, Sparkles, CheckCircle2, XCircle, Edit3, Layers, Eye
 } from 'lucide-react';
 import Link from 'next/link';
 import { certificatesApi, CertificateElement, CertificateTemplate } from '@/lib/services/certificates-api';
@@ -26,11 +26,13 @@ import {
 } from './certificate-constants';
 import { TierCriteriaModal } from './TierCriteriaModal';
 import { TierVariantPanel, TierPreviewSwitcher } from './TierVariantPanel';
+import { TierPreviewGallery, buildPreviewData, PREVIEW_PLACEHOLDERS } from './TierPreviewGallery';
 import {
   resolveText,
   resolveBadgeUrl,
   isElementVisibleForTier,
   type CertificateRenderData,
+  type RenderableTemplate,
 } from '@/lib/utils/certificate-renderer';
 import { useAIEvaluationProgress, useRecipientSelection } from './hooks';
 
@@ -57,6 +59,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
   const [bgImageUrl, setBgImageUrl] = useState('https://res.cloudinary.com/djctfho31/image/upload/v1724683050/pathment/templates/default-cert-bg.jpg');
   const [activePresetId, setActivePresetId] = useState<string | null>(null);
   const [isPresetsDrawerOpen, setIsPresetsDrawerOpen] = useState(false);
+  const [isPreviewGalleryOpen, setIsPreviewGalleryOpen] = useState(false);
   const [logoUrl, setLogoUrl] = useState('');
   const [logoConfig, setLogoConfig] = useState({ xPercent: 50, yPercent: 20, widthPercent: 12 });
 
@@ -801,16 +804,37 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
    * own values — but they have to be present so per-tier wording that embeds a
    * variable renders as wording rather than as a raw {{tag}}.
    */
-  const canvasRenderData = useMemo<CertificateRenderData>(() => ({
-    menteeName:  'Member Name',
-    programName: programs.find(p => p.id === selectedProgramId)?.name || 'Program Name',
-    dateIssued:  new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-    issuerName:  'Issuer Name',
-    issuerTitle: 'Issuer Title',
-    tier:        activeTierId ?? undefined,
-    tierName:    criteria.find(t => t.id === activeTierId)?.name || undefined,
-    certificateNumber: 'ABCD1234EFGH',
-  }), [activeTierId, criteria, programs, selectedProgramId]);
+  const previewProgramName = programs.find(p => p.id === selectedProgramId)?.name || 'Program Name';
+
+  /**
+   * What the canvas resolves layers against while designing. The same
+   * placeholders the preview gallery uses, so dragging something into place and
+   * then previewing it cannot show two different strings.
+   */
+  const canvasRenderData = useMemo<CertificateRenderData>(() => {
+    const activeTier = criteria.find(t => t.id === activeTierId);
+    return activeTier
+      ? buildPreviewData(activeTier, previewProgramName)
+      : {
+        menteeName: PREVIEW_PLACEHOLDERS.menteeName,
+        programName: previewProgramName,
+        dateIssued: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+        issuerName: PREVIEW_PLACEHOLDERS.issuerName,
+        issuerTitle: PREVIEW_PLACEHOLDERS.issuerTitle,
+        certificateNumber: PREVIEW_PLACEHOLDERS.certificateNumber,
+      };
+  }, [activeTierId, criteria, previewProgramName]);
+
+  /**
+   * The template as it currently stands on screen, for the preview gallery.
+   * Built from the working copy rather than what was last saved, so a preview
+   * reflects the change just made instead of the version on the server.
+   */
+  const previewTemplate = useMemo<RenderableTemplate>(() => ({
+    bgImageUrl,
+    config: elements,
+    criteria: commitActiveTier(criteria),
+  }), [bgImageUrl, elements, criteria, commitActiveTier]);
 
 
   if (fetching) {
@@ -920,8 +944,20 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
 
             {/* See what each certificate type actually produces. Without this,
                 per-type wording and badges are authored blind. */}
-            <div className="w-full">
+            <div className="flex w-full flex-wrap items-center justify-between gap-2">
               <TierPreviewSwitcher criteria={criteria} value={activeTierId} onChange={switchTier} />
+              {/* The canvas shows one type with drag handles on it. This shows
+                  the whole set as it will actually be issued, which is how you
+                  spot a name sitting lower on Silver than on Gold. */}
+              {criteria.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setIsPreviewGalleryOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1 text-[10px] font-bold text-muted-foreground transition-colors hover:border-brand-500/40 hover:text-foreground"
+                >
+                  <Eye className="h-3 w-3" /> Preview all types
+                </button>
+              )}
             </div>
 
             {}
@@ -1367,6 +1403,15 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
       </div>
 
       {}
+      <TierPreviewGallery
+        open={isPreviewGalleryOpen}
+        onClose={() => setIsPreviewGalleryOpen(false)}
+        template={previewTemplate}
+        criteria={criteria}
+        programName={previewProgramName}
+        onEditTier={switchTier}
+      />
+
       <CriteriaTable
         criteria={criteria}
         onAdd={() => openTierModal()}

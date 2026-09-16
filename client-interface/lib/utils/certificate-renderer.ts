@@ -10,6 +10,19 @@
 
 import type { CertificateElement, CertificateTemplate } from '@/lib/services/certificates-api';
 
+/**
+ * The parts of a template that actually get drawn.
+ *
+ * Narrower than `CertificateTemplate` on purpose: rendering does not need an
+ * id, a status or a createdAt, and saying so lets the editor preview a template
+ * that is still being built — the working copy on screen, not the last version
+ * saved to the server.
+ */
+export type RenderableTemplate = Pick<
+  CertificateTemplate,
+  'bgImageUrl' | 'logoUrl' | 'logoConfig' | 'config' | 'criteria'
+>;
+
 export interface CertificateRenderData {
   menteeName:      string;
   programName?:    string;
@@ -175,7 +188,7 @@ async function ensureFontsLoaded(): Promise<void> {
 const tierOf = (data: CertificateRenderData): string => data.tier || '';
 
 /** The tier definition a certificate is being rendered against, if it has one. */
-function tierOfTemplate(template: CertificateTemplate, data: CertificateRenderData) {
+function tierOfTemplate(template: RenderableTemplate, data: CertificateRenderData) {
   const tier = tierOf(data);
   if (!tier) return undefined;
   return (template.criteria || []).find(c => c.id === tier);
@@ -190,7 +203,7 @@ function tierOfTemplate(template: CertificateTemplate, data: CertificateRenderDa
  * rendering with no tier stated at all (the builder canvas) — a half-configured
  * template should still show something rather than a blank page.
  */
-export function resolveArtworkUrl(template: CertificateTemplate, data: CertificateRenderData): string {
+export function resolveArtworkUrl(template: RenderableTemplate, data: CertificateRenderData): string {
   return tierOfTemplate(template, data)?.artworkUrl || template.bgImageUrl || '';
 }
 
@@ -200,7 +213,7 @@ export function resolveArtworkUrl(template: CertificateTemplate, data: Certifica
  * carries its own design. Falls back to the template-wide `config` for a tier
  * with no layout of its own.
  */
-export function resolveLayout(template: CertificateTemplate, data: CertificateRenderData): CertificateElement[] {
+export function resolveLayout(template: RenderableTemplate, data: CertificateRenderData): CertificateElement[] {
   const layout = tierOfTemplate(template, data)?.layout;
   if (Array.isArray(layout) && layout.length) return layout;
   return Array.isArray(template.config) ? template.config : [];

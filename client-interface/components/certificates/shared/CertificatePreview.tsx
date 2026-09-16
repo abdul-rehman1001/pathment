@@ -1,6 +1,6 @@
 'use client';
 
-import type { CertificateTemplate } from '@/lib/services/certificates-api';
+import type { RenderableTemplate } from '@/lib/utils/certificate-renderer';
 import {
   resolveText,
   resolveBadgeUrl,
@@ -12,7 +12,7 @@ import {
 export type { CertificateRenderData };
 
 interface CertificatePreviewProps {
-  template: CertificateTemplate;
+  template: RenderableTemplate;
   recipientData: CertificateRenderData;
   badgeUrlOverride?: string | null;
   className?: string;
