@@ -79,7 +79,7 @@ export function RecipientRosterTable({
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-2 text-center border border-border/80 rounded-2xl bg-card">
         <Users className="w-8 h-8 text-muted-foreground/30" />
-        <p className="text-xs font-bold text-muted-foreground">
+        <p className="text-xs font-semibold text-muted-foreground">
           {emptyMessage || `No active ${recipientTypeLabel.toLowerCase()}s found.`}
         </p>
       </div>
@@ -89,7 +89,7 @@ export function RecipientRosterTable({
   return (
     <div className="border border-border rounded-2xl overflow-hidden flex flex-col bg-card shadow-xs">
       {}
-      <div className="grid grid-cols-12 gap-2 px-4 py-3 bg-muted/50 dark:bg-muted/20 text-[10px] font-extrabold text-muted-foreground uppercase tracking-wider items-center border-b border-border select-none">
+      <div className="grid grid-cols-12 gap-2 px-4 py-3 bg-muted/50 dark:bg-muted/20 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider items-center border-b border-border select-none">
         <div className="col-span-1 flex items-center justify-center">
           <input
             type="checkbox"
@@ -132,24 +132,27 @@ export function RecipientRosterTable({
 
               {}
               <div className="col-span-3 flex items-center gap-2.5 min-w-0">
-                <div className="h-7 w-7 rounded-full bg-gradient-to-tr from-brand-500/10 to-indigo-500/10 dark:from-brand-500/20 dark:to-indigo-500/20 text-brand-700 dark:text-brand-300 flex items-center justify-center text-[9px] font-extrabold border border-brand-500/20 shrink-0">
+                <div className="h-7 w-7 rounded-full bg-gradient-to-tr from-brand-500/10 to-indigo-500/10 dark:from-brand-500/20 dark:to-indigo-500/20 text-brand-700 dark:text-brand-300 flex items-center justify-center text-[10px] font-bold border border-brand-500/20 shrink-0">
                   {initials || 'U'}
                 </div>
                 <div className="min-w-0">
                   <div className="font-bold text-foreground truncate flex items-center gap-1.5">
                     <span className="truncate">{m.firstName} {m.lastName}</span>
                     {m.isPaused && (
-                      <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 shrink-0">
+                      <span className="px-1.5 py-0.2 rounded text-[10px] font-semibold uppercase tracking-wider bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 shrink-0">
                         PAUSED
                       </span>
                     )}
                     {m.role && m.role !== 'mentee' && !m.isPaused && (
-                      <span className="px-1.5 py-0.2 rounded text-[8px] font-extrabold uppercase tracking-wider bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 shrink-0">
+                      <span className="px-1.5 py-0.2 rounded text-[10px] font-semibold uppercase tracking-wider bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 shrink-0">
                         {m.role}
                       </span>
                     )}
                   </div>
-                  <p className="text-[10px] text-muted-foreground font-medium truncate">{m.email}</p>
+                  <p className="text-[11px] text-muted-foreground truncate">
+                    {m.clanName && <span className="font-medium text-foreground/70">{m.clanName} · </span>}
+                    {m.email}
+                  </p>
                 </div>
               </div>
 
@@ -161,11 +164,11 @@ export function RecipientRosterTable({
                   </span>
                 ) : aiEvalMap[m.id] ? (
                   <div className="flex items-center gap-1.5 bg-violet-500/10 dark:bg-violet-500/20 border border-violet-500/20 px-2.5 py-1 rounded-xl">
-                    <span className="text-[10px] font-extrabold text-violet-700 dark:text-violet-300 flex items-center gap-1">
+                    <span className="text-[10px] font-bold text-violet-700 dark:text-violet-300 flex items-center gap-1">
                       <Sparkles className="w-3 h-3 text-violet-500" /> {getTierName(aiEvalMap[m.id].certificate_tier)}
                     </span>
                     <span
-                      className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold ${
+                      className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
                         (aiEvalMap[m.id].match_score ?? 0) >= 75
                           ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/20'
                           : 'text-amber-600 dark:text-amber-400 bg-amber-500/20'
@@ -224,7 +227,7 @@ export function RecipientRosterTable({
                   issuedTiersList.map((tier, idx) => (
                     <span
                       key={`${tier}-${idx}`}
-                      className={`px-1.5 py-0.5 rounded border text-[9px] font-extrabold uppercase tracking-wide ${getTierBadgeColor(tier)}`}
+                      className={`px-1.5 py-0.5 rounded border text-[10px] font-semibold uppercase tracking-wide ${getTierBadgeColor(tier)}`}
                     >
                       {getTierName(tier)}
                     </span>
@@ -264,14 +267,14 @@ function ReviewNote({
     // mentor needs to know it has not been recorded yet.
     if (edited && review.finalTier !== selectedTier) {
       return (
-        <span className="flex items-center gap-1 text-[9px] font-bold text-amber-600 dark:text-amber-400 mt-0.5">
+        <span className="flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 mt-0.5">
           <Edit3 className="w-2.5 h-2.5" /> Changed — verify to save
         </span>
       );
     }
     return (
       <span
-        className="flex items-center gap-1 text-[9px] font-bold text-emerald-600 dark:text-emerald-400 mt-0.5"
+        className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 mt-0.5"
         title={review.overrideReason || undefined}
       >
         <CheckCircle2 className="w-2.5 h-2.5" />
@@ -284,7 +287,7 @@ function ReviewNote({
 
   if (review?.status === 'pending') {
     return (
-      <span className="flex items-center gap-1 text-[9px] font-bold text-amber-600 dark:text-amber-400 mt-0.5">
+      <span className="flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 mt-0.5">
         <Clock className="w-2.5 h-2.5" /> {edited ? 'Changed — awaiting verify' : 'Awaiting your review'}
       </span>
     );
@@ -292,7 +295,7 @@ function ReviewNote({
 
   if (edited) {
     return (
-      <span className="flex items-center gap-1 text-[9px] font-bold text-amber-600 dark:text-amber-400 mt-0.5">
+      <span className="flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 mt-0.5">
         <Edit3 className="w-2.5 h-2.5" /> Overridden by {userRole === 'admin' ? 'Admin' : 'Mentor'}
       </span>
     );

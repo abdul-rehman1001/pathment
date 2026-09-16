@@ -42,7 +42,7 @@ export function AIDetailDrawer({
               <Sparkles className="w-4 h-4" />
             </div>
             <div>
-              <h4 className="text-xs font-extrabold text-foreground">{mentee.firstName} {mentee.lastName}</h4>
+              <h4 className="text-xs font-bold text-foreground">{mentee.firstName} {mentee.lastName}</h4>
               <p className="text-[10px] text-muted-foreground">{mentee.email}</p>
             </div>
           </div>
@@ -50,16 +50,16 @@ export function AIDetailDrawer({
           {}
           <div className="grid grid-cols-3 gap-3">
             <div className="p-3.5 rounded-2xl border border-violet-500/20 bg-violet-500/5 dark:bg-violet-500/10 text-center">
-              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">AI Score</p>
-              <p className="text-base font-black text-violet-600 dark:text-violet-400">{mentee.match_score}/100</p>
+              <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider mb-1">AI Score</p>
+              <p className="text-base font-bold text-violet-600 dark:text-violet-400">{mentee.match_score}/100</p>
             </div>
             <div className="p-3.5 rounded-2xl border border-brand-500/20 bg-brand-500/5 dark:bg-brand-500/10 text-center">
-              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">Score %</p>
-              <p className="text-base font-black text-brand-600 dark:text-brand-400">{mentee.overall_percentage}%</p>
+              <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider mb-1">Score %</p>
+              <p className="text-base font-bold text-brand-600 dark:text-brand-400">{mentee.overall_percentage}%</p>
             </div>
             <div className="p-3.5 rounded-2xl border border-border bg-card text-center flex flex-col justify-between">
-              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">AI Tier</p>
-              <span className={`inline-block px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${getTierBadgeColor(effectiveTier)}`}>
+              <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider mb-1">AI Tier</p>
+              <span className={`inline-block px-2 py-0.5 rounded-lg text-[10px] font-semibold uppercase tracking-wider ${getTierBadgeColor(effectiveTier)}`}>
                 {criteria.find(c => c.id === effectiveTier)?.name ?? effectiveTier}
               </span>
             </div>
@@ -68,7 +68,7 @@ export function AIDetailDrawer({
           {}
           {mentee.hard_constraints_check && (
             <div className="p-4 rounded-2xl border border-border bg-card shadow-2xs space-y-2">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Hard Constraints Check</p>
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Hard Constraints Check</p>
               <div className="grid grid-cols-2 gap-2">
                 {[
                   { key: 'score_ok',           label: 'Min Score',       sub: `${mentee.overall_percentage}%` },
@@ -95,7 +95,7 @@ export function AIDetailDrawer({
                         }
                         <span className="truncate">{label}</span>
                       </div>
-                      <span className="text-[9px] opacity-80 shrink-0 font-extrabold ml-1">({sub})</span>
+                      <span className="text-[10px] opacity-80 shrink-0 font-bold ml-1">({sub})</span>
                     </div>
                   );
                 })}
@@ -106,30 +106,30 @@ export function AIDetailDrawer({
           {}
           {mentee.score_breakdown && (
             <div className="p-4 rounded-2xl border border-brand-500/20 bg-brand-500/5 dark:bg-brand-500/10 space-y-2">
-              <p className="text-[10px] font-bold text-brand-600 dark:text-brand-400 uppercase tracking-wider flex items-center justify-between">
+              <p className="text-[10px] font-semibold text-brand-600 dark:text-brand-400 uppercase tracking-wider flex items-center justify-between">
                 <span>Score Formula Breakdown</span>
-                <span className="text-xs font-black">{mentee.score_breakdown.composite}% Composite</span>
+                <span className="text-xs font-bold">{mentee.score_breakdown.composite}% Composite</span>
               </p>
               <div className="grid grid-cols-2 gap-2 text-[10px]">
                 <div className="p-2 rounded-xl bg-background border border-border">
-                  <span className="text-muted-foreground block text-[9px]">Task Score (60% pts + 40% rating)</span>
-                  <span className="font-extrabold text-foreground">{mentee.score_breakdown.task_score}%</span>
+                  <span className="text-muted-foreground block text-[10px]">Task Score (60% pts + 40% rating)</span>
+                  <span className="font-bold text-foreground">{mentee.score_breakdown.task_score}%</span>
                 </div>
                 <div className="p-2 rounded-xl bg-background border border-border">
-                  <span className="text-muted-foreground block text-[9px]">Cohort Meeting Attendance</span>
-                  <span className="font-extrabold text-foreground">
+                  <span className="text-muted-foreground block text-[10px]">Cohort Meeting Attendance</span>
+                  <span className="font-bold text-foreground">
                     {mentee.cohort_reviews?.attendance_pct != null
                       ? `${mentee.cohort_reviews.attendance_pct}% (${mentee.cohort_reviews.present} present, ${mentee.cohort_reviews.excused} excused)`
                       : 'No Sessions'}
                   </span>
                 </div>
                 <div className="p-2 rounded-xl bg-background border border-border">
-                  <span className="text-muted-foreground block text-[9px]">Weighted On-Time Submission</span>
-                  <span className="font-extrabold text-foreground">{mentee.score_breakdown.on_time_pct}%</span>
+                  <span className="text-muted-foreground block text-[10px]">Weighted On-Time Submission</span>
+                  <span className="font-bold text-foreground">{mentee.score_breakdown.on_time_pct}%</span>
                 </div>
                 <div className="p-2 rounded-xl bg-background border border-border">
-                  <span className="text-muted-foreground block text-[9px]">Blocker Resolution Score</span>
-                  <span className="font-extrabold text-foreground">{mentee.score_breakdown.blocker_score}%</span>
+                  <span className="text-muted-foreground block text-[10px]">Blocker Resolution Score</span>
+                  <span className="font-bold text-foreground">{mentee.score_breakdown.blocker_score}%</span>
                 </div>
               </div>
             </div>
@@ -137,7 +137,7 @@ export function AIDetailDrawer({
 
           {}
           <div className="p-4 rounded-2xl border border-violet-500/20 bg-gradient-to-br from-violet-500/5 to-brand-500/5 space-y-1.5">
-            <div className="flex items-center gap-1.5 text-violet-600 dark:text-violet-400 font-extrabold text-[10px] uppercase tracking-wider">
+            <div className="flex items-center gap-1.5 text-violet-600 dark:text-violet-400 font-semibold text-[10px] uppercase tracking-wider">
               <Sparkles className="w-3.5 h-3.5" /> AI Reasoning & Summary
             </div>
             <p className="text-xs text-foreground leading-relaxed font-medium">
@@ -147,7 +147,7 @@ export function AIDetailDrawer({
 
           {}
           <div className="space-y-2">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Matched Keywords / Tech Stack</p>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Matched Keywords / Tech Stack</p>
             <div className="flex flex-wrap gap-1.5">
               {(mentee.matched_keywords || []).length === 0 ? (
                 <span className="text-xs text-muted-foreground italic">None matched</span>
@@ -155,7 +155,7 @@ export function AIDetailDrawer({
                 mentee.matched_keywords.map((kw) => (
                   <span
                     key={kw}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-extrabold border border-emerald-500/20"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold border border-emerald-500/20"
                   >
                     <CheckCircle2 className="w-3 h-3" /> {kw}
                   </span>
@@ -167,7 +167,7 @@ export function AIDetailDrawer({
           {}
           {(mentee.missing_keywords || []).length > 0 && (
             <div className="space-y-2">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Missing Keywords</p>
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Missing Keywords</p>
               <div className="flex flex-wrap gap-1.5">
                 {mentee.missing_keywords.map((kw) => (
                   <span
@@ -185,10 +185,10 @@ export function AIDetailDrawer({
           {mentee.custom_rules_check && mentee.custom_rules_check.length > 0 && (
             <div className="p-4 rounded-2xl border border-violet-500/20 bg-violet-500/5 space-y-2.5 shadow-3xs">
               <div className="flex items-center justify-between">
-                <p className="text-[10px] font-bold text-violet-700 dark:text-violet-300 uppercase tracking-wider flex items-center gap-1.5">
+                <p className="text-[10px] font-semibold text-violet-700 dark:text-violet-300 uppercase tracking-wider flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-violet-500" /> Custom Rules Audit Breakdown
                 </p>
-                <span className="text-[9px] font-extrabold text-violet-600 dark:text-violet-400 bg-violet-500/10 px-2 py-0.5 rounded-full border border-violet-500/20">
+                <span className="text-[10px] font-bold text-violet-600 dark:text-violet-400 bg-violet-500/10 px-2 py-0.5 rounded-full border border-violet-500/20">
                   {mentee.custom_rules_check.filter(c => c.passed).length}/{mentee.custom_rules_check.length} Passed
                 </span>
               </div>
@@ -210,7 +210,7 @@ export function AIDetailDrawer({
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-bold text-xs">{item.rule}</span>
-                        <span className={`text-[9px] font-black uppercase px-1.5 py-0.2 rounded-full border ${
+                        <span className={`text-[10px] font-bold uppercase px-1.5 py-0.2 rounded-full border ${
                           item.passed
                             ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
                             : 'bg-red-500/20 text-red-500 border-red-500/30'
@@ -233,25 +233,25 @@ export function AIDetailDrawer({
           {}
           {mentee.blockers_analysis && (
             <div className="p-4 rounded-2xl border border-border bg-card space-y-2.5 shadow-3xs">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Blocker Resolution Activity</p>
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Blocker Resolution Activity</p>
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div className="p-2 rounded-xl bg-muted/40">
-                  <p className="text-xs font-black text-foreground">{mentee.blockers_analysis.total}</p>
-                  <p className="text-[9px] text-muted-foreground font-semibold">Total</p>
+                  <p className="text-xs font-bold text-foreground">{mentee.blockers_analysis.total}</p>
+                  <p className="text-[10px] text-muted-foreground font-semibold">Total</p>
                 </div>
                 <div className="p-2 rounded-xl bg-emerald-500/10">
-                  <p className="text-xs font-black text-emerald-600">{mentee.blockers_analysis.resolved}</p>
-                  <p className="text-[9px] text-muted-foreground font-semibold">Resolved</p>
+                  <p className="text-xs font-bold text-emerald-600">{mentee.blockers_analysis.resolved}</p>
+                  <p className="text-[10px] text-muted-foreground font-semibold">Resolved</p>
                 </div>
                 <div className="p-2 rounded-xl bg-muted/40">
-                  <p className={`text-xs font-black ${
+                  <p className={`text-xs font-bold ${
                     mentee.blockers_analysis.impact === 'High'   ? 'text-red-500'
                     : mentee.blockers_analysis.impact === 'Medium' ? 'text-amber-600'
                     : 'text-emerald-600'
                   }`}>
                     {mentee.blockers_analysis.impact}
                   </p>
-                  <p className="text-[9px] text-muted-foreground font-semibold">Impact</p>
+                  <p className="text-[10px] text-muted-foreground font-semibold">Impact</p>
                 </div>
               </div>
               {mentee.blockers_analysis.summary && (
@@ -264,7 +264,7 @@ export function AIDetailDrawer({
 
           {}
           <div className="p-4 rounded-2xl border border-border bg-muted/20 space-y-2">
-            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">
+            <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block">
               {overrideLabel}
             </label>
             <select

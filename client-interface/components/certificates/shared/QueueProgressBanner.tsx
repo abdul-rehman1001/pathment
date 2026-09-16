@@ -35,7 +35,7 @@ export function QueueProgressBanner({
             <Icon className="w-3.5 h-3.5 animate-spin text-brand-600" style={{ animationDuration: '3s' }} />
             {title}
           </span>
-          <span className="text-muted-foreground font-mono text-[10px] bg-brand-500/15 px-2 py-0.5 rounded-full font-bold">
+          <span className="text-muted-foreground font-mono text-[10px] bg-brand-500/15 px-2 py-0.5 rounded-full font-semibold">
             {total > 0 ? `${completed} / ${total} (${percent}%)` : 'Initializing queue...'}
           </span>
         </div>

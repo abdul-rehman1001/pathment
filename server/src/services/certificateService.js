@@ -133,21 +133,28 @@ class CertificateService {
     const activeMentees = [];
     const pausedMentees = [];
 
+    // One pass over this programme's mentee memberships answers both questions
+    // the roster needs: who is paused, and which clan each person sits in.
+    // Resolved up front rather than per row — a cohort is hundreds of people,
+    // and this is the difference between one query and hundreds.
     const pausedMenteeIdsSet = new Set();
+    const clanByMentee = new Map();
     if (programId) {
-      const pausedMemberships = await models.ClanMembership.findAll({
-        where: { role: 'mentee', status: 'paused' },
-        include: [{
-          model: models.Clan,
-          as: 'clan',
-          where: { programId },
-          attributes: ['id']
-        }],
-        attributes: ['userId'],
-        raw: true
+      const memberships = await models.ClanMembership.findAll({
+        where: { role: 'mentee', status: { [Op.in]: ['active', 'paused'] } },
+        include: [{ model: models.Clan, as: 'clan', where: { programId }, attributes: ['id', 'name'] }],
+        attributes: ['userId', 'status']
       });
-      pausedMemberships.forEach(pm => pausedMenteeIdsSet.add(pm.userId));
+      for (const mem of memberships) {
+        if (mem.status === 'paused') pausedMenteeIdsSet.add(mem.userId);
+        // Somebody in two clans of one programme keeps the first: the roster
+        // shows where they are, and a second row would double-count them.
+        if (mem.clan && !clanByMentee.has(mem.userId)) {
+          clanByMentee.set(mem.userId, { clanId: mem.clan.id, clanName: mem.clan.name });
+        }
+      }
     }
+    const withClan = (row) => ({ ...row, ...(clanByMentee.get(row.id) ?? { clanId: null, clanName: null }) });
 
     // Unrestricted ONLY for real admin access. Everyone else is confined to the
     // clans they mentor — and to none at all if they mentor none, which is the
@@ -166,7 +173,7 @@ class CertificateService {
           if (!mem.user || seenMentees.has(mem.user.id)) continue;
           seenMentees.add(mem.user.id);
           const u = mem.user;
-          const row = { id: u.id, firstName: u.firstName, lastName: u.lastName, email: u.email };
+          const row = withClan({ id: u.id, firstName: u.firstName, lastName: u.lastName, email: u.email });
           (mem.status === 'paused' || u.status === 'suspended' || pausedMenteeIdsSet.has(u.id))
             ? pausedMentees.push(row)
             : activeMentees.push(row);
@@ -179,7 +186,7 @@ class CertificateService {
       });
       for (const e of enrollments) {
         if (!e.mentee) continue;
-        const row = { id: e.mentee.id, firstName: e.mentee.firstName, lastName: e.mentee.lastName, email: e.mentee.email };
+        const row = withClan({ id: e.mentee.id, firstName: e.mentee.firstName, lastName: e.mentee.lastName, email: e.mentee.email });
         (e.status === 'paused' || e.mentee.status === 'suspended' || pausedMenteeIdsSet.has(e.mentee.id))
           ? pausedMentees.push(row)
           : activeMentees.push(row);

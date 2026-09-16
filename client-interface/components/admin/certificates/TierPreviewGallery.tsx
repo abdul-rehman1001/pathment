@@ -88,7 +88,7 @@ export function TierPreviewGallery({
         role="dialog"
         aria-modal="true"
         aria-label="Certificate previews"
-        className="relative w-full max-w-5xl rounded-3xl border border-border bg-card shadow-2xl"
+        className="relative w-full max-w-5xl rounded-2xl border border-border bg-card shadow-2xl"
       >
         <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-4">
           <div>

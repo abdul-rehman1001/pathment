@@ -7,11 +7,11 @@ import {
   ArrowLeft, Save, Plus, Trash2, Move, Type, Edit,
   Image as ImageIcon, AlignLeft, AlignCenter, AlignRight,
   Bold, Loader2, ZoomIn, ZoomOut, Award,
-  CheckCircle, Users, Trash, Search, Send, Info,
-  ChevronDown, X, Sparkles, CheckCircle2, XCircle, Edit3, Layers, Eye
+  CheckCircle, Users, Trash, Send, Info,
+  X, Sparkles, CheckCircle2, XCircle, Edit3, Layers, Eye
 } from 'lucide-react';
 import Link from 'next/link';
-import { certificatesApi, CertificateElement, CertificateTemplate } from '@/lib/services/certificates-api';
+import { certificatesApi, CertificateElement, CertificateTemplate, type CertificateVerification, type ReviewerClanState } from '@/lib/services/certificates-api';
 import { FileDragDrop } from '@/components/shared/FileDragDrop';
 import { DuplicateWarnModal } from '@/components/shared';
 import { Drawer } from '@/components/shared/Drawer';
@@ -19,7 +19,8 @@ import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { orgRoadmapApi } from '@/lib/services/roadmap-api';
 import { programsApi } from '@/lib/services/program-api';
 import { getTierButtonColor, getTierIconColor } from '@/lib/utils/certificates';
-import { AIDetailDrawer, AIEvaluationBanner, CriteriaTable, RecipientRosterTable, VerificationBanner } from '@/components/certificates/shared';
+import { AIDetailDrawer, AIEvaluationBanner, CriteriaTable, RecipientRosterTable, VerificationBanner, RosterFilterBar } from '@/components/certificates/shared';
+import { SelectMenu } from '@/components/shared/SelectMenu';
 import CertificateHistoryLog from './CertificateHistoryLog';
 import {
   TierCriteria, FONTS, DYNAMIC_SHORTCUTS, BACKGROUND_PRESETS,
@@ -117,9 +118,21 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
     }
   });
 
+  /**
+   * The open review round, so the roster can be filtered and read by where each
+   * clan stands — which grades mentors have signed off, which clans the admin
+   * has released. Certificates go out clan by clan, so this is what makes the
+   * table usable on a cohort of several hundred across a dozen clans.
+   */
+  const [reviewRows, setReviewRows] = useState<Record<string, CertificateVerification>>({});
+  const [clanStates, setClanStates] = useState<ReviewerClanState[]>([]);
+
   const {
     recipientSearch, setRecipientSearch,
     badgeFilter, setBadgeFilter,
+    clanFilter, setClanFilter,
+    reviewFilter, setReviewFilter,
+    rosterClans,
     sortBy, setSortBy,
     recipientType, setRecipientType,
     selectedMenteeIds, setSelectedMenteeIds,
@@ -127,7 +140,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
     recipientMenteesList, recipientMentorsList, recipientPausedList, filtered, allSelected,
     selectedSummary, toggleAll, toggleOne, handleTierChange,
     bulkSetBadge: bulkSetBadgeHook, resetToAIRecommendations: resetToAIRecommendationsHook
-  } = useRecipientSelection({ criteria, qualifiedData, aiResults: aiEvalMap });
+  } = useRecipientSelection({ criteria, qualifiedData, aiResults: aiEvalMap, reviewRows, clanStates });
 
   const [availableTasks, setAvailableTasks] = useState<Array<{ id: string; title: string }>>([]);
   const [allRoadmaps, setAllRoadmaps] = useState<any[]>([]);
@@ -172,6 +185,28 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
   });
 
   const [refreshKey, setRefreshKey] = useState(0);
+
+  /** The clan currently being worked on, when the roster is narrowed to one. */
+  const activeClanName = clanFilter === 'all'
+    ? null
+    : rosterClans.find(c => c.id === clanFilter)?.name ?? null;
+
+  useEffect(() => {
+    if (!templateId) { setReviewRows({}); setClanStates([]); return; }
+    let alive = true;
+    certificatesApi.listVerifications(templateId)
+      .then(res => {
+        if (!alive || !res.success || !res.data) return;
+        setClanStates(res.data.clans ?? []);
+        const byRecipient: Record<string, CertificateVerification> = {};
+        for (const row of res.data.rows ?? []) byRecipient[row.menteeId] = row;
+        setReviewRows(byRecipient);
+      })
+      // Advisory only. The roster still works without it — the filters that
+      // depend on a round simply have nothing to narrow.
+      .catch(() => { if (alive) { setReviewRows({}); setClanStates([]); } });
+    return () => { alive = false; };
+  }, [templateId, refreshKey]);
 
 
 
@@ -870,7 +905,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-5 border-b border-border/60 pb-5">
         {}
         <div className="space-y-2 flex-1 max-w-2xl">
-          <div className="flex items-center gap-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+          <div className="flex items-center gap-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
             <span>Certificates</span>
             <span className="text-muted-foreground/45">&gt;</span>
             <span className="text-brand-600">{templateId ? 'Edit Certificate Cycle' : 'Create Certificate Cycle'}</span>
@@ -881,7 +916,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Enter Template / Cycle Name..."
-              className="w-full text-2xl font-extrabold text-foreground bg-transparent border-0 focus:ring-0 focus:outline-none placeholder:text-muted-foreground/30 transition-all p-0 focus:border-b focus:border-brand-500 pb-1"
+              className="w-full text-2xl font-semibold text-foreground bg-transparent border-0 focus:ring-0 focus:outline-none placeholder:text-muted-foreground/30 transition-all p-0 focus:border-b focus:border-brand-500 pb-1"
             />
           </div>
           <p className="text-xs text-muted-foreground font-medium">Create, customize and issue certificates for this fellowship cycle.</p>
@@ -890,23 +925,23 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
         {}
         <div className="flex items-center gap-3 flex-wrap md:justify-end shrink-0">
           {}
-          <div className="relative inline-flex items-center shadow-3xs rounded-xl border border-border/80 bg-background hover:bg-muted/30 transition-colors">
-            <span className="pl-3.5 pr-1.5 text-[9px] font-extrabold text-muted-foreground uppercase tracking-wider select-none border-r border-border/60 py-2">
-              Program
+          {/* Once the template exists its programme is fixed, so show the fact
+              rather than a control that looks operable and is not. */}
+          {templateId ? (
+            <span className="inline-flex items-center gap-2 rounded-xl border border-border bg-muted/30 px-3.5 py-2 text-sm text-foreground">
+              <span className="text-xs text-muted-foreground">Program</span>
+              {programs.find(p => p.id === selectedProgramId)?.name || 'Unassigned'}
             </span>
-            <select
+          ) : (
+            <SelectMenu
               value={selectedProgramId}
-              onChange={(e) => handleProgramChange(e.target.value)}
-              disabled={!!templateId}
-              className="appearance-none pr-8 pl-3 py-2 text-xs font-bold text-foreground bg-transparent cursor-pointer focus:outline-none min-w-[140px] max-w-[200px] disabled:opacity-70 disabled:cursor-not-allowed"
-            >
-              <option value="" disabled className="text-foreground bg-card">Select Program</option>
-              {programs.map(p => (
-                <option key={p.id} value={p.id} className="text-foreground bg-card">{p.name}</option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-2.5 w-3 h-3 pointer-events-none text-muted-foreground/60" />
-          </div>
+              onChange={handleProgramChange}
+              options={programs.map(p => ({ value: p.id, label: p.name }))}
+              placeholder="Select program"
+              ariaLabel="Program"
+              className="min-w-[200px]"
+            />
+          )}
 
           <Link
             href="/admin/certificates"
@@ -918,7 +953,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
           <button
             onClick={handleSave}
             disabled={loading}
-            className="flex items-center gap-2 px-5 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold text-xs shadow-sm transition-all disabled:opacity-50"
+            className="flex items-center gap-2 px-5 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-medium text-sm shadow-sm transition-all disabled:opacity-50"
           >
             {loading ? <Loader2 className="animate-spin w-4 h-4" /> : <Save className="w-4 h-4" />}
             Save Template
@@ -927,7 +962,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
       </div>
 
       {}
-      <div className="bg-card border border-border rounded-3xl p-6 shadow-xs space-y-5">
+      <div className="bg-card border border-border rounded-2xl p-6 shadow-xs space-y-5">
         <div className="flex items-start gap-3.5 border-b border-border pb-4">
           <div className="w-8 h-8 rounded-full bg-brand-500/10 flex items-center justify-center font-bold text-brand-500 text-sm">
             1
@@ -942,7 +977,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
           {}
           <div className="xl:col-span-8 flex flex-col items-center gap-4">
             {}
-            <div className="flex items-center gap-2 bg-muted/40 border border-border px-3 py-1.5 rounded-2xl text-[10px] font-bold text-muted-foreground">
+            <div className="flex items-center gap-2 bg-muted/40 border border-border px-3 py-1.5 rounded-2xl text-[10px] font-semibold text-muted-foreground">
               <button type="button" onClick={() => setZoom(z => Math.max(0.5, z - 0.1))} className="p-1 hover:bg-muted text-foreground rounded-lg transition-colors">
                 <ZoomOut className="w-3.5 h-3.5" />
               </button>
@@ -951,7 +986,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                 <ZoomIn className="w-3.5 h-3.5" />
               </button>
               <div className="h-3 w-px bg-border mx-1" />
-              <button type="button" onClick={() => setZoom(1.0)} className="px-1.5 py-0.5 hover:bg-muted text-foreground rounded-lg transition-colors text-[9px]">
+              <button type="button" onClick={() => setZoom(1.0)} className="px-1.5 py-0.5 hover:bg-muted text-foreground rounded-lg transition-colors text-[10px]">
                 Reset
               </button>
             </div>
@@ -967,7 +1002,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                 <button
                   type="button"
                   onClick={() => setIsPreviewGalleryOpen(true)}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1 text-[10px] font-bold text-muted-foreground transition-colors hover:border-brand-500/40 hover:text-foreground"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1 text-[10px] font-semibold text-muted-foreground transition-colors hover:border-brand-500/40 hover:text-foreground"
                 >
                   <Eye className="h-3 w-3" /> Preview all types
                 </button>
@@ -975,7 +1010,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
             </div>
 
             {}
-            <div className="w-full bg-muted/30 border border-border rounded-3xl p-6 flex items-center justify-center overflow-auto min-h-[480px]">
+            <div className="w-full bg-muted/30 border border-border rounded-2xl p-6 flex items-center justify-center overflow-auto min-h-[480px]">
               <div
                 ref={canvasRef}
                 onMouseMove={handleMouseMove}
@@ -1029,7 +1064,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                           } ${offThisTier ? 'opacity-25' : ''}`}
                       >
                         <img src={badgePreview} className="w-full h-auto pointer-events-none" alt="Badge Preview" />
-                        <div className="hidden group-hover:flex absolute -top-5 left-1/2 -translate-x-1/2 bg-brand-600 text-[8px] text-white px-1 py-0.5 rounded shadow-sm gap-1 items-center font-bold whitespace-nowrap">
+                        <div className="hidden group-hover:flex absolute -top-5 left-1/2 -translate-x-1/2 bg-brand-600 text-[10px] text-white px-1 py-0.5 rounded shadow-sm gap-1 items-center font-bold whitespace-nowrap">
                           <Move className="w-3 h-3" /> Badge Component
                         </div>
                       </div>
@@ -1059,7 +1094,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                           } ${offThisTier ? 'opacity-25' : ''}`}
                       >
                         <img src={el.imageUrl} className="w-full h-auto pointer-events-none" alt={el.text} />
-                        <div className="hidden group-hover:flex absolute -top-5 left-1/2 -translate-x-1/2 bg-brand-600 text-[8px] text-white px-1 py-0.5 rounded shadow-sm gap-1 items-center font-bold whitespace-nowrap">
+                        <div className="hidden group-hover:flex absolute -top-5 left-1/2 -translate-x-1/2 bg-brand-600 text-[10px] text-white px-1 py-0.5 rounded shadow-sm gap-1 items-center font-bold whitespace-nowrap">
                           <Move className="w-3 h-3" /> {el.text}
                         </div>
                       </div>
@@ -1111,10 +1146,10 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
             {}
             <div className="space-y-3 w-full animate-fade-in">
               <div className="flex items-center justify-between border-b border-border pb-2">
-                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
                   Certificate artwork{activeTierName ? ` — ${activeTierName}` : ''}
                 </label>
-                <span className="text-[9px] font-bold text-brand-600 bg-brand-500/10 px-2 py-0.5 rounded-full uppercase tracking-wider select-none">Design Setup</span>
+                <span className="text-[10px] font-semibold text-brand-600 bg-brand-500/10 px-2 py-0.5 rounded-full uppercase tracking-wider select-none">Design Setup</span>
               </div>
 
               {/* Each certificate type IS a certificate: you upload its artwork
@@ -1159,7 +1194,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                 <button
                   type="button"
                   onClick={copyLayoutToAllTiers}
-                  className="w-full px-3 py-2 rounded-xl border border-dashed border-border hover:border-brand-500/40 hover:bg-brand-500/5 text-[11px] font-bold text-muted-foreground hover:text-foreground transition-all flex items-center justify-center gap-1.5"
+                  className="w-full px-3 py-2 rounded-xl border border-dashed border-border hover:border-brand-500/40 hover:bg-brand-500/5 text-[11px] font-semibold text-muted-foreground hover:text-foreground transition-all flex items-center justify-center gap-1.5"
                 >
                   <Layers className="w-3.5 h-3.5" /> Copy these placements to all other types
                 </button>
@@ -1181,7 +1216,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
             {}
             <div className="bg-card border border-border rounded-2xl p-5 space-y-3.5 shadow-2xs">
               <div>
-                <h3 className="text-xs font-bold text-foreground uppercase tracking-wide">Variables</h3>
+                <h3 className="text-xs font-semibold text-foreground uppercase tracking-wide">Variables</h3>
                 <p className="text-[10px] text-muted-foreground mt-0.5">Click variables tags below to add them to certificate.</p>
                 {/* This card is where people look for "dynamic text", so it has
                     to point at the other half of it: {{tier_name}} prints the
@@ -1207,7 +1242,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                         }`}
                     >
                       <span>{shortcut.label}</span>
-                      <span className="font-mono text-[9px] bg-muted px-1.5 py-0.5 rounded border border-border/40">{shortcut.tag}</span>
+                      <span className="font-mono text-[10px] bg-muted px-1.5 py-0.5 rounded border border-border/40">{shortcut.tag}</span>
                     </button>
                   );
                 })}
@@ -1249,7 +1284,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
             {selectedElement ? (
               <div className="bg-card border border-border rounded-2xl p-5 space-y-4 shadow-2xs">
                 <div className="flex items-center justify-between border-b border-border pb-3">
-                  <h3 className="text-xs font-bold text-foreground uppercase tracking-wide">Layer Settings</h3>
+                  <h3 className="text-xs font-semibold text-foreground uppercase tracking-wide">Layer Settings</h3>
                   <button
                     type="button"
                     onClick={() => deleteElement(selectedElement.id)}
@@ -1261,7 +1296,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
 
                 {selectedElement.type === 'static' ? (
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase">Text Content</label>
+                    <label className="text-[10px] font-semibold text-muted-foreground uppercase">Text Content</label>
                     <textarea
                       rows={2}
                       value={selectedElement.text}
@@ -1271,7 +1306,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                   </div>
                 ) : (selectedElement.type === 'badge' || selectedElement.type === 'image') ? (
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase">
+                    <label className="text-[10px] font-semibold text-muted-foreground uppercase">
                       Image Width: {selectedElement.widthPercent || 15}%
                       <span className="ml-1 font-normal normal-case text-muted-foreground/70">of the certificate</span>
                     </label>
@@ -1307,7 +1342,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                   </div>
                 ) : (
                   <div>
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase">Dynamic Variable</label>
+                    <label className="text-[10px] font-semibold text-muted-foreground uppercase">Dynamic Variable</label>
                     <div className="text-xs font-bold text-brand-600 dark:text-brand-400 bg-brand-500/10 px-3 py-2 rounded-xl mt-1 border border-brand-500/20">
                       {selectedElement.dynamicKey}
                     </div>
@@ -1317,7 +1352,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                 {(selectedElement.type !== 'badge' && selectedElement.type !== 'image') && (
                   <>
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-muted-foreground uppercase">Font Family</label>
+                      <label className="text-[10px] font-semibold text-muted-foreground uppercase">Font Family</label>
                       <select
                         value={selectedElement.fontStyle || 'sans'}
                         onChange={e => updateSelectedElement('fontStyle', e.target.value)}
@@ -1331,7 +1366,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
 
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase">Size: {selectedElement.fontSizePercent}%</label>
+                        <label className="text-[10px] font-semibold text-muted-foreground uppercase">Size: {selectedElement.fontSizePercent}%</label>
                         <input
                           type="range"
                           min="1"
@@ -1343,7 +1378,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase">Weight</label>
+                        <label className="text-[10px] font-semibold text-muted-foreground uppercase">Weight</label>
                         <button
                           type="button"
                           onClick={() => updateSelectedElement('fontWeight', selectedElement.fontWeight === 'bold' ? 'normal' : 'bold')}
@@ -1359,7 +1394,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
 
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase">Alignment</label>
+                        <label className="text-[10px] font-semibold text-muted-foreground uppercase">Alignment</label>
                         <div className="flex bg-muted p-0.5 rounded-xl border border-border">
                           {(['left', 'center', 'right'] as const).map(align => {
                             const Icon = align === 'left' ? AlignLeft : align === 'center' ? AlignCenter : AlignRight;
@@ -1381,7 +1416,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                       </div>
 
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase">Color</label>
+                        <label className="text-[10px] font-semibold text-muted-foreground uppercase">Color</label>
                         <div className="flex gap-2 items-center">
                           <input
                             type="color"
@@ -1442,7 +1477,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
       />
 
       {}
-      <div className="bg-card border border-border rounded-3xl p-6 shadow-xs space-y-5">
+      <div className="bg-card border border-border rounded-2xl p-6 shadow-xs space-y-5">
         <div className="flex items-start justify-between border-b border-border pb-4">
           <div className="flex items-start gap-3.5">
             <div className="w-8 h-8 rounded-full bg-brand-500/10 flex items-center justify-center font-bold text-brand-500 text-sm">3</div>
@@ -1530,6 +1565,10 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                       setRecipientType(type);
                       setRecipientSearch('');
                       setBadgeFilter('all');
+                      // Mentors carry no clan or review row, so filters set on
+                      // the mentee roster would silently empty this tab.
+                      setClanFilter('all');
+                      setReviewFilter('all');
                       const list = type === 'all'
                         ? [...recipientMenteesList, ...recipientMentorsList]
                         : type === 'mentees'
@@ -1558,7 +1597,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
               <button
                 type="button"
                 onClick={() => setIsRulesDrawerOpen(true)}
-                className="flex items-center gap-1.5 pb-2.5 text-xs font-bold text-muted-foreground hover:text-foreground transition-all"
+                className="flex items-center gap-1.5 pb-2.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-all"
               >
                 <Info className="w-3.5 h-3.5 text-brand-500" />
                 View Rules
@@ -1566,61 +1605,21 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
             </div>
 
             {}
-            <div className="flex flex-col sm:flex-row gap-3 mb-5">
-              <div className="relative flex-1">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
-                <input
-                  type="text"
-                  value={recipientSearch}
-                  onChange={e => setRecipientSearch(e.target.value)}
-                  placeholder="Search roster by name or email..."
-                  className="w-full pl-10 pr-10 py-2.5 text-xs bg-muted/30 hover:bg-muted/50 border border-transparent focus:border-border/60 focus:bg-background rounded-xl text-foreground focus:outline-none placeholder:text-muted-foreground/50 transition-all shadow-3xs"
-                />
-                {recipientSearch && (
-                  <button
-                    onClick={() => setRecipientSearch('')}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 p-0.5 hover:bg-muted rounded-full transition-colors"
-                    type="button"
-                  >
-                    <X className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" />
-                  </button>
-                )}
-              </div>
-
-              {}
-              <div className="relative min-w-[150px]">
-                <select
-                  value={badgeFilter}
-                  onChange={e => setBadgeFilter(e.target.value)}
-                  className="w-full px-3.5 py-2.5 pr-8 text-xs bg-muted/30 hover:bg-muted/50 border border-transparent focus:border-border/60 focus:bg-background rounded-xl text-foreground font-semibold focus:outline-none transition-all cursor-pointer appearance-none shadow-3xs"
-                >
-                  <option value="all">All Badges</option>
-                  {criteria.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/60 pointer-events-none" />
-              </div>
-
-              {}
-              <div className="relative min-w-[150px]">
-                <select
-                  value={sortBy}
-                  onChange={e => setSortBy(e.target.value as any)}
-                  className="w-full px-3.5 py-2.5 pr-8 text-xs bg-muted/30 hover:bg-muted/50 border border-transparent focus:border-border/60 focus:bg-background rounded-xl text-foreground font-semibold focus:outline-none transition-all cursor-pointer appearance-none shadow-3xs"
-                >
-                  <option value="none">Sort: Default</option>
-                  <option value="score_desc">High Score first</option>
-                  <option value="score_asc">Low Score first</option>
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/60 pointer-events-none" />
-              </div>
-            </div>
+            <RosterFilterBar
+              search={recipientSearch} onSearch={setRecipientSearch}
+              clan={clanFilter} onClan={setClanFilter}
+              clans={rosterClans} clanStates={clanStates}
+              badge={badgeFilter} onBadge={setBadgeFilter}
+              criteria={criteria}
+              sort={sortBy} onSort={setSortBy}
+              review={clanStates.length > 0 ? reviewFilter : undefined}
+              onReview={clanStates.length > 0 ? setReviewFilter : undefined}
+            />
 
             {}
             {filtered.length > 0 && (
               <div className="flex items-center gap-1.5 flex-wrap bg-muted/20 border border-border rounded-2xl p-3 text-xs w-full">
-                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mr-1">Set All to:</span>
+                <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mr-1">Set All to:</span>
                 {criteria.map(c => (
                   <button
                     key={c.id}
@@ -1658,6 +1657,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
               loading={loadingQualifications}
               getTierName={getTierName}
               userRole="admin"
+              reviewRows={reviewRows}
               recipientTypeLabel={recipientType === 'all' ? 'Recipient' : recipientType === 'mentees' ? 'Mentee' : recipientType === 'mentors' ? 'Mentor' : 'Paused Mentee'}
               emptyMessage={`No ${recipientType === 'paused' ? 'paused mentees' : recipientType === 'all' ? 'active recipients' : 'active ' + recipientType} found in this program.`}
             />
@@ -1677,10 +1677,10 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
 
             {}
             <div className="flex items-center justify-between border-t border-border pt-4">
-              <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
+              <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
                 <Users className="w-4 h-4 text-brand-500" />
                 <span>
-                  <span className="text-foreground font-extrabold">{selectedMenteeIds.size}</span>{' '}
+                  <span className="text-foreground font-bold">{selectedMenteeIds.size}</span>{' '}
                   {recipientType === 'all'
                     ? `recipient${selectedMenteeIds.size !== 1 ? 's' : ''}`
                     : recipientType === 'mentees'
@@ -1693,10 +1693,13 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                 type="button"
                 onClick={handleIssue}
                 disabled={issuing || selectedMenteeIds.size === 0}
-                className="flex items-center gap-1.5 px-6 py-3 bg-brand-600 hover:bg-brand-700 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed text-white rounded-xl font-bold text-xs shadow-sm transition-all"
+                className="flex items-center gap-1.5 px-6 py-3 bg-brand-600 hover:bg-brand-700 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed text-white rounded-xl font-medium text-sm shadow-sm transition-all"
               >
                 {issuing ? <Loader2 className="animate-spin w-3.5 h-3.5" /> : <Award className="w-3.5 h-3.5" />}
-                Issue Certificates
+                {/* Naming the clan matters when one is selected: issuing is
+                    irreversible and the admin should see the scope of what
+                    they are about to send, not a generic label. */}
+                {activeClanName ? `Issue to ${activeClanName}` : 'Issue Certificates'}
               </button>
             </div>
           </div>
@@ -1706,7 +1709,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
 
       {}
       {templateId && (
-        <div className="bg-card border border-border rounded-3xl p-6 shadow-xs space-y-5">
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-xs space-y-5">
           <div className="border-b border-border pb-4">
             <h2 className="text-sm font-bold text-foreground">Issuance History & Logs</h2>
             <p className="text-xs text-muted-foreground mt-0.5">Track, regenerate/resend, and revoke/delete issued certificate credentials.</p>
@@ -1762,7 +1765,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                       <>
                         {}
                         <div className="space-y-1">
-                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Keywords / Tech Stack</p>
+                          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Keywords / Tech Stack</p>
                           {kws.length === 0 ? (
                             <p className="text-[11px] text-amber-600 font-semibold italic">No keywords set — AI will use hard constraints only.</p>
                           ) : (
@@ -1776,27 +1779,27 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
 
                         {}
                         <div className="space-y-1">
-                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Hard Constraints (AI cannot bypass)</p>
+                          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Hard Constraints (AI cannot bypass)</p>
                           <div className="grid grid-cols-3 gap-2">
                             <div className="p-2 rounded-xl bg-muted/30 text-center">
-                              <p className="text-[9px] text-muted-foreground font-semibold">Min Score</p>
-                              <p className="text-xs font-extrabold text-foreground">{minScore > 0 ? `${minScore}%` : '—'}</p>
+                              <p className="text-[10px] text-muted-foreground font-semibold">Min Score</p>
+                              <p className="text-xs font-bold text-foreground">{minScore > 0 ? `${minScore}%` : '—'}</p>
                             </div>
                             <div className="p-2 rounded-xl bg-muted/30 text-center">
-                              <p className="text-[9px] text-muted-foreground font-semibold">Max Blockers</p>
-                              <p className="text-xs font-extrabold text-foreground">{maxB}</p>
+                              <p className="text-[10px] text-muted-foreground font-semibold">Max Blockers</p>
+                              <p className="text-xs font-bold text-foreground">{maxB}</p>
                             </div>
                             <div className="p-2 rounded-xl bg-muted/30 text-center">
-                              <p className="text-[9px] text-muted-foreground font-semibold">Min Completion</p>
-                              <p className="text-xs font-extrabold text-foreground">{minCompletion > 0 ? `${minCompletion}%` : '—'}</p>
+                              <p className="text-[10px] text-muted-foreground font-semibold">Min Completion</p>
+                              <p className="text-xs font-bold text-foreground">{minCompletion > 0 ? `${minCompletion}%` : '—'}</p>
                             </div>
                             <div className="p-2 rounded-xl bg-muted/30 text-center">
-                              <p className="text-[9px] text-muted-foreground font-semibold">Min On-Time</p>
-                              <p className="text-xs font-extrabold text-foreground">{minOnTime > 0 ? `${minOnTime}%` : '—'}</p>
+                              <p className="text-[10px] text-muted-foreground font-semibold">Min On-Time</p>
+                              <p className="text-xs font-bold text-foreground">{minOnTime > 0 ? `${minOnTime}%` : '—'}</p>
                             </div>
                             <div className="p-2 rounded-xl bg-muted/30 text-center col-span-2">
-                              <p className="text-[9px] text-muted-foreground font-semibold">Min Avg Rating</p>
-                              <p className="text-xs font-extrabold text-foreground">{minRating > 0 ? `${minRating} / 5` : '—'}</p>
+                              <p className="text-[10px] text-muted-foreground font-semibold">Min Avg Rating</p>
+                              <p className="text-xs font-bold text-foreground">{minRating > 0 ? `${minRating} / 5` : '—'}</p>
                             </div>
                           </div>
                         </div>
@@ -1804,7 +1807,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                         {}
                         {customRule && (
                           <div className="space-y-1">
-                            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Custom AI Rule</p>
+                            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Custom AI Rule</p>
                             <p className="text-[11px] text-foreground italic bg-muted/30 rounded-xl px-3 py-2 leading-relaxed">"{customRule}"</p>
                           </div>
                         )}
@@ -1888,7 +1891,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                         <span className="text-[11px] font-bold text-foreground group-hover:text-brand-600 transition-colors">
                           Custom Uploaded Design
                         </span>
-                        <p className="text-[9px] text-muted-foreground mt-0.5 leading-relaxed line-clamp-2">
+                        <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed line-clamp-2">
                           Your custom uploaded background image applied to this template.
                         </p>
                       </div>
@@ -1898,7 +1901,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                   {}
                   <div className="mt-3 flex items-center justify-between w-full border-t border-border/40 pt-2 shrink-0">
                     {isCustomActive ? (
-                      <span className="inline-flex items-center gap-1 text-[8px] font-bold text-emerald-600 bg-emerald-500/10 px-2 py-1 rounded-full uppercase tracking-wider select-none">
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 bg-emerald-500/10 px-2 py-1 rounded-full uppercase tracking-wider select-none">
                         Applied Design
                       </span>
                     ) : (
@@ -1908,7 +1911,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                           setActivePresetId(null);
                           toast.success('Applied custom background image!');
                         }}
-                        className="inline-flex items-center gap-1 text-[8px] font-bold text-muted-foreground bg-muted/60 group-hover:bg-brand-500 group-hover:text-white px-2 py-1 rounded-full uppercase tracking-wider transition-all"
+                        className="inline-flex items-center gap-1 text-[10px] font-semibold text-muted-foreground bg-muted/60 group-hover:bg-brand-500 group-hover:text-white px-2 py-1 rounded-full uppercase tracking-wider transition-all"
                       >
                         Apply Custom
                       </button>
@@ -1919,7 +1922,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                         <button
                           type="button"
                           onClick={openFilePicker}
-                          className="text-[9px] font-extrabold text-brand-600 hover:text-brand-700 hover:underline flex items-center gap-1"
+                          className="text-[10px] font-bold text-brand-600 hover:text-brand-700 hover:underline flex items-center gap-1"
                         >
                           Replace Image
                         </button>
@@ -1945,11 +1948,11 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                         <ImageIcon className="w-5 h-5 text-brand-500 group-hover:scale-115 transition-transform" />
                       )}
                       <span className="text-[10px] font-bold text-foreground">Upload Custom File</span>
-                      <span className="text-[8px] text-muted-foreground">PNG, JPG, SVG</span>
+                      <span className="text-[10px] text-muted-foreground">PNG, JPG, SVG</span>
                     </div>
                     <div className="mt-3.5 px-1">
                       <span className="text-[11px] font-bold text-foreground">Add Custom Design</span>
-                      <p className="text-[9px] text-muted-foreground mt-0.5 leading-relaxed">
+                      <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed">
                         Upload your own background layout image.
                       </p>
                     </div>
@@ -1992,7 +1995,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                     <span className="text-[11px] font-bold text-foreground group-hover:text-brand-600 transition-colors">
                       {preset.name}
                     </span>
-                    <p className="text-[9px] text-muted-foreground mt-0.5 leading-relaxed line-clamp-2">
+                    <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed line-clamp-2">
                       {preset.description}
                     </p>
                   </div>
@@ -2000,11 +2003,11 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                   {}
                   <div className="mt-3">
                     {isActive ? (
-                      <span className="inline-flex items-center gap-1 text-[8px] font-bold text-emerald-600 bg-emerald-500/10 px-2 py-1 rounded-full uppercase tracking-wider">
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 bg-emerald-500/10 px-2 py-1 rounded-full uppercase tracking-wider">
                         Applied Design
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 text-[8px] font-bold text-muted-foreground bg-muted/60 group-hover:bg-brand-500 group-hover:text-white px-2 py-1 rounded-full uppercase tracking-wider transition-all">
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-muted-foreground bg-muted/60 group-hover:bg-brand-500 group-hover:text-white px-2 py-1 rounded-full uppercase tracking-wider transition-all">
                         Apply Preset
                       </span>
                     )}
@@ -2066,7 +2069,7 @@ function SendToClansDrawer({
     >
       <div className="space-y-4">
         <div className="space-y-2">
-          <label className="text-[10px] font-bold uppercase text-muted-foreground">Review window</label>
+          <label className="text-[10px] font-semibold uppercase text-muted-foreground">Review window</label>
           <div className="flex flex-wrap gap-1.5">
             {[3, 5, 7, 14].map((option) => (
               <button

@@ -6,4 +6,5 @@ export { RecipientRosterTable }  from './RecipientRosterTable';
 export { CertificatePreview }    from './CertificatePreview';
 export type { CertificateRenderData } from './CertificatePreview';
 export { VerificationBanner } from './VerificationBanner';
-
+export { RosterFilterBar } from './RosterFilterBar';
+export type { ReviewFilter, RosterSort } from './RosterFilterBar';

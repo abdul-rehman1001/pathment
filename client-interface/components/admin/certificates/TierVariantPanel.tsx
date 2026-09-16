@@ -100,7 +100,7 @@ export function TierVariantPanel({ element, criteria, onChange }: TierVariantPan
     <div className="space-y-3 pt-3 border-t border-border">
       {/* ── Which tiers get this layer at all ─────────────────────────────── */}
       <div className="space-y-1.5">
-        <label className="text-[10px] font-bold text-muted-foreground uppercase flex items-center gap-1.5">
+        <label className="text-[10px] font-semibold text-muted-foreground uppercase flex items-center gap-1.5">
           <Layers className="w-3 h-3 text-brand-500" /> Shown for
         </label>
         <div className="flex flex-wrap gap-1.5">
@@ -122,7 +122,7 @@ export function TierVariantPanel({ element, criteria, onChange }: TierVariantPan
             );
           })}
         </div>
-        <p className="text-[9px] text-muted-foreground leading-relaxed">
+        <p className="text-[10px] text-muted-foreground leading-relaxed">
           {visibleFor.length === 0
             ? 'On every certificate. Deselect a type to leave this layer off it.'
             : `Only on ${visibleFor.length} of ${criteria.length} certificate types.`}
@@ -150,13 +150,13 @@ export function TierVariantPanel({ element, criteria, onChange }: TierVariantPan
               <Award className="w-3.5 h-3.5 text-brand-500" />
               {isBadge ? 'Different badge per type' : 'Different wording per type'}
             </span>
-            <span className="flex items-center gap-1 text-[9px] font-bold text-brand-600 dark:text-brand-400 shrink-0">
+            <span className="flex items-center gap-1 text-[10px] font-bold text-brand-600 dark:text-brand-400 shrink-0">
               {hasVariants ? `${Object.keys(tierValues).length} set` : expanded ? 'Close' : 'Set up'}
               <ChevronDown className={`w-3 h-3 transition-transform ${expanded ? 'rotate-180' : ''}`} />
             </span>
           </span>
           {!expanded && (
-            <span className="mt-1 block text-[9px] font-normal leading-relaxed text-muted-foreground">
+            <span className="mt-1 block text-[10px] font-normal leading-relaxed text-muted-foreground">
               {isBadge
                 ? 'Show a different badge on Gold, Silver, Bronze…'
                 : 'Say something different on Gold, Silver, Bronze…'}
@@ -166,7 +166,7 @@ export function TierVariantPanel({ element, criteria, onChange }: TierVariantPan
 
         {expanded && (
           <div className="space-y-2">
-            <p className="text-[9px] text-muted-foreground leading-relaxed">
+            <p className="text-[10px] text-muted-foreground leading-relaxed">
               {isBadge
                 ? 'Leave a type empty to fall back to the badge set on that certificate type itself.'
                 : 'Leave a type empty to use the layer’s own text. Variables like {{mentee_name}} still work here.'}
@@ -259,7 +259,7 @@ export function TierPreviewSwitcher({
 
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
-      <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider mr-0.5">Designing</span>
+      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mr-0.5">Designing</span>
       {criteria.map(tier => {
         const active = value === tier.id;
         const ready = Boolean(tier.artworkUrl);

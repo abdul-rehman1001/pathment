@@ -115,7 +115,7 @@ export function VerificationBanner({
           {summary.overridden > 0 && ` · ${summary.overridden} changed`}
         </span>
         {summary.overdue && (
-          <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-red-600">
+          <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-red-600">
             Overdue
           </span>
         )}
@@ -176,7 +176,7 @@ export function VerificationBanner({
           <button
             type="button"
             onClick={onIssueAnyway}
-            className="rounded-xl border border-border bg-card px-3 py-1.5 text-[11px] font-bold text-muted-foreground hover:text-foreground"
+            className="rounded-xl border border-border bg-card px-3 py-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
           >
             Issue anyway
           </button>

@@ -3,16 +3,26 @@
 import { useState, useMemo, useCallback } from 'react';
 import { toast } from 'sonner';
 import { TierCriteria } from '../certificate-constants';
+import type { ReviewerClanState } from '@/lib/services/certificates-api';
+import type { ReviewFilter } from '@/components/certificates/shared';
 
 export interface UseRecipientSelectionOptions {
   criteria: TierCriteria[];
   qualifiedData: Record<string, any[]>;
   aiResults?: Record<string, any>;
+  /** The open review round, keyed by recipient, when there is one. */
+  reviewRows?: Record<string, { status: 'pending' | 'verified'; overridden: boolean }>;
+  /** Per-clan release state, so "approved to send" can be filtered on. */
+  clanStates?: ReviewerClanState[];
 }
 
-export function useRecipientSelection({ criteria, qualifiedData, aiResults }: UseRecipientSelectionOptions) {
+export function useRecipientSelection({
+  criteria, qualifiedData, aiResults, reviewRows, clanStates,
+}: UseRecipientSelectionOptions) {
   const [recipientSearch, setRecipientSearch] = useState('');
   const [badgeFilter, setBadgeFilter] = useState('all');
+  const [clanFilter, setClanFilter] = useState('all');
+  const [reviewFilter, setReviewFilter] = useState<ReviewFilter>('all');
   const [sortBy, setSortBy] = useState<'none' | 'score_desc' | 'score_asc'>('none');
   const [recipientType, setRecipientType] = useState<'all' | 'mentees' | 'mentors' | 'paused'>('all');
   const [selectedMenteeIds, setSelectedMenteeIds] = useState<Set<string>>(new Set());
@@ -65,6 +75,17 @@ export function useRecipientSelection({ criteria, qualifiedData, aiResults }: Us
     return defaultTier;
   }, [assignedTiers, aiResults, activeList, criteria]);
 
+  /** The clans actually represented in this roster, for the clan filter. */
+  const rosterClans = useMemo(() => {
+    const byId = new Map<string, { id: string; name: string }>();
+    for (const m of activeList as any[]) {
+      if (m.clanId && !byId.has(m.clanId)) {
+        byId.set(m.clanId, { id: m.clanId, name: m.clanName || 'Unnamed clan' });
+      }
+    }
+    return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [activeList]);
+
   const filtered = useMemo(() => {
     let result = [...activeList];
 
@@ -73,6 +94,27 @@ export function useRecipientSelection({ criteria, qualifiedData, aiResults }: Us
       result = result.filter((m: any) =>
         `${m.firstName || ''} ${m.lastName || ''} ${m.email || ''}`.toLowerCase().includes(q)
       );
+    }
+
+    // Certificates go out a clan at a time, so this is the primary narrowing:
+    // with a clan selected, the table's select-all becomes "select this clan".
+    if (clanFilter !== 'all') {
+      result = result.filter((m: any) => m.clanId === clanFilter);
+    }
+
+    if (reviewFilter !== 'all') {
+      result = result.filter((m: any) => {
+        const row = reviewRows?.[m.id];
+        switch (reviewFilter) {
+          case 'pending':  return !row || row.status !== 'verified';
+          case 'verified': return row?.status === 'verified';
+          case 'changed':  return Boolean(row?.overridden);
+          // Sendability belongs to the clan, not the person: the admin
+          // releases a clan and everyone in it becomes sendable at once.
+          case 'sendable': return (clanStates ?? []).some(c => c.clanId === m.clanId && c.canSend);
+          default: return true;
+        }
+      });
     }
 
     if (badgeFilter !== 'all') {
@@ -103,7 +145,8 @@ export function useRecipientSelection({ criteria, qualifiedData, aiResults }: Us
     }
 
     return result;
-  }, [activeList, recipientSearch, badgeFilter, sortBy, getEffectiveTier, aiResults]);
+  }, [activeList, recipientSearch, badgeFilter, clanFilter, reviewFilter, sortBy,
+      getEffectiveTier, aiResults, reviewRows, clanStates]);
 
   const allFilteredIds = useMemo(() => filtered.map((m: any) => m.id), [filtered]);
 
@@ -208,6 +251,11 @@ export function useRecipientSelection({ criteria, qualifiedData, aiResults }: Us
     setRecipientSearch,
     badgeFilter,
     setBadgeFilter,
+    clanFilter,
+    setClanFilter,
+    reviewFilter,
+    setReviewFilter,
+    rosterClans,
     sortBy,
     setSortBy,
     recipientType,

@@ -105,11 +105,11 @@ export default function MenteeCertificatesPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="border-b border-border pb-4">
-        <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
-          <Award className="w-6 h-6 text-brand-500" />
-          My Certificates
+        <h1 className="text-slate-900 mb-2 inline-flex items-center gap-2">
+          <Award className="w-6 h-6 text-brand-600" />
+          My certificates
         </h1>
-        <p className="text-xs text-muted-foreground">View, download, and share your earned accomplishments</p>
+        <p className="text-slate-600">View, download, and share what you have earned.</p>
       </div>
 
       {/* Body */}
@@ -173,10 +173,10 @@ export default function MenteeCertificatesPage() {
                       {cert.template?.name || 'Certificate of Completion'}
                     </h3>
                     <div className="space-y-1 pt-1">
-                      <div className="flex items-center gap-1.5 text-[9px] text-muted-foreground font-semibold">
+                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-semibold">
                         <Calendar className="w-3 h-3 text-brand-500" /> Issued: {dateStr}
                       </div>
-                      <div className="flex items-center gap-1.5 text-[9px] text-muted-foreground font-semibold">
+                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-semibold">
                         <ShieldCheck className="w-3 h-3 text-brand-500" />
                         Verified by: {cert.mentor ? `${cert.mentor.firstName} ${cert.mentor.lastName}` : 'Pathment Admin'}
                       </div>
@@ -189,7 +189,7 @@ export default function MenteeCertificatesPage() {
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
-                          className="flex items-center gap-1.5 text-[9px] font-semibold text-brand-600 hover:underline"
+                          className="flex items-center gap-1.5 text-[10px] font-semibold text-brand-600 hover:underline"
                         >
                           <BadgeCheck className="w-3 h-3" />
                           <span className="font-mono tracking-wider">{cert.certificateNumber}</span>
@@ -216,7 +216,7 @@ export default function MenteeCertificatesPage() {
                       {isDownloading
                         ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                         : <Download className="w-3.5 h-3.5" />}
-                      <span className="text-[9px] font-bold">PNG</span>
+                      <span className="text-[10px] font-bold">PNG</span>
                     </button>
 
                     <a

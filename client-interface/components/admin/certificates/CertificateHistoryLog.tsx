@@ -298,7 +298,7 @@ export default function CertificateHistoryLog({ templateId, userRole }: Certific
       ) : (
         <div className="border border-border rounded-2xl overflow-hidden divide-y divide-border">
           {/* Header */}
-          <div className="grid grid-cols-12 gap-2 px-4 py-3 bg-muted/40 text-[10px] font-bold text-muted-foreground uppercase tracking-wider items-center">
+          <div className="grid grid-cols-12 gap-2 px-4 py-3 bg-muted/40 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider items-center">
             <div className="col-span-3">Recipient</div>
             <div className="col-span-2 text-center">Badge Tier</div>
             <div className="col-span-3">Issued By</div>
@@ -324,7 +324,7 @@ export default function CertificateHistoryLog({ templateId, userRole }: Certific
                           : 'Deleted User'}
                       </span>
                       {userRole === 'admin' && item.recipient && (
-                        <span className={`px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-wider ${roleBadge(item.recipient.role)}`}>
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${roleBadge(item.recipient.role)}`}>
                           {roleLabel(item.recipient.role)}
                         </span>
                       )}
@@ -336,7 +336,7 @@ export default function CertificateHistoryLog({ templateId, userRole }: Certific
 
                   {/* Tier */}
                   <div className="col-span-2 flex justify-center">
-                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 border rounded-full text-[10px] font-bold uppercase tracking-wider ${getTierColor(item.tier)}`}>
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 border rounded-full text-[10px] font-semibold uppercase tracking-wider ${getTierColor(item.tier)}`}>
                       <Award className="w-3.5 h-3.5" /> {getTierName(item.tier)}
                     </span>
                   </div>
@@ -349,7 +349,7 @@ export default function CertificateHistoryLog({ templateId, userRole }: Certific
                           <span className="truncate">
                             {item.issuedBy.firstName} {item.issuedBy.lastName}
                           </span>
-                          <span className={`px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-wider ${roleBadge(item.issuedBy.role)}`}>
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${roleBadge(item.issuedBy.role)}`}>
                             {roleLabel(item.issuedBy.role)}
                           </span>
                         </div>
