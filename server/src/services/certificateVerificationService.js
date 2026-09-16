@@ -193,7 +193,7 @@ class CertificateVerificationService {
    * is an override: the AI's tier is preserved alongside it so the admin can
    * see what was changed, by whom and why.
    */
-  async verify(templateId, menteeId, { finalTier = null, reason = null } = {}, user) {
+  async verify(templateId, menteeId, { finalTier = null, reason = null } = {}, user, { notify = true } = {}) {
     const row = await models.CertificateVerification.findOne({ where: { templateId, menteeId } });
     if (!row) throw new NotFoundError('There is nothing to verify for this mentee');
     await this._assertCanReview(user, row);
@@ -218,11 +218,18 @@ class CertificateVerificationService {
     row.verifiedAt = new Date();
     await row.save();
 
-    await this._notifyAdminsIfClanComplete(templateId, row.clanId, user);
+    if (notify) await this._notifyAdminsIfClanComplete(templateId, row.clanId, user);
     return this._serialize(row);
   }
 
-  /** Sign off several at once — "these all look right" is the common case. */
+  /**
+   * Sign off several at once — "these all look right" is the common case.
+   *
+   * The completion notice is held until the whole batch has landed and then
+   * sent once per clan. Firing it inside each row meant a mentor confirming
+   * twenty grades in one press sent the admin twenty copies of the same
+   * "this clan is done" message.
+   */
   async verifyMany(templateId, decisions, user) {
     if (!Array.isArray(decisions) || !decisions.length) {
       throw new ValidationError('Nothing to verify');
@@ -232,8 +239,12 @@ class CertificateVerificationService {
       out.push(await this.verify(
         templateId, decision.menteeId,
         { finalTier: decision.finalTier, reason: decision.reason },
-        user
+        user,
+        { notify: false }
       ));
+    }
+    for (const clanId of new Set(out.map((r) => r.clanId).filter(Boolean))) {
+      await this._notifyAdminsIfClanComplete(templateId, clanId, user);
     }
     return { verified: out.length, rows: out };
   }

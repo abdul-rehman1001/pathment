@@ -1,0 +1,187 @@
+'use client';
+
+import { useCallback, useEffect, useState } from 'react';
+import { toast } from 'sonner';
+import { AlertTriangle, CheckCircle2, Clock, Loader2 } from 'lucide-react';
+import { certificatesApi } from '@/lib/services/certificates-api';
+import { extractApiErrorMessage } from '@/lib/utils/api-error';
+import { useConfirm } from '@/lib/context/ConfirmContext';
+
+/**
+ * The admin's side of a certificate review round.
+ *
+ * The mentor's side used to live here too, as a queue of its own. It moved into
+ * the issuance roster on /mentor/certificates: reviewing a grade and issuing it
+ * are the same people in the same table, and keeping them apart made a mentor
+ * read one list while acting on another.
+ */
+
+/**
+ * The admin's view of the round: who has signed off, who has not, what changed.
+ *
+ * Deliberately never blocks issuing. The admin is told the state and decides —
+ * a gate here would strand a cohort behind one mentor who is on leave, which is
+ * a worse failure than issuing a grade nobody contested.
+ */
+export function VerificationBanner({
+  templateId, refreshKey, onIssueAnyway,
+}: {
+  templateId: string;
+  refreshKey?: number;
+  onIssueAnyway?: () => void;
+}) {
+  const [summary, setSummary] = useState<Awaited<ReturnType<typeof certificatesApi.getVerificationSummary>>['data'] | null>(null);
+  const [reminding, setReminding] = useState(false);
+  const [approvingClanId, setApprovingClanId] = useState<string | null>(null);
+  const confirm = useConfirm();
+
+  const reload = useCallback(async () => {
+    const res = await certificatesApi.getVerificationSummary(templateId);
+    if (res.success) setSummary(res.data);
+  }, [templateId]);
+
+  /**
+   * Release a clan. `verified` is false when the admin is approving before the
+   * mentors have finished — permitted, but worth confirming so it is a choice
+   * rather than a misread of the row.
+   */
+  const approve = async (clanId: string, verified: boolean) => {
+    if (!verified) {
+      const ok = await confirm({
+        title: 'Approve before the review is finished?',
+        description: 'This clan\'s mentors have not signed off every grade yet. Approving now lets them send the certificates as they stand.',
+        confirmLabel: 'Approve anyway',
+      });
+      if (!ok) return;
+    }
+    try {
+      setApprovingClanId(clanId);
+      const res = await certificatesApi.approveClan(templateId, clanId);
+      toast.success(res.message || 'Clan approved');
+      await reload();
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, 'Could not approve that clan'));
+    } finally {
+      setApprovingClanId(null);
+    }
+  };
+
+  useEffect(() => {
+    let alive = true;
+    certificatesApi.getVerificationSummary(templateId)
+      .then((res) => { if (alive && res.success) setSummary(res.data); })
+      .catch(() => { /* the banner is advisory; its absence must not break the page */ });
+    return () => { alive = false; };
+  }, [templateId, refreshKey]);
+
+  if (!summary || summary.total === 0) return null;
+
+  const remind = async () => {
+    try {
+      setReminding(true);
+      const res = await certificatesApi.remindReviewers(templateId);
+      toast.success(res.message || 'Mentors reminded');
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, 'Could not send the reminder'));
+    } finally {
+      setReminding(false);
+    }
+  };
+
+  const outstanding = summary.clans.filter((c) => !c.complete);
+  // Everything checked AND everything released is the only truly finished
+  // state. "All verified" on its own still needs the admin to act, so it must
+  // not look like a green light — that is what hid the approve buttons at
+  // exactly the moment they were wanted.
+  const settled = summary.allVerified && summary.awaitingApproval === 0;
+
+  return (
+    <div className={`space-y-2 rounded-2xl border px-4 py-3 ${
+      settled ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-amber-500/30 bg-amber-500/5'
+    }`}>
+      <div className="flex flex-wrap items-center gap-2">
+        {settled
+          ? <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500" />
+          : <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500" />}
+        <span className="text-xs font-bold text-foreground">
+          {settled
+            ? `All ${summary.total} grades verified and approved`
+            : summary.awaitingApproval > 0 && outstanding.length === 0
+              ? `${summary.awaitingApproval} clan${summary.awaitingApproval === 1 ? '' : 's'} verified — approve to let mentors send`
+              : `${outstanding.length} of ${summary.clans.length} clan${summary.clans.length === 1 ? '' : 's'} have not verified yet`}
+        </span>
+        <span className="text-[11px] text-muted-foreground">
+          · {summary.verified} of {summary.total} grades signed off
+          {summary.overridden > 0 && ` · ${summary.overridden} changed`}
+        </span>
+        {summary.overdue && (
+          <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-red-600">
+            Overdue
+          </span>
+        )}
+      </div>
+
+      <ul className="space-y-1 pl-6">
+        {summary.clans.map((clan) => (
+          <li key={clan.clanId || clan.clanName} className="flex flex-wrap items-center gap-2 text-[11px]">
+            <span className="font-semibold text-foreground">{clan.clanName}</span>
+            <span className="text-muted-foreground">
+              {clan.complete
+                ? `all ${clan.total} signed off`
+                : `${clan.pending} of ${clan.total} outstanding`}
+              {clan.overridden > 0 && ` · ${clan.overridden} changed`}
+            </span>
+
+            {/* Approving is what lets that clan's mentors send. Offered the
+                moment a clan is signed off, and still offered — labelled
+                differently — while it is not, because an admin is never
+                blocked, only informed. */}
+            {clan.clanId && !clan.approved && (
+              <button
+                type="button"
+                onClick={() => approve(clan.clanId!, clan.complete)}
+                disabled={approvingClanId === clan.clanId}
+                className={`inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[10px] font-bold transition-colors ${
+                  clan.readyToApprove
+                    ? 'border-brand-500/40 bg-brand-500/10 text-brand-700 hover:bg-brand-500/20'
+                    : 'border-border bg-card text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {approvingClanId === clan.clanId
+                  ? <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                  : <CheckCircle2 className="h-2.5 w-2.5" />}
+                {clan.readyToApprove ? 'Approve & unlock sending' : 'Approve early'}
+              </button>
+            )}
+            {clan.approved && (
+              <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600">
+                <CheckCircle2 className="h-2.5 w-2.5" /> Approved
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+
+      <div className="flex flex-wrap items-center gap-2 pl-6">
+        <button
+          type="button"
+          onClick={remind}
+          disabled={reminding}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-1.5 text-[11px] font-bold text-foreground hover:border-brand-500/40 disabled:opacity-50"
+        >
+          {reminding ? <Loader2 className="w-3 h-3 animate-spin" /> : <Clock className="w-3 h-3" />}
+          Remind mentors
+        </button>
+        {onIssueAnyway && (
+          <button
+            type="button"
+            onClick={onIssueAnyway}
+            className="rounded-xl border border-border bg-card px-3 py-1.5 text-[11px] font-bold text-muted-foreground hover:text-foreground"
+          >
+            Issue anyway
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}

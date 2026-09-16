@@ -1,22 +1,22 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   Loader2, Award, Calendar, ArrowLeft, Search,
   Users, Send, Eye, CheckCircle2, XCircle, AlertCircle,
-  TrendingUp, ShieldOff, Download, ExternalLink, Linkedin, ShieldCheck, X, ShieldAlert, Info,
-  ChevronDown, Sparkles, Edit3, Clock
+  TrendingUp, Download, Linkedin, ShieldCheck, X, Info,
+  ChevronDown, Sparkles, Edit3, Clock, Lock
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/context/AuthContext';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
-import { certificatesApi, CertificateTemplate, CertificateInstance, type ReviewerClanState } from '@/lib/services/certificates-api';
+import { certificatesApi, CertificateTemplate, CertificateInstance, type ReviewerClanState, type CertificateVerification } from '@/lib/services/certificates-api';
 import CertificateHistoryLog from '@/components/admin/certificates/CertificateHistoryLog';
 import { DuplicateWarnModal } from '@/components/shared';
 import { getTierBadgeColor, getTierButtonColor, getTierIconColor } from '@/lib/utils/certificates';
 import { Drawer } from '@/components/shared/Drawer';
-import { AIDetailDrawer, AIEvaluationBanner, RecipientRosterTable, CertificatePreview, VerificationQueue, type CertificateRenderData } from '@/components/certificates/shared';
+import { AIDetailDrawer, AIEvaluationBanner, RecipientRosterTable, CertificatePreview, type CertificateRenderData } from '@/components/certificates/shared';
 import { useAIEvaluationProgress } from '@/components/admin/certificates/hooks';
 import { downloadCertificateAsPng } from '@/lib/utils/certificate-renderer';
 
@@ -69,6 +69,7 @@ function EligibilityBadge({ match }: { match: number }) {
 
 export default function MentorCertificatesPage() {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
 
   const getLinkedInShareUrl = (c: CertificateInstance) => {
     const title = `Awarded: ${c.template?.name || 'Certificate of Mastery'} from Pathment`;
@@ -79,7 +80,7 @@ export default function MentorCertificatesPage() {
   const [loadingTemplates, setLoadingTemplates] = useState(true);
 
   const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null);
-  const [workspaceTab, setWorkspaceTab] = useState<'issue' | 'verify' | 'history'>('issue');
+  const [workspaceTab, setWorkspaceTab] = useState<'issue' | 'history'>('issue');
 
   const [qualifiedData, setQualifiedData] = useState<QualifiedData>({});
   const [loadingQualifications, setLoadingQualifications] = useState(false);
@@ -100,6 +101,28 @@ export default function MentorCertificatesPage() {
    * told the admin has not approved yet. `null` = not loaded.
    */
   const [release, setRelease] = useState<ReviewerClanState[] | null>(null);
+
+  /**
+   * The open review round, keyed by mentee, or null before it has loaded.
+   *
+   * Reviewing and issuing are the same roster of people, so they are the same
+   * table: the mentor changes a grade in the row they are already looking at
+   * and signs it off there. A separate review screen meant holding one list in
+   * your head while reading another.
+   */
+  const [reviewRows, setReviewRows] = useState<Record<string, CertificateVerification> | null>(null);
+  const [reviewDeadline, setReviewDeadline] = useState<string | null>(null);
+  /**
+   * Whether the mentor has opened the round for editing. Grades sit locked
+   * until then — this table is also the issuing screen, and a stray click on a
+   * badge dropdown must not quietly re-grade somebody on the way past.
+   */
+  const [reviewing, setReviewing] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  /** Changed grades held back until the mentor says why. */
+  const [reasonDraft, setReasonDraft] = useState<
+    { decisions: Array<{ menteeId: string; finalTier: string }>; reasons: Record<string, string> } | null
+  >(null);
 
   const [mentorTiers, setMentorTiers] = useState<Record<string, string>>({});
   const [aiDetailMentee, setAiDetailMentee] = useState<any | null>(null);
@@ -146,13 +169,7 @@ export default function MentorCertificatesPage() {
 
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const [activeTab, setActiveTab] = useState<'issue' | 'verify' | 'my'>('issue');
-  /**
-   * Which template's grades this mentor is reviewing. The notification links
-   * here with ?verify=<templateId>, so arriving from the email lands straight
-   * on the right round rather than on a picker.
-   */
-  const [verifyTemplateId, setVerifyTemplateId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'issue' | 'my'>('issue');
 
   const [myCertificates, setMyCertificates] = useState<CertificateInstance[]>([]);
   const [loadingMyCertificates, setLoadingMyCertificates] = useState(true);
@@ -199,21 +216,30 @@ export default function MentorCertificatesPage() {
 
   const currentTemplate = templates.find(t => t.id === activeTemplateId) ?? null;
 
-  // Refreshed whenever the template changes, and after issuing, so the gate
-  // reflects an approval that landed while this page was open.
-  const loadRelease = useCallback(async () => {
-    if (!activeTemplateId) { setRelease(null); return; }
+  /**
+   * The review round and the release gate come from one call, because they are
+   * one fact: who still needs signing off, and whether the admin has released
+   * the clan that follows from it. Refreshed on template change and after every
+   * decision, so an approval landing while this page is open shows up.
+   */
+  const loadReview = useCallback(async () => {
+    if (!activeTemplateId) { setRelease(null); setReviewRows(null); return; }
     try {
       const res = await certificatesApi.listVerifications(activeTemplateId);
       setRelease(res.data?.clans ?? []);
+      setReviewDeadline(res.data?.template?.verificationDeadline ?? null);
+      const byMentee: Record<string, CertificateVerification> = {};
+      for (const row of res.data?.rows ?? []) byMentee[row.menteeId] = row;
+      setReviewRows(byMentee);
     } catch {
       // Advisory: a failed lookup must not strand the page. The server is the
       // real gate, so the worst case is a button that 403s as it did before.
       setRelease([]);
+      setReviewRows({});
     }
   }, [activeTemplateId]);
 
-  useEffect(() => { loadRelease(); }, [loadRelease]);
+  useEffect(() => { loadReview(); }, [loadReview]);
 
   /**
    * A clan is releasable when the admin has approved it. With no review round
@@ -225,9 +251,23 @@ export default function MentorCertificatesPage() {
   const approvedClans = (release ?? []).filter(c => c.canSend);
   const canIssue = noReviewRound || approvedClans.length > 0;
   const awaitingApproval = (release ?? []).filter(c => !c.canSend);
-  /** Grades still needing this mentor's sign-off, for the tab's badge. */
-  const pendingReviewCount = (release ?? []).reduce((sum, c) => sum + c.pending, 0);
   const criteria = currentTemplate?.criteria ?? [];
+
+  const reviewList = useMemo(() => Object.values(reviewRows ?? {}), [reviewRows]);
+  /** There is something to sign off on for this template. */
+  const reviewOpen = reviewList.length > 0;
+  const pendingReviewCount = reviewList.filter(r => r.status !== 'verified').length;
+  /**
+   * Locked whenever a round exists and the mentor has not opened it. Issuing is
+   * NOT gated on this — an approved clan can still be sent while the grades sit
+   * locked, which is the normal state once everything is signed off.
+   */
+  const tableLocked = reviewOpen && !reviewing;
+
+  const reviewDaysLeft = useMemo(() => {
+    if (!reviewDeadline) return null;
+    return Math.ceil((new Date(reviewDeadline).getTime() - Date.now()) / 86_400_000);
+  }, [reviewDeadline]);
 
   const fetchMyCertificates = async () => {
     if (!user?.id) return;
@@ -250,6 +290,23 @@ export default function MentorCertificatesPage() {
       fetchMyCertificates();
     }
   }, [activeTab, user?.id]);
+
+  /**
+   * The reminder notification links here with ?verify=<templateId>. Open that
+   * template with its grades already unlocked — the mentor followed a link that
+   * asked them to review, so make that the thing in front of them. Applied once
+   * so navigating back to the list does not snap them forward again.
+   */
+  const deepLinkApplied = useRef(false);
+  useEffect(() => {
+    if (deepLinkApplied.current) return;
+    const fromLink = searchParams.get('verify');
+    if (!fromLink) return;
+    deepLinkApplied.current = true;
+    setActiveTemplateId(fromLink);
+    setWorkspaceTab('issue');
+    setReviewing(true);
+  }, [searchParams]);
 
   useEffect(() => {
     certificatesApi.listTemplates()
@@ -533,6 +590,88 @@ export default function MentorCertificatesPage() {
     }
   };
 
+  /**
+   * A signed-off grade is what will actually be issued, so it beats whatever
+   * the AI seeded into the roster. Re-applied whenever something else writes
+   * into that roster — the qualification fetch settling, a fresh AI run, the
+   * round reloading — because any of them can land last.
+   */
+  useEffect(() => {
+    if (!reviewRows) return;
+    setMentorTiers(prev => {
+      const next = { ...prev };
+      for (const row of Object.values(reviewRows)) {
+        if (row.status === 'verified' && row.finalTier) next[row.menteeId] = row.finalTier;
+      }
+      return next;
+    });
+  }, [reviewRows, loadingQualifications, aiResults]);
+
+  /**
+   * Sign off the selected rows at the grades currently shown in the table.
+   *
+   * Anything the mentor moved away from the AI's pick is an override, and the
+   * server requires a reason for each — so those are held back and asked for
+   * rather than failing the whole batch on submit.
+   */
+  const handleVerify = () => {
+    if (!activeTemplateId || !pendingDecisions.length) return;
+    const decisions = pendingDecisions;
+
+    const changed = decisions.filter(d => {
+      const row = reviewRows?.[d.menteeId];
+      return row?.aiTier && d.finalTier !== row.aiTier;
+    });
+
+    if (changed.length) {
+      setReasonDraft({ decisions, reasons: Object.fromEntries(changed.map(d => [d.menteeId, ''])) });
+      return;
+    }
+    submitVerification(decisions);
+  };
+
+  const submitVerification = async (
+    decisions: Array<{ menteeId: string; finalTier: string }>,
+    reasons: Record<string, string> = {}
+  ) => {
+    try {
+      setVerifying(true);
+      await certificatesApi.verifyMany(
+        activeTemplateId!,
+        decisions.map(d => ({ ...d, reason: reasons[d.menteeId]?.trim() || undefined }))
+      );
+      const changedCount = Object.keys(reasons).length;
+      toast.success(
+        changedCount > 0
+          ? `Signed off ${decisions.length} grade(s), ${changedCount} changed — your admin is notified once the clan is complete.`
+          : `Signed off ${decisions.length} grade(s) — your admin is notified once the clan is complete.`
+      );
+      setReasonDraft(null);
+      await loadReview();
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, 'Could not save those decisions'));
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  /**
+   * The selected rows whose grade is not already recorded as shown: still
+   * pending, or signed off at a tier the mentor has since changed. Re-sending a
+   * decision that has not moved writes nothing new and would re-announce the
+   * clan as complete, so it is left out and the button counts honestly.
+   */
+  const pendingDecisions = useMemo(() => {
+    if (!reviewRows) return [];
+    return Array.from(selectedIds)
+      .filter(id => {
+        const row = reviewRows[id];
+        if (!row) return false;
+        return row.status !== 'verified' || row.finalTier !== getEffectiveTier(id);
+      })
+      .map(id => ({ menteeId: id, finalTier: getEffectiveTier(id) }));
+  }, [selectedIds, reviewRows, getEffectiveTier]);
+
   const handleRunAIEvaluation = () => {
     if (activeTemplateId) runAIEvaluation(activeTemplateId);
   };
@@ -563,7 +702,7 @@ export default function MentorCertificatesPage() {
         }
         setSelectedIds(new Set());
         setRefreshKey(prev => prev + 1);
-        loadRelease();
+        loadReview();
       }
     } catch (err) {
       // The server's own words matter here: a refusal explains that the clan
@@ -636,15 +775,6 @@ export default function MentorCertificatesPage() {
               Issue Certificates
             </button>
             <button
-              onClick={() => setActiveTab('verify')}
-              className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all ${activeTab === 'verify'
-                ? 'bg-background border border-border shadow-2xs text-brand-600'
-                : 'text-muted-foreground hover:text-foreground'
-                }`}
-            >
-              Review Grades
-            </button>
-            <button
               onClick={() => setActiveTab('my')}
               className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all ${activeTab === 'my'
                 ? 'bg-background border border-border shadow-2xs text-brand-600'
@@ -656,13 +786,7 @@ export default function MentorCertificatesPage() {
           </div>
         </div>
 
-        {activeTab === 'verify' ? (
-          <ReviewGradesTab
-            templates={templates}
-            templateId={verifyTemplateId}
-            onSelectTemplate={setVerifyTemplateId}
-          />
-        ) : activeTab === 'my' ? (
+        {activeTab === 'my' ? (
           loadingMyCertificates ? (
             <div className="flex flex-col items-center justify-center min-h-[300px] gap-3">
               <Loader2 className="animate-spin h-8 w-8 text-brand-500" />
@@ -803,7 +927,7 @@ export default function MentorCertificatesPage() {
                       </span>
                     </div>
                     <button
-                      onClick={() => setActiveTemplateId(t.id)}
+                      onClick={() => { setActiveTemplateId(t.id); setReviewing(false); }}
                       className="mt-auto w-full flex items-center justify-center gap-1.5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold transition-colors"
                     >
                       <Award className="w-3.5 h-3.5" /> Issue Certificates
@@ -890,7 +1014,7 @@ export default function MentorCertificatesPage() {
       <div className="flex items-center justify-between border-b border-border pb-4">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => { setActiveTemplateId(null); setWorkspaceTab('issue'); }}
+            onClick={() => { setActiveTemplateId(null); setWorkspaceTab('issue'); setReviewing(false); }}
             className="p-2 rounded-xl border border-border hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -925,27 +1049,6 @@ export default function MentorCertificatesPage() {
           >
             Issue Credentials
           </button>
-          {/* Reviewing is the step BEFORE issuing, so it belongs on the same
-              screen. Sending it back to a separate tab on the list page meant
-              the gate below could tell a mentor to verify with no way to get
-              there. */}
-          {release !== null && release.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setWorkspaceTab('verify')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${workspaceTab === 'verify'
-                ? 'bg-background border border-border shadow-2xs text-brand-600'
-                : 'text-muted-foreground hover:text-foreground'
-                }`}
-            >
-              Review Grades
-              {pendingReviewCount > 0 && (
-                <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-extrabold text-amber-600">
-                  {pendingReviewCount}
-                </span>
-              )}
-            </button>
-          )}
           <button
             type="button"
             onClick={() => setWorkspaceTab('history')}
@@ -1008,23 +1111,7 @@ export default function MentorCertificatesPage() {
 
       {}
       <div className="w-full">
-        {workspaceTab === 'verify' ? (
-          <div className="bg-card border border-border/80 rounded-3xl p-6 shadow-2xs min-h-[560px]">
-            <div className="mb-4 border-b border-border pb-3">
-              <p className="text-sm font-bold text-foreground">Review grades before they go out</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                The AI grades from the record. You know the people — confirm each grade, or change it.
-                An admin approves your clan once you are done, and sending unlocks then.
-              </p>
-            </div>
-            {activeTemplateId && (
-              <VerificationQueue
-                templateId={activeTemplateId}
-                onChanged={loadRelease}
-              />
-            )}
-          </div>
-        ) : workspaceTab === 'history' ? (
+        {workspaceTab === 'history' ? (
           <div className="bg-card border border-border/80 rounded-3xl p-6 shadow-2xs flex flex-col min-h-[560px]">
             <div className="flex items-center justify-between mb-4 border-b border-border pb-3">
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Template History Logs</p>
@@ -1084,6 +1171,17 @@ export default function MentorCertificatesPage() {
 
 
               {}
+              {reviewOpen && (
+                <ReviewRoundBanner
+                  clans={release ?? []}
+                  pending={pendingReviewCount}
+                  total={reviewList.length}
+                  daysLeft={reviewDaysLeft}
+                  reviewing={reviewing}
+                />
+              )}
+
+              {}
               <div className="flex flex-col sm:flex-row gap-3 mb-5">
                 <div className="relative flex-1">
                   <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
@@ -1135,7 +1233,7 @@ export default function MentorCertificatesPage() {
               </div>
 
               {}
-              {selectedIds.size > 0 && filtered.length > 0 && (
+              {selectedIds.size > 0 && filtered.length > 0 && !tableLocked && (
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-brand-500/5 dark:bg-brand-500/10 border border-brand-500/20 dark:border-brand-500/30 rounded-xl p-3.5 text-xs mb-5 animate-in fade-in slide-in-from-top-2 duration-200 gap-3">
                   <div className="flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-brand-500 animate-pulse" />
@@ -1189,55 +1287,90 @@ export default function MentorCertificatesPage() {
                   userRole="mentor"
                   recipientTypeLabel="Mentee"
                   emptyMessage={search ? 'No mentees match your search.' : 'No active mentees found.'}
+                  reviewRows={reviewRows ?? undefined}
+                  locked={tableLocked}
                 />
               </div>
 
               {}
-              <div className="flex items-center justify-between border-t border-border/60 pt-4 mt-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-4 mt-4">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground font-semibold">
                   <Users className="w-4 h-4 text-brand-500" />
                   <span>
                     <span className="text-foreground font-extrabold">{selectedIds.size}</span> / {filtered.length} selected
                   </span>
                 </div>
-                {/* Sending is unlocked by the admin approving the clan, after
-                    its grades are verified. Showing the button regardless just
-                    produced a 403 — the mentor pressed it and got an error
-                    rather than an explanation. */}
-                {canIssue ? (
-                  <button
-                    onClick={handleIssue}
-                    disabled={issuing || selectedIds.size === 0}
-                    className="flex items-center gap-1.5 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed rounded-xl text-xs font-bold transition-all shadow-sm"
-                  >
-                    {issuing ? <Loader2 className="animate-spin w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />}
-                    Issue Certificates
-                  </button>
-                ) : (
-                  <div className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/5 px-3.5 py-2.5">
-                    <Clock className="w-3.5 h-3.5 shrink-0 text-amber-500" />
-                    {awaitingApproval.some(c => c.pending > 0) ? (
-                      <>
-                        <span className="text-[11px] font-semibold text-foreground">
-                          {pendingReviewCount} grade{pendingReviewCount === 1 ? '' : 's'} still need your review.
-                        </span>
-                        {/* Telling somebody to do a thing without a way to do it
-                            is how the previous version of this stranded them. */}
-                        <button
-                          type="button"
-                          onClick={() => setWorkspaceTab('verify')}
-                          className="rounded-lg bg-amber-500/15 px-2 py-1 text-[11px] font-bold text-amber-700 hover:bg-amber-500/25"
-                        >
-                          Review now
-                        </button>
-                      </>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Unlocking the grades and sending them out are separate
+                      controls, because they are separate decisions and a clan
+                      that is fully signed off still needs to be able to send. */}
+                  {reviewOpen && (
+                    reviewing ? (
+                      <button
+                        type="button"
+                        onClick={() => setReviewing(false)}
+                        className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3.5 py-2.5 text-xs font-bold text-muted-foreground hover:text-foreground"
+                      >
+                        <Lock className="w-3.5 h-3.5" /> Lock grades
+                      </button>
                     ) : (
+                      <button
+                        type="button"
+                        onClick={() => setReviewing(true)}
+                        className={`flex items-center gap-1.5 rounded-xl border px-3.5 py-2.5 text-xs font-bold transition-colors ${
+                          pendingReviewCount > 0
+                            ? 'border-amber-500/40 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20'
+                            : 'border-border bg-card text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        {pendingReviewCount > 0
+                          ? `Review ${pendingReviewCount} grade${pendingReviewCount === 1 ? '' : 's'}`
+                          : 'Review grades again'}
+                      </button>
+                    )
+                  )}
+
+                  {reviewing ? (
+                    <button
+                      type="button"
+                      onClick={handleVerify}
+                      disabled={verifying || pendingDecisions.length === 0}
+                      title={pendingDecisions.length === 0
+                        ? 'Every selected grade is already signed off at the badge shown.'
+                        : undefined}
+                      className="flex items-center gap-1.5 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed rounded-xl text-xs font-bold transition-all shadow-sm"
+                    >
+                      {verifying ? <Loader2 className="animate-spin w-3.5 h-3.5" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                      {pendingDecisions.length === 0
+                        ? 'All selected signed off'
+                        : `Verify ${pendingDecisions.length} grade${pendingDecisions.length === 1 ? '' : 's'}`}
+                    </button>
+                  ) : canIssue ? (
+                    /* Sending is unlocked by the admin approving the clan, after
+                       its grades are verified. Showing the button regardless
+                       just produced a 403 — the mentor pressed it and got an
+                       error rather than an explanation. */
+                    <button
+                      onClick={handleIssue}
+                      disabled={issuing || selectedIds.size === 0}
+                      className="flex items-center gap-1.5 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed rounded-xl text-xs font-bold transition-all shadow-sm"
+                    >
+                      {issuing ? <Loader2 className="animate-spin w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />}
+                      Issue Certificates
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/5 px-3.5 py-2.5">
+                      <Clock className="w-3.5 h-3.5 shrink-0 text-amber-500" />
                       <span className="text-[11px] font-semibold text-foreground">
-                        Verified — waiting for an admin to approve your clan.
+                        {pendingReviewCount > 0
+                          ? `${pendingReviewCount} grade${pendingReviewCount === 1 ? '' : 's'} still need your sign-off.`
+                          : 'Signed off — waiting for an admin to approve your clan.'}
                       </span>
-                    )}
-                  </div>
-                )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -1330,6 +1463,75 @@ export default function MentorCertificatesPage() {
         </div>
       </Drawer>
 
+      {/* Changing a grade is a mentor overruling the evidence. The admin
+          reading this in a month — and the mentor themselves — need to know
+          why, so the reason is asked for rather than merely invited. */}
+      <Drawer
+        open={reasonDraft !== null}
+        onClose={() => setReasonDraft(null)}
+        title="Why are these grades changing?"
+        subtitle="The AI graded from the record. Say what it could not see."
+        width="md"
+      >
+        {reasonDraft && (
+          <div className="space-y-5">
+            {Object.keys(reasonDraft.reasons).map(menteeId => {
+              const mentee = activeMentees.find(m => m.id === menteeId);
+              const row = reviewRows?.[menteeId];
+              const finalTier = reasonDraft.decisions.find(d => d.menteeId === menteeId)?.finalTier ?? '';
+              return (
+                <div key={menteeId} className="space-y-2 rounded-2xl border border-border bg-card p-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-bold text-foreground">
+                      {mentee ? `${mentee.firstName} ${mentee.lastName}` : 'Mentee'}
+                    </span>
+                    <span className="text-[10px] font-bold text-muted-foreground line-through">
+                      {getTierName(row?.aiTier || '')}
+                    </span>
+                    <span aria-hidden className="text-[10px] font-bold text-amber-500">&rarr;</span>
+                    <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-600">
+                      {getTierName(finalTier)}
+                    </span>
+                  </div>
+                  <textarea
+                    rows={2}
+                    value={reasonDraft.reasons[menteeId]}
+                    onChange={e => setReasonDraft(d => d && ({
+                      ...d, reasons: { ...d.reasons, [menteeId]: e.target.value }
+                    }))}
+                    placeholder="e.g. mentored two juniors all season on top of their own track"
+                    className="w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  />
+                </div>
+              );
+            })}
+
+            <div className="flex items-center gap-2 border-t border-border pt-4">
+              <button
+                type="button"
+                onClick={() => submitVerification(reasonDraft.decisions, reasonDraft.reasons)}
+                disabled={verifying || Object.values(reasonDraft.reasons).some(r => !r.trim())}
+                className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-brand-700 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed"
+              >
+                {verifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                Verify {reasonDraft.decisions.length} grade{reasonDraft.decisions.length === 1 ? '' : 's'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setReasonDraft(null)}
+                disabled={verifying}
+                className="rounded-xl border border-border px-4 py-2.5 text-xs font-bold text-muted-foreground hover:text-foreground"
+              >
+                Cancel
+              </button>
+              {Object.values(reasonDraft.reasons).some(r => !r.trim()) && (
+                <span className="text-[10px] font-semibold text-amber-600">Every change needs a reason.</span>
+              )}
+            </div>
+          </div>
+        )}
+      </Drawer>
+
       <DuplicateWarnModal
         isOpen={duplicateWarnState.isOpen}
         duplicates={duplicateWarnState.duplicates}
@@ -1355,71 +1557,82 @@ export default function MentorCertificatesPage() {
 }
 
 /**
- * The grades waiting on this mentor.
+ * Where this round stands, in the mentor's own terms.
  *
- * A mentor usually runs one certificate cycle at a time, so a single template
- * opens straight into its queue — being made to pick from a list of one is
- * friction, not choice. More than one gets a picker.
+ * A mentor who has finished reviewing and sees no send button will assume
+ * something is broken. It is not — the admin releases each clan once the grades
+ * are checked, and the mentor sends after that. Saying so is this strip's whole
+ * job, and it says it above the table the work happens in.
  */
-function ReviewGradesTab({
-  templates, templateId, onSelectTemplate,
+function ReviewRoundBanner({
+  clans, pending, total, daysLeft, reviewing,
 }: {
-  templates: CertificateTemplate[];
-  templateId: string | null;
-  onSelectTemplate: (id: string) => void;
+  clans: ReviewerClanState[];
+  pending: number;
+  total: number;
+  daysLeft: number | null;
+  reviewing: boolean;
 }) {
-  const searchParams = useSearchParams();
-
-  // Arriving from the notification email lands on the right round directly.
-  useEffect(() => {
-    const fromLink = searchParams.get('verify');
-    if (fromLink) { onSelectTemplate(fromLink); return; }
-    if (!templateId && templates.length === 1) onSelectTemplate(templates[0].id);
-  }, [searchParams, templates, templateId, onSelectTemplate]);
-
-  if (templates.length === 0) {
-    return (
-      <div className="rounded-2xl border border-dashed border-border bg-card p-10 text-center">
-        <Award className="w-10 h-10 text-brand-300 mx-auto mb-3" />
-        <p className="text-sm font-bold text-foreground">No certificate cycles yet</p>
-        <p className="text-xs text-muted-foreground mt-1">
-          Grades to review appear here once an admin runs an AI evaluation.
-        </p>
-      </div>
-    );
-  }
+  const done = pending === 0;
+  const tone = reviewing
+    ? 'border-brand-500/30 bg-brand-500/5'
+    : done
+      ? 'border-emerald-500/25 bg-emerald-500/5'
+      : 'border-amber-500/30 bg-amber-500/5';
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h2 className="text-sm font-bold text-foreground">Review grades before they go out</h2>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          The AI grades from the record. You know the people — confirm each grade, or change it.
-        </p>
+    <div className={`mb-5 space-y-2 rounded-2xl border px-4 py-3 ${tone}`}>
+      <div className="flex flex-wrap items-center gap-2">
+        {reviewing
+          ? <Edit3 className="w-4 h-4 shrink-0 text-brand-500" />
+          : done
+            ? <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500" />
+            : <Lock className="w-4 h-4 shrink-0 text-amber-500" />}
+        <span className="text-xs font-bold text-foreground">
+          {reviewing
+            ? 'Grades unlocked — change any badge below, then verify the ones you have checked'
+            : done
+              ? `All ${total} grades signed off`
+              : `${pending} of ${total} grades need your review`}
+        </span>
+        {!reviewing && !done && (
+          <span className="text-[11px] text-muted-foreground">
+            · badges locked until you open them for review
+          </span>
+        )}
+        {daysLeft !== null && !done && (
+          <span className={`inline-flex items-center gap-1 text-[11px] font-semibold ${
+            daysLeft < 0 ? 'text-red-600' : daysLeft <= 2 ? 'text-amber-600' : 'text-muted-foreground'
+          }`}>
+            <Clock className="w-3 h-3" />
+            {daysLeft < 0
+              ? `${Math.abs(daysLeft)} day${Math.abs(daysLeft) === 1 ? '' : 's'} overdue`
+              : `${daysLeft} day${daysLeft === 1 ? '' : 's'} left`}
+          </span>
+        )}
       </div>
 
-      {templates.length > 1 && (
-        <div className="flex flex-wrap gap-1.5">
-          {templates.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => onSelectTemplate(t.id)}
-              className={`rounded-lg border px-2.5 py-1 text-[11px] font-bold transition-colors ${
-                templateId === t.id
-                  ? 'border-brand-500 bg-brand-500/10 text-brand-700'
-                  : 'border-border bg-background text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {t.name}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {templateId
-        ? <VerificationQueue templateId={templateId} />
-        : <p className="text-xs text-muted-foreground">Pick a certificate cycle to review.</p>}
+      <ul className="space-y-1 pl-6">
+        {clans.map(clan => (
+          <li key={clan.clanId} className="flex flex-wrap items-center gap-2 text-[11px]">
+            <span className="font-semibold text-foreground">{clan.clanName || 'Your clan'}</span>
+            <span className="text-muted-foreground">
+              {clan.pending === 0
+                ? `all ${clan.verified} signed off`
+                : `${clan.pending} of ${clan.pending + clan.verified} outstanding`}
+            </span>
+            {clan.canSend ? (
+              <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/10 px-2 py-0.5 font-bold text-emerald-600">
+                <CheckCircle2 className="w-2.5 h-2.5" /> Approved — you can send
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-lg bg-muted px-2 py-0.5 font-bold text-muted-foreground">
+                <Clock className="w-2.5 h-2.5" /> Waiting on admin approval
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
