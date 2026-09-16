@@ -21,6 +21,7 @@
 const { models } = require('../../src/db');
 const clanService = require('../../src/services/clanService');
 const certificateService = require('../../src/services/certificateService');
+const verification = require('../../src/services/certificateVerificationService');
 const { cleanDb, createAdmin, createMentor, createMentee, createProgram } = require('../helpers/seed');
 
 const ids = (rows) => rows.map((r) => r.id).sort();
@@ -124,7 +125,11 @@ describe('certificate scope for mentors and co-mentors', () => {
       user
     );
 
-    it('lets a mentor issue to their own mentee', async () => {
+    it('lets a mentor issue to their own mentee once the clan is approved', async () => {
+      // Sending is gated on the admin releasing the clan — this suite is about
+      // SCOPE, so the release is set up here rather than being what is tested.
+      // The gate itself has its own suite (clan-approval.test.js).
+      await verification.approveClan(template.id, myClan.id, {}, admin);
       const res = await issue(lead, myMentee.id);
       expect(res.count).toBe(1);
     });
@@ -187,6 +192,13 @@ describe('certificate scope for mentors and co-mentors', () => {
   });
 
   describe('the role shown in the issuance log', () => {
+    // These issue as mentors, so the clan has to be released first — see
+    // clan-approval.test.js for the gate itself. What is under test here is the
+    // ROLE LABEL on the resulting row, not who may send.
+    beforeEach(async () => {
+      await verification.approveClan(template.id, myClan.id, {}, admin);
+    });
+
     // `users.role` records what an account SIGNED UP as and never changes on
     // promotion, so a co-mentor promoted from a mentee account appeared as
     // MENTEE beside the certificates he had just issued.

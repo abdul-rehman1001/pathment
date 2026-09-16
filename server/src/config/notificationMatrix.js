@@ -53,7 +53,9 @@ EXTENSION_HANDLED: 'extension_handled',
   // Certificates are graded by AI and then signed off by the mentor who
   // actually knows the person. These two carry that round.
   CERTIFICATE_VERIFICATION_REQUESTED: 'certificate_verification_requested',
-  CERTIFICATE_VERIFICATION_COMPLETED: 'certificate_verification_completed'
+  CERTIFICATE_VERIFICATION_COMPLETED: 'certificate_verification_completed',
+  // The admin has released a clan: its mentors may now send.
+  CERTIFICATE_CLAN_APPROVED: 'certificate_clan_approved'
 };
 
 // Which role's "hat" a notification concerns, so the bell + list can scope to the
@@ -248,6 +250,14 @@ const NOTIFICATION_MATRIX = {
     type: 'milestone',
     audience: 'mentor',
     preferenceKey: 'certificate_verification_requested',
+    channels: { inApp: true, email: true, chat: false }
+  },
+  // "You may send now." The mentor cannot act before this arrives, so it is
+  // emailed as well as belled.
+  [NOTIFICATION_EVENTS.CERTIFICATE_CLAN_APPROVED]: {
+    type: 'milestone',
+    audience: 'mentor',
+    preferenceKey: 'certificate_clan_approved',
     channels: { inApp: true, email: true, chat: false }
   },
   // "That clan has signed off." Tells the admin a clan is clear to issue.

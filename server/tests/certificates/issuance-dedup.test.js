@@ -68,16 +68,18 @@ describe('certificate issuance is idempotent per mentee', () => {
 
   it('still issues to everyone else in a batch containing a duplicate', async () => {
     await issue(admin, [alice.id]);
-    // The mentor sends the whole clan, not knowing the admin already did Alice.
-    const res = await issue(lead, [alice.id, bob.id]);
+    // A second send covering the whole clan, not knowing Alice already went out.
+    const res = await issue(admin, [alice.id, bob.id]);
     expect(res.count).toBe(1);
     expect(res.skipped).toBe(1);
     expect(await models.CertificateInstance.count()).toBe(2);
   });
 
-  it('lets a mentor issue for their own clan', async () => {
-    const res = await issue(lead, [bob.id]);
-    expect(res.count).toBe(1);
+  it('refuses a mentor whose clan the admin has not released', async () => {
+    // Sending is gated on the admin approving the clan — see
+    // tests/certificates/clan-approval.test.js. This suite issues as the admin
+    // everywhere else precisely because admins are never gated.
+    await expect(issue(lead, [bob.id])).rejects.toThrow(/not been approved for release/i);
   });
 
   it('is enforced by the database, not only by the check', async () => {

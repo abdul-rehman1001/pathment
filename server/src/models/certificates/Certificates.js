@@ -98,5 +98,35 @@ module.exports = (sequelize, DataTypes) => {
     }
   };
 
-  return [CertificateTemplate, CertificateInstance, CertificateVerification];
+  // 4. CertificateClanApproval — the admin releasing a clan for issuing.
+  //
+  // Verified and approved are different facts. "My mentors have finished
+  // checking" is the mentors' statement; "these may now go out" is the
+  // admin's, and only the second one lets a mentor press send.
+  const CertificateClanApproval = sequelize.define('CertificateClanApproval', {
+    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    templateId: { type: DataTypes.UUID, allowNull: false, field: 'template_id' },
+    clanId: { type: DataTypes.UUID, allowNull: false, field: 'clan_id' },
+    approvedBy: { type: DataTypes.UUID, field: 'approved_by' },
+    approvedAt: { type: DataTypes.DATE, defaultValue: DataTypes.NOW, field: 'approved_at' },
+    /** Released while mentors were still reviewing — allowed, but worth seeing. */
+    approvedBeforeVerified: {
+      type: DataTypes.BOOLEAN, defaultValue: false, field: 'approved_before_verified'
+    },
+    note: { type: DataTypes.TEXT }
+  }, { tableName: 'certificate_clan_approvals', underscored: true });
+
+  CertificateClanApproval.associate = function (models) {
+    if (models.CertificateTemplate) {
+      CertificateClanApproval.belongsTo(models.CertificateTemplate, { foreignKey: 'templateId', as: 'template' });
+    }
+    if (models.Clan) {
+      CertificateClanApproval.belongsTo(models.Clan, { foreignKey: 'clanId', as: 'clan' });
+    }
+    if (models.User) {
+      CertificateClanApproval.belongsTo(models.User, { foreignKey: 'approvedBy', as: 'approver' });
+    }
+  };
+
+  return [CertificateTemplate, CertificateInstance, CertificateVerification, CertificateClanApproval];
 };

@@ -146,7 +146,7 @@ class CertificateVerificationService {
     const isAdmin = await authzService.hasAdminAccess(user);
     if (!isAdmin) {
       const clanIds = await this._reviewableClanIds(user, template.programId, clanId);
-      if (!clanIds.length) return { template: this._templateSummary(template), rows: [] };
+      if (!clanIds.length) return { template: this._templateSummary(template), rows: [], clans: [] };
       where.clanId = { [Op.in]: clanIds };
     } else if (clanId) {
       where.clanId = clanId;
@@ -162,7 +162,28 @@ class CertificateVerificationService {
       order: [['createdAt', 'ASC']]
     });
 
-    return { template: this._templateSummary(template), rows: rows.map((r) => this._serialize(r)) };
+    // Whether each clan in this queue has been released, so the mentor's screen
+    // can say "signed off, waiting on the admin" rather than leaving them
+    // wondering why there is no send button.
+    const approved = await this.approvedClanIds(templateId);
+    const clanIdsInQueue = [...new Set(rows.map((r) => r.clanId).filter(Boolean))];
+    const clanState = clanIdsInQueue.map((id) => {
+      const forClan = rows.filter((r) => r.clanId === id);
+      return {
+        clanId: id,
+        clanName: forClan[0]?.clan?.name || null,
+        pending: forClan.filter((r) => r.status !== 'verified').length,
+        verified: forClan.filter((r) => r.status === 'verified').length,
+        approved: approved.has(id),
+        canSend: approved.has(id)
+      };
+    });
+
+    return {
+      template: this._templateSummary(template),
+      rows: rows.map((r) => this._serialize(r)),
+      clans: clanState
+    };
   }
 
   /**
@@ -225,10 +246,13 @@ class CertificateVerificationService {
     const template = await models.CertificateTemplate.findByPk(templateId);
     if (!template) throw new NotFoundError('Certificate template not found');
 
-    const rows = await models.CertificateVerification.findAll({
-      where: { templateId },
-      include: [{ model: models.Clan, as: 'clan', attributes: ['id', 'name'], required: false }]
-    });
+    const [rows, approvedClans] = await Promise.all([
+      models.CertificateVerification.findAll({
+        where: { templateId },
+        include: [{ model: models.Clan, as: 'clan', attributes: ['id', 'name'], required: false }]
+      }),
+      this.approvedClanIds(templateId)
+    ]);
 
     const byClan = new Map();
     for (const row of rows) {
@@ -246,7 +270,14 @@ class CertificateVerificationService {
       if (row.overridden) bucket.overridden += 1;
     }
 
-    const clans = [...byClan.values()].map((c) => ({ ...c, complete: c.pending === 0 }));
+    const clans = [...byClan.values()].map((c) => ({
+      ...c,
+      complete: c.pending === 0,
+      // Released by the admin — this is what lets the clan's mentors send.
+      approved: Boolean(c.clanId && approvedClans.has(c.clanId)),
+      // Verified but not released: the admin's move.
+      readyToApprove: c.pending === 0 && !(c.clanId && approvedClans.has(c.clanId))
+    }));
     const deadline = template.verificationDeadline || null;
 
     return {
@@ -257,8 +288,135 @@ class CertificateVerificationService {
       pending: rows.filter((r) => r.status !== 'verified').length,
       overridden: rows.filter((r) => r.overridden).length,
       allVerified: rows.length > 0 && rows.every((r) => r.status === 'verified'),
+      approvedClans: clans.filter((c) => c.approved).length,
+      awaitingApproval: clans.filter((c) => c.readyToApprove).length,
       clans: clans.sort((a, b) => a.clanName.localeCompare(b.clanName))
     };
+  }
+
+  /**
+   * The admin releases a clan: its certificates may now be sent.
+   *
+   * Separate from verification on purpose. A clan finishing its review says the
+   * grades are right; it does not say the cohort is ready to receive anything —
+   * the admin may be waiting on a ceremony date, a sponsor, or the other clans.
+   * So mentors can review the moment they are asked, and can only SEND once
+   * this has happened.
+   *
+   * An admin may release a clan whose mentors have not finished. They are never
+   * blocked — but it is recorded as such, because "we shipped before anyone
+   * checked" is a thing somebody will need to know later.
+   */
+  async approveClan(templateId, clanId, { note = null } = {}, user) {
+    const template = await models.CertificateTemplate.findByPk(templateId);
+    if (!template) throw new NotFoundError('Certificate template not found');
+    if (!clanId) throw new ValidationError('A clan is required');
+
+    if (!(await authzService.hasAdminAccess(user))) {
+      throw new ForbiddenError('Only an admin can release a clan for issuing');
+    }
+
+    const pending = await models.CertificateVerification.count({
+      where: { templateId, clanId, status: 'pending' }
+    });
+
+    const [approval] = await models.CertificateClanApproval.findOrCreate({
+      where: { templateId, clanId },
+      defaults: {
+        templateId,
+        clanId,
+        approvedBy: user.id,
+        approvedAt: new Date(),
+        approvedBeforeVerified: pending > 0,
+        note
+      }
+    });
+
+    await this._notifyClanApproved(templateId, clanId);
+    return {
+      clanId,
+      approvedAt: approval.approvedAt,
+      approvedBeforeVerified: approval.approvedBeforeVerified,
+      outstandingAtApproval: pending
+    };
+  }
+
+  /** Take a clan's release back — nothing more can be sent until it returns. */
+  async revokeClanApproval(templateId, clanId, user) {
+    if (!(await authzService.hasAdminAccess(user))) {
+      throw new ForbiddenError('Only an admin can withdraw a clan\'s approval');
+    }
+    const removed = await models.CertificateClanApproval.destroy({ where: { templateId, clanId } });
+    return { revoked: removed > 0 };
+  }
+
+  /** The clans an admin has released for this template. */
+  async approvedClanIds(templateId) {
+    const rows = await models.CertificateClanApproval.findAll({
+      where: { templateId }, attributes: ['clanId'], raw: true
+    });
+    return new Set(rows.map((r) => r.clanId));
+  }
+
+  /**
+   * May this user send certificates to these people right now?
+   *
+   * Admins always may. Everyone else may only send into a clan the admin has
+   * released — which is the gate that was missing: a mentor could issue the
+   * moment the round opened, skipping the approval step entirely.
+   *
+   * Returns the mentee ids that must NOT be sent to, so the caller can report
+   * precisely rather than refusing a whole batch.
+   */
+  async blockedRecipients(templateId, menteeIds, user) {
+    if (!Array.isArray(menteeIds) || !menteeIds.length) return [];
+    if (await authzService.hasAdminAccess(user)) return [];
+
+    const template = await models.CertificateTemplate.findByPk(templateId, { attributes: ['programId'] });
+    const clanOf = await this._clanOfMentees(menteeIds, template?.programId || null);
+    const approved = await this.approvedClanIds(templateId);
+
+    return menteeIds.filter((menteeId) => {
+      const clanId = clanOf.get(menteeId);
+      // A mentee with no clan cannot be released by clan, so only an admin can
+      // send to them. Refusing here is the safe reading.
+      return !clanId || !approved.has(clanId);
+    });
+  }
+
+  /** Tell a clan's mentors their certificates are cleared to send. */
+  async _notifyClanApproved(templateId, clanId) {
+    const mentors = await models.ClanMembership.findAll({
+      where: {
+        clanId,
+        role: { [Op.in]: CertificateVerificationService.MENTOR_ROLES },
+        status: 'active'
+      },
+      attributes: ['userId'],
+      raw: true
+    });
+    if (!mentors.length) return;
+
+    const [template, clan] = await Promise.all([
+      models.CertificateTemplate.findByPk(templateId, { attributes: ['name'] }),
+      models.Clan.findByPk(clanId, { attributes: ['name'] })
+    ]);
+
+    try {
+      await notificationOrchestrator.dispatch({
+        eventKey: NOTIFICATION_EVENTS.CERTIFICATE_CLAN_APPROVED,
+        recipients: [...new Set(mentors.map((m) => m.userId))].map((userId) => ({ userId })),
+        payload: {
+          title: 'Certificates approved for your clan',
+          message: `"${template?.name}" is approved for ${clan?.name || 'your clan'}. You can send the certificates to your mentees now.`,
+          actionUrl: '/mentor/certificates',
+          actionLabel: 'Send certificates',
+          relatedEntityType: 'CertificateTemplate'
+        }
+      });
+    } catch (err) {
+      logger.warn(`[certificateVerification] approval notification failed: ${err.message}`);
+    }
   }
 
   /**

@@ -172,6 +172,22 @@ router.post(
   certificateController.sendToClans
 );
 
+// Release a clan for issuing. Verified says the grades are right; approved
+// says they may go out — and only the second lets a mentor press send.
+router.post(
+  '/templates/:id/clans/:clanId/approve',
+  authenticate,
+  authorize(['admin']),
+  certificateController.approveClan
+);
+
+router.delete(
+  '/templates/:id/clans/:clanId/approve',
+  authenticate,
+  authorize(['admin']),
+  certificateController.revokeClanApproval
+);
+
 // Re-open / re-notify the round, optionally moving the deadline.
 router.post(
   '/templates/:id/verifications-remind',

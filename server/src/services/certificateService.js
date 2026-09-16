@@ -1264,6 +1264,19 @@ class CertificateService {
       // review round exists precisely so a human's correction is what gets
       // issued — an admin clicking Issue from a stale screen must not quietly
       // revert it to the AI's grade.
+      // A mentor may only SEND into a clan the admin has released. Verifying and
+      // sending are different steps: mentors check the grades as soon as they
+      // are asked, but the certificates go out when the admin says the cohort
+      // is ready. Admins are never gated.
+      const blocked = await certificateVerificationService.blockedRecipients(templateId, requested, user);
+      if (blocked.length) {
+        throw new ForbiddenError(
+          blocked.length === requested.length
+            ? 'These certificates have not been approved for release yet. An admin approves each clan once its grades are verified.'
+            : `${blocked.length} of these mentees are in a clan that has not been approved for release yet.`
+        );
+      }
+
       const verifiedTiers = await certificateVerificationService.resolveTiers(templateId, requested);
 
       // Nobody gets the same certificate twice.

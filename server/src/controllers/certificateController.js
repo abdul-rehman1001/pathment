@@ -171,6 +171,21 @@ const remindReviewers = catchAsync(async (req, res) => {
   res.status(200).json(successResponse(`Reminded ${result.notified} mentor(s)`, result));
 });
 
+
+const approveClan = catchAsync(async (req, res) => {
+  const result = await certificateVerificationService.approveClan(
+    req.params.id, req.params.clanId, { note: req.body?.note }, req.user
+  );
+  res.status(200).json(successResponse('Clan approved — its mentors can now send', result));
+});
+
+const revokeClanApproval = catchAsync(async (req, res) => {
+  const result = await certificateVerificationService.revokeClanApproval(
+    req.params.id, req.params.clanId, req.user
+  );
+  res.status(200).json(successResponse('Clan approval withdrawn', result));
+});
+
 module.exports = {
   createTemplate,
   listTemplates,
@@ -195,5 +210,7 @@ module.exports = {
   verifyMany,
   verificationSummary,
   remindReviewers,
-  sendToClans
+  sendToClans,
+  approveClan,
+  revokeClanApproval
 };

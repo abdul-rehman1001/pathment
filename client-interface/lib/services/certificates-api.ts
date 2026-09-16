@@ -198,6 +198,22 @@ export interface VerificationClanStatus {
   pending: number;
   overridden: number;
   complete: boolean;
+  /** Released by the admin — this is what lets the clan's mentors send. */
+  approved: boolean;
+  /** Signed off but not released: the admin's move. */
+  readyToApprove: boolean;
+}
+
+/** A clan's state inside one mentor's review queue. */
+export interface ReviewerClanState {
+  clanId: string;
+  clanName: string | null;
+  pending: number;
+  verified: number;
+  /** The admin has released this clan. */
+  approved: boolean;
+  /** Whether this mentor may send certificates for it yet. */
+  canSend: boolean;
 }
 
 export interface VerificationSummary {
@@ -209,6 +225,10 @@ export interface VerificationSummary {
   pending: number;
   overridden: number;
   allVerified: boolean;
+  /** Clans the admin has released for issuing. */
+  approvedClans: number;
+  /** Verified but not yet released — waiting on the admin. */
+  awaitingApproval: number;
   clans: VerificationClanStatus[];
 }
 
@@ -224,6 +244,7 @@ export const certificatesApi = {
       data: {
         template: { id: string; name: string; criteria: CertificateTemplate['criteria']; verificationDeadline: string | null };
         rows: CertificateVerification[];
+        clans: ReviewerClanState[];
       };
     }>(`/certificates/templates/${templateId}/verifications${qs}`);
   },
@@ -241,6 +262,21 @@ export const certificatesApi = {
   verifyMany: (templateId: string, decisions: Array<{ menteeId: string; finalTier?: string; reason?: string }>) =>
     apiClient.post<{ success: boolean; message: string; data: { verified: number } }>(
       `/certificates/templates/${templateId}/verifications/bulk`, { decisions }, { timeout: 120000 }
+    ),
+
+  /**
+   * Release a clan for issuing. Verification says the grades are right;
+   * approval says they may go out — and only approval lets a mentor send.
+   */
+  approveClan: (templateId: string, clanId: string, note?: string) =>
+    apiClient.post<{ success: boolean; message: string; data: { approvedBeforeVerified: boolean; outstandingAtApproval: number } }>(
+      `/certificates/templates/${templateId}/clans/${clanId}/approve`, { note }
+    ),
+
+  /** Withdraw a clan's release — nothing more can be sent for it. */
+  revokeClanApproval: (templateId: string, clanId: string) =>
+    apiClient.delete<{ success: boolean; message: string }>(
+      `/certificates/templates/${templateId}/clans/${clanId}/approve`
     ),
 
   /** Per-clan progress, for the admin banner. */

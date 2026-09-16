@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { AlertTriangle, ArrowRight, Award, Check, CheckCircle2, Clock, Loader2, Undo2 } from 'lucide-react';
-import { certificatesApi, type CertificateVerification } from '@/lib/services/certificates-api';
+import { AlertTriangle, ArrowRight, Award, Check, CheckCircle2, Clock, Loader2, Send, Undo2 } from 'lucide-react';
+import { certificatesApi, type CertificateVerification, type ReviewerClanState } from '@/lib/services/certificates-api';
 import { Avatar } from '@/components/shared/Avatar';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
+import { useConfirm } from '@/lib/context/ConfirmContext';
 
 interface VerificationQueueProps {
   templateId: string;
@@ -34,6 +35,7 @@ export function VerificationQueue({ templateId, clanId, onChanged }: Verificatio
   const [rows, setRows] = useState<CertificateVerification[]>([]);
   const [tiers, setTiers] = useState<TierOption[]>([]);
   const [deadline, setDeadline] = useState<string | null>(null);
+  const [clans, setClans] = useState<ReviewerClanState[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyMenteeId, setBusyMenteeId] = useState<string | null>(null);
   const [confirmingAll, setConfirmingAll] = useState(false);
@@ -48,6 +50,7 @@ export function VerificationQueue({ templateId, clanId, onChanged }: Verificatio
       if (res.success && res.data) {
         setRows(res.data.rows || []);
         setDeadline(res.data.template?.verificationDeadline ?? null);
+        setClans(res.data.clans || []);
         setTiers((res.data.template?.criteria || []).map((c) => ({ id: c.id, name: c.name })));
       }
     } catch (err) {
@@ -130,6 +133,11 @@ export function VerificationQueue({ templateId, clanId, onChanged }: Verificatio
 
   return (
     <div className="space-y-4">
+      {/* ── Where each clan stands, and whether sending is unlocked ──────── */}
+      {clans.map((clan) => (
+        <ClanStateNotice key={clan.clanId} clan={clan} templateId={templateId} onSent={load} />
+      ))}
+
       {/* ── What is outstanding, and by when ─────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card px-4 py-3">
         <div className="flex items-center gap-4 text-xs">
@@ -187,6 +195,88 @@ export function VerificationQueue({ templateId, clanId, onChanged }: Verificatio
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+
+/**
+ * Where a clan stands, in the mentor's own terms.
+ *
+ * A mentor who has finished reviewing and sees no send button will assume
+ * something is broken. It is not — the admin releases each clan once the grades
+ * are checked, and the mentor sends after that. Saying so is the whole job of
+ * this strip.
+ */
+function ClanStateNotice({
+  clan, templateId, onSent,
+}: {
+  clan: ReviewerClanState;
+  templateId: string;
+  onSent: () => void;
+}) {
+  const [sending, setSending] = useState(false);
+
+  const sendToClan = async () => {
+    try {
+      setSending(true);
+      // Re-read the queue rather than trusting what is on screen: the roster
+      // may be minutes old, and the server skips anyone already sent anyway, so
+      // pressing this twice is harmless.
+      const queue = await certificatesApi.listVerifications(templateId, clan.clanId);
+      const recipients = (queue.data?.rows || [])
+        .filter((row) => row.status === 'verified' && row.finalTier)
+        .map((row) => ({ menteeId: row.menteeId, tier: row.finalTier as string }));
+
+      if (!recipients.length) {
+        toast.info('No verified grades to send yet.');
+        return;
+      }
+      const issued = await certificatesApi.issueCertificates({ templateId, recipients });
+      toast.success(issued.message || `Sent ${recipients.length} certificate(s)`);
+      onSent();
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, 'Could not send those certificates'));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (!clan.approved) {
+    const done = clan.pending === 0;
+    return (
+      <div className={`flex flex-wrap items-center gap-2 rounded-2xl border px-4 py-3 ${
+        done ? 'border-brand-500/30 bg-brand-500/5' : 'border-border bg-card'
+      }`}>
+        <Clock className={`h-4 w-4 shrink-0 ${done ? 'text-brand-500' : 'text-muted-foreground'}`} />
+        <span className="text-xs font-bold text-foreground">
+          {clan.clanName || 'Your clan'}
+        </span>
+        <span className="text-[11px] text-muted-foreground">
+          {done
+            ? 'All grades signed off — waiting for an admin to approve release. You can send once they do.'
+            : `${clan.pending} grade${clan.pending === 1 ? '' : 's'} still to review. Sending unlocks after an admin approves.`}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
+      <span className="flex items-center gap-2">
+        <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+        <span className="text-xs font-bold text-foreground">{clan.clanName || 'Your clan'} is approved</span>
+        <span className="text-[11px] text-muted-foreground">You can send these certificates now.</span>
+      </span>
+      <button
+        type="button"
+        onClick={sendToClan}
+        disabled={sending}
+        className="inline-flex items-center gap-1.5 rounded-xl bg-brand-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-brand-700 disabled:opacity-50"
+      >
+        {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+        Send certificates
+      </button>
     </div>
   );
 }
@@ -404,6 +494,39 @@ export function VerificationBanner({
 }) {
   const [summary, setSummary] = useState<Awaited<ReturnType<typeof certificatesApi.getVerificationSummary>>['data'] | null>(null);
   const [reminding, setReminding] = useState(false);
+  const [approvingClanId, setApprovingClanId] = useState<string | null>(null);
+  const confirm = useConfirm();
+
+  const reload = useCallback(async () => {
+    const res = await certificatesApi.getVerificationSummary(templateId);
+    if (res.success) setSummary(res.data);
+  }, [templateId]);
+
+  /**
+   * Release a clan. `verified` is false when the admin is approving before the
+   * mentors have finished — permitted, but worth confirming so it is a choice
+   * rather than a misread of the row.
+   */
+  const approve = async (clanId: string, verified: boolean) => {
+    if (!verified) {
+      const ok = await confirm({
+        title: 'Approve before the review is finished?',
+        description: 'This clan\'s mentors have not signed off every grade yet. Approving now lets them send the certificates as they stand.',
+        confirmLabel: 'Approve anyway',
+      });
+      if (!ok) return;
+    }
+    try {
+      setApprovingClanId(clanId);
+      const res = await certificatesApi.approveClan(templateId, clanId);
+      toast.success(res.message || 'Clan approved');
+      await reload();
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, 'Could not approve that clan'));
+    } finally {
+      setApprovingClanId(null);
+    }
+  };
 
   useEffect(() => {
     let alive = true;
@@ -427,33 +550,31 @@ export function VerificationBanner({
     }
   };
 
-  if (summary.allVerified) {
-    return (
-      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
-        <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-        <span className="text-xs font-bold text-foreground">
-          All {summary.total} grades verified by mentors
-        </span>
-        {summary.overridden > 0 && (
-          <span className="text-[11px] text-muted-foreground">
-            · {summary.overridden} changed from the AI&apos;s assignment
-          </span>
-        )}
-      </div>
-    );
-  }
-
   const outstanding = summary.clans.filter((c) => !c.complete);
+  // Everything checked AND everything released is the only truly finished
+  // state. "All verified" on its own still needs the admin to act, so it must
+  // not look like a green light — that is what hid the approve buttons at
+  // exactly the moment they were wanted.
+  const settled = summary.allVerified && summary.awaitingApproval === 0;
 
   return (
-    <div className="space-y-2 rounded-2xl border border-amber-500/30 bg-amber-500/5 px-4 py-3">
+    <div className={`space-y-2 rounded-2xl border px-4 py-3 ${
+      settled ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-amber-500/30 bg-amber-500/5'
+    }`}>
       <div className="flex flex-wrap items-center gap-2">
-        <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+        {settled
+          ? <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500" />
+          : <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500" />}
         <span className="text-xs font-bold text-foreground">
-          {outstanding.length} of {summary.clans.length} clan{summary.clans.length === 1 ? '' : 's'} have not verified yet
+          {settled
+            ? `All ${summary.total} grades verified and approved`
+            : summary.awaitingApproval > 0 && outstanding.length === 0
+              ? `${summary.awaitingApproval} clan${summary.awaitingApproval === 1 ? '' : 's'} verified — approve to let mentors send`
+              : `${outstanding.length} of ${summary.clans.length} clan${summary.clans.length === 1 ? '' : 's'} have not verified yet`}
         </span>
         <span className="text-[11px] text-muted-foreground">
           · {summary.verified} of {summary.total} grades signed off
+          {summary.overridden > 0 && ` · ${summary.overridden} changed`}
         </span>
         {summary.overdue && (
           <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-red-600">
@@ -462,11 +583,43 @@ export function VerificationBanner({
         )}
       </div>
 
-      <ul className="space-y-0.5 pl-6">
-        {outstanding.map((clan) => (
-          <li key={clan.clanId || clan.clanName} className="text-[11px] text-muted-foreground">
+      <ul className="space-y-1 pl-6">
+        {summary.clans.map((clan) => (
+          <li key={clan.clanId || clan.clanName} className="flex flex-wrap items-center gap-2 text-[11px]">
             <span className="font-semibold text-foreground">{clan.clanName}</span>
-            {' '}— {clan.pending} of {clan.total} outstanding
+            <span className="text-muted-foreground">
+              {clan.complete
+                ? `all ${clan.total} signed off`
+                : `${clan.pending} of ${clan.total} outstanding`}
+              {clan.overridden > 0 && ` · ${clan.overridden} changed`}
+            </span>
+
+            {/* Approving is what lets that clan's mentors send. Offered the
+                moment a clan is signed off, and still offered — labelled
+                differently — while it is not, because an admin is never
+                blocked, only informed. */}
+            {clan.clanId && !clan.approved && (
+              <button
+                type="button"
+                onClick={() => approve(clan.clanId!, clan.complete)}
+                disabled={approvingClanId === clan.clanId}
+                className={`inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[10px] font-bold transition-colors ${
+                  clan.readyToApprove
+                    ? 'border-brand-500/40 bg-brand-500/10 text-brand-700 hover:bg-brand-500/20'
+                    : 'border-border bg-card text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {approvingClanId === clan.clanId
+                  ? <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                  : <CheckCircle2 className="h-2.5 w-2.5" />}
+                {clan.readyToApprove ? 'Approve & unlock sending' : 'Approve early'}
+              </button>
+            )}
+            {clan.approved && (
+              <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600">
+                <CheckCircle2 className="h-2.5 w-2.5" /> Approved
+              </span>
+            )}
           </li>
         ))}
       </ul>
