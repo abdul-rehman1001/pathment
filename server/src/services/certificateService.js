@@ -332,7 +332,20 @@ class CertificateService {
    * admin sees everyone, and a mentee can open their own.
    */
   async getMenteeEvidence(templateId, menteeId, user) {
-    const template = await models.CertificateTemplate.findByPk(templateId);
+    const startedAt = Date.now();
+
+    /**
+     * Only the three columns this needs.
+     *
+     * `findByPk` pulled the whole row, and `ai_evaluation` holds EVERY mentee's
+     * result for the cycle — on a 600-person fellowship that is megabytes of
+     * JSON parsed on every open of one person's drawer, which is what pushed
+     * this past the client's 30s timeout. `config` (the full layer layout) came
+     * along for the ride too, and neither is read here.
+     */
+    const template = await models.CertificateTemplate.findByPk(templateId, {
+      attributes: ['id', 'programId', 'criteria', 'verificationDeadline']
+    });
     if (!template) throw new NotFoundError('Certificate template not found');
 
     await this.assertCanActOnMentee(user, menteeId, 'Access denied to this mentee');
@@ -358,8 +371,21 @@ class CertificateService {
     const [metrics] = await aggregateMenteeData([menteeId], clanId);
     const { maxEligibleTier, hardChecks } = preCheckHardConstraints(metrics, criteria);
 
-    const aiResults = Array.isArray(template.aiEvaluation?.results) ? template.aiEvaluation.results : [];
-    const ai = aiResults.find((r) => (r.mentee_id || r.id) === menteeId) ?? null;
+    // Pull THIS mentee's AI result out of the array in the database rather than
+    // shipping the whole array back to pick one from. Guarded on the element
+    // actually being an array, since a template that has never been evaluated
+    // stores nothing there and jsonb_array_elements would reject it.
+    const [aiRows] = await sequelize.query(
+      `SELECT elem AS result
+         FROM certificate_templates t
+         CROSS JOIN LATERAL jsonb_array_elements(t.ai_evaluation -> 'results') AS elem
+        WHERE t.id = :templateId
+          AND jsonb_typeof(t.ai_evaluation -> 'results') = 'array'
+          AND COALESCE(elem ->> 'mentee_id', elem ->> 'id') = :menteeId
+        LIMIT 1`,
+      { replacements: { templateId, menteeId } }
+    );
+    const ai = aiRows[0]?.result ?? null;
 
     const verification = await models.CertificateVerification.findOne({
       where: { templateId, menteeId },
@@ -370,6 +396,17 @@ class CertificateService {
       where: { templateId, menteeId },
       attributes: ['id', 'tier', 'certificateNumber', 'createdAt']
     });
+
+    const elapsed = Date.now() - startedAt;
+    if (elapsed > 2000) {
+      // Loud only when it is actually slow. The client gives up at 30s, so a
+      // request drifting towards that should leave a trace naming the mentee
+      // and the cycle rather than a silent timeout on somebody's screen.
+      logger.warn(
+        `[certificateService] getMenteeEvidence took ${elapsed}ms ` +
+        `(template=${templateId} mentee=${menteeId})`
+      );
+    }
 
     return {
       mentee: {

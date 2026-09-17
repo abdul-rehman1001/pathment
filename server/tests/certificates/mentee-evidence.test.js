@@ -47,7 +47,19 @@ describe('certificate evidence for one mentee', () => {
     });
   };
 
-  beforeEach(async () => {
+  /**
+   * The scaffolding is built ONCE.
+   *
+   * `cleanDb()` truncates ~25 tables with CASCADE, and paying that before each
+   * of eleven tests made this file heavy enough to slow the suite that follows
+   * it: on a loaded run the next file's own first `cleanDb()` crossed the 30s
+   * testTimeout and failed with no assertion — the victim moving between runs,
+   * which is what an exhausted environment looks like rather than a bug.
+   *
+   * Nothing here mutates the people or the clans, so only the per-test rows —
+   * the tasks and the review round — are cleared between tests.
+   */
+  beforeAll(async () => {
     await cleanDb();
     await models.CertificateTemplate.destroy({ where: {}, force: true });
 
@@ -85,6 +97,19 @@ describe('certificate evidence for one mentee', () => {
       },
       admin.id
     );
+  });
+
+  afterAll(async () => {
+    await models.CertificateTemplate.destroy({ where: {}, force: true });
+    await cleanDb();
+  });
+
+  beforeEach(async () => {
+    await models.CertificateTemplate.update({ aiEvaluation: null }, { where: { id: template.id } });
+    await models.CertificateVerification.destroy({ where: { templateId: template.id }, force: true });
+    await models.AssignedTask.destroy({ where: { menteeId: mentee.id }, force: true });
+    await models.RoadmapTask.destroy({ where: { roadmapId: roadmap.id }, force: true });
+    await models.RoadmapTask.destroy({ where: { roadmapId: null }, force: true });
   });
 
   describe('completion rate', () => {
@@ -185,6 +210,54 @@ describe('certificate evidence for one mentee', () => {
       await expect(
         verification.verify(template.id, mentee.id, { finalTier: 'gold' }, lead)
       ).rejects.toThrow(/why/i);
+    });
+  });
+
+  describe('the AI result lookup', () => {
+    /**
+     * The result is pulled out of the JSONB array in the database, not by
+     * shipping every mentee's result back and filtering in JS — on a 600-person
+     * cycle that was megabytes per drawer open and timed the request out. These
+     * pin the SQL: it has to find the right person, tolerate a template that
+     * has never been evaluated, and accept both key spellings the evaluator has
+     * used for the id.
+     */
+    it('finds this mentee among many results', async () => {
+      await models.CertificateTemplate.update(
+        { aiEvaluation: { ranAt: new Date().toISOString(), results: [
+          { mentee_id: otherMentee.id, certificate_tier: 'gold', match_score: 99, reasoning: 'not this one' },
+          { mentee_id: mentee.id, certificate_tier: 'participation', match_score: 71, reasoning: 'steady work' }
+        ] } },
+        { where: { id: template.id } }
+      );
+
+      const ev = await certificateService.getMenteeEvidence(template.id, mentee.id, admin);
+
+      expect(ev.ai).toMatchObject({ certificate_tier: 'participation', reasoning: 'steady work' });
+    });
+
+    it('accepts the older `id` spelling for the mentee key', async () => {
+      await models.CertificateTemplate.update(
+        { aiEvaluation: { results: [{ id: mentee.id, certificate_tier: 'gold', reasoning: 'legacy shape' }] } },
+        { where: { id: template.id } }
+      );
+
+      const ev = await certificateService.getMenteeEvidence(template.id, mentee.id, admin);
+      expect(ev.ai.reasoning).toBe('legacy shape');
+    });
+
+    it('returns null rather than throwing when nothing has been evaluated', async () => {
+      await models.CertificateTemplate.update({ aiEvaluation: null }, { where: { id: template.id } });
+      const ev = await certificateService.getMenteeEvidence(template.id, mentee.id, admin);
+      expect(ev.ai).toBeNull();
+    });
+
+    it('survives a results value that is not an array', async () => {
+      await models.CertificateTemplate.update(
+        { aiEvaluation: { results: 'broken' } }, { where: { id: template.id } }
+      );
+      const ev = await certificateService.getMenteeEvidence(template.id, mentee.id, admin);
+      expect(ev.ai).toBeNull();
     });
   });
 
