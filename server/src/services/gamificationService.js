@@ -9,7 +9,8 @@ const { ensureMenteeProfile } = require('./menteeProfile');
 const {
   currentStreak,
   longestStreak,
-  milestonesCrossed,
+  milestonesReached,
+  milestoneFromReason,
   STREAK_BONUSES
 } = require('./streak');
 
@@ -399,7 +400,6 @@ class GamificationService {
     if (!menteeProfile) return;
 
     const { current, longest, todayKey } = await this.readStreak(userId);
-    const previous = Number(menteeProfile.currentStreakDays || 0);
 
     await menteeProfile.update({
       currentStreakDays: current,
@@ -410,7 +410,16 @@ class GamificationService {
       lastActivityDate: todayKey
     });
 
-    for (const milestone of milestonesCrossed(previous, current)) {
+    // What this run qualifies for, minus what the ledger says has already been
+    // paid. Deliberately NOT derived from `previous`: that counter goes to zero
+    // whenever a streak breaks or a recount lands before the day's first log,
+    // and the old `milestonesCrossed(previous, current)` then re-paid every
+    // milestone under the streak. It happened repeatedly in production —
+    // 8,250 points across 11 mentees, one of them paid the seven-day bonus
+    // eight times — and it inflated the leaderboard past anything real.
+    const alreadyPaid = await this.paidStreakMilestones(userId);
+    for (const milestone of milestonesReached(current)) {
+      if (alreadyPaid.has(milestone)) continue;
       await this.awardPoints(
         userId,
         STREAK_BONUSES[milestone],
@@ -421,6 +430,29 @@ class GamificationService {
     }
 
     await this.checkAndAwardBadges(userId);
+  }
+
+  /**
+   * The streak milestones this mentee has ever been paid for.
+   *
+   * The ledger is the record of what was paid, so it is the thing to ask. A
+   * milestone is a one-time achievement: cross seven days once and the bonus is
+   * yours, and rebuilding a streak after a break does not re-open it. Anything
+   * else needs a notion of "which run" that nothing in the data supports, and
+   * the version that tried to infer it from a counter is what overpaid.
+   */
+  async paidStreakMilestones(userId) {
+    const rows = await models.PointsHistory.findAll({
+      where: { userId, sourceType: 'streak_bonus' },
+      attributes: ['reason'],
+      raw: true
+    });
+    const paid = new Set();
+    for (const row of rows) {
+      const milestone = milestoneFromReason(row.reason);
+      if (milestone) paid.add(milestone);
+    }
+    return paid;
   }
 
   /**
@@ -526,11 +558,18 @@ class GamificationService {
       }
     });
 
-    if (!userLeaderboardRank) {
+    /**
+     * Somebody who has earned nothing is not in the running, and saying they
+     * are 551st is worse than saying nothing: it counts the 550 people ahead
+     * of them while ignoring the 502 level with them on zero. The screen
+     * already renders a null rank as "Unranked", which is the truth.
+     */
+    const earnedPoints = Number(menteeProfile.totalPoints || 0);
+    if (earnedPoints <= 0) {
+      userLeaderboardRank = null;
+    } else if (!userLeaderboardRank) {
       const higherRankedCount = await models.MenteeProfile.count({
-        where: {
-          totalPoints: { [Sequelize.Op.gt]: Number(menteeProfile.totalPoints || 0) }
-        }
+        where: { totalPoints: { [Sequelize.Op.gt]: earnedPoints } }
       });
 
       userLeaderboardRank = { rank: higherRankedCount + 1 };
