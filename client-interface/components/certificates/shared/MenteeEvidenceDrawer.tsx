@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
-  AlertTriangle, Award, CheckCircle2, Clock, Loader2, Sparkles, XCircle,
+  AlertTriangle, Award, CheckCircle2, Clock, Loader2, RefreshCw, Sparkles, XCircle,
 } from 'lucide-react';
 import { Drawer } from '@/components/shared/Drawer';
 import { Avatar } from '@/components/shared/Avatar';
@@ -46,29 +46,46 @@ export function MenteeEvidenceDrawer({
 }: MenteeEvidenceDrawerProps) {
   const [evidence, setEvidence] = useState<MenteeEvidence | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [draftTier, setDraftTier] = useState('');
   const [reason, setReason] = useState('');
 
+  /**
+   * Deps are the two ids and nothing else — deliberately.
+   *
+   * `onClose` used to be in here. Both call sites pass an inline arrow, so it
+   * is a new function on every render: `load` changed identity every render,
+   * the effect below re-fired, the fetch set state, and that rendered again.
+   * The drawer hammered the endpoint in a loop until the request timed out and
+   * sat blank. A callback prop must never gate a fetch.
+   */
   const load = useCallback(async () => {
     if (!templateId || !menteeId) { setEvidence(null); return; }
     try {
       setLoading(true);
+      setError(null);
       const res = await certificatesApi.getMenteeEvidence(templateId, menteeId);
       if (res.success && res.data) {
         setEvidence(res.data);
         setDraftTier(res.data.verification?.finalTier || res.data.ai?.certificate_tier || '');
         setReason(res.data.verification?.overrideReason || '');
+      } else {
+        setError('That record came back empty.');
       }
     } catch (err) {
-      toast.error(extractApiErrorMessage(err, 'Could not load this mentee’s record'));
-      onClose();
+      // Closing the drawer on failure left the person staring at the roster
+      // with no idea what happened. Say what went wrong, here, with a retry.
+      setError(extractApiErrorMessage(err, 'Could not load this record.'));
     } finally {
       setLoading(false);
     }
-  }, [templateId, menteeId, onClose]);
+  }, [templateId, menteeId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (!menteeId) { setEvidence(null); setError(null); return; }
+    load();
+  }, [menteeId, load]);
 
   const tierName = (id: string | null | undefined) =>
     evidence?.criteria.find((c) => c.id === id)?.name || id || '—';
@@ -120,11 +137,26 @@ export function MenteeEvidenceDrawer({
       subtitle="Why this certificate"
       width="md"
     >
-      {loading || !evidence ? (
+      {loading ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="w-6 h-6 animate-spin text-brand-500" />
         </div>
-      ) : (
+      ) : error ? (
+        <div className="space-y-3 rounded-2xl border border-red-500/30 bg-red-500/5 p-5">
+          <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-red-500" />
+            Could not load this record
+          </p>
+          <p className="text-xs text-muted-foreground leading-relaxed">{error}</p>
+          <button
+            type="button"
+            onClick={() => load()}
+            className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3.5 py-2 text-sm font-medium text-foreground hover:border-brand-500/40"
+          >
+            <RefreshCw className="w-3.5 h-3.5" /> Try again
+          </button>
+        </div>
+      ) : !evidence ? null : (
         <div className="space-y-5 pt-1">
           {/* ── Who ────────────────────────────────────────────────────── */}
           <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3.5">

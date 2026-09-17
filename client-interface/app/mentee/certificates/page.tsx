@@ -5,10 +5,10 @@ import { useAuth } from '@/lib/context/AuthContext';
 import { toast } from 'sonner';
 import {
   Award, Download, Linkedin,
-  Loader2, Calendar, ShieldCheck, X, Eye, BadgeCheck
+  Loader2, Calendar, ShieldCheck, X, Eye, BadgeCheck, Info
 } from 'lucide-react';
 import { certificatesApi, CertificateInstance } from '@/lib/services/certificates-api';
-import { CertificatePreview, type CertificateRenderData } from '@/components/certificates/shared';
+import { CertificatePreview, MenteeEvidenceDrawer, type CertificateRenderData } from '@/components/certificates/shared';
 import { downloadCertificateAsPng } from '@/lib/utils/certificate-renderer';
 
 // ==================== HELPERS ====================
@@ -52,6 +52,13 @@ export default function MenteeCertificatesPage() {
   const [certificates, setCertificates] = useState<CertificateInstance[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [previewCert,  setPreviewCert]  = useState<CertificateInstance | null>(null);
+  /**
+   * Which certificate the mentee is asking "why did I get this?" about.
+   * Read-only for them: they see the same evidence their mentor reviewed —
+   * the numbers, how those measured against the tier, and any change a mentor
+   * made with the reason they gave — but they cannot re-grade themselves.
+   */
+  const [whyCert, setWhyCert] = useState<CertificateInstance | null>(null);
   const [downloading,  setDownloading]  = useState<string | null>(null);
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
@@ -208,6 +215,14 @@ export default function MenteeCertificatesPage() {
                     </button>
 
                     <button
+                      onClick={e => { e.stopPropagation(); setWhyCert(cert); }}
+                      className="p-2 bg-muted hover:bg-muted/70 text-foreground border border-border rounded-xl transition-colors flex items-center justify-center"
+                      title="Why did I get this?"
+                    >
+                      <Info className="w-3.5 h-3.5" />
+                    </button>
+
+                    <button
                       onClick={() => handleDownload(cert)}
                       disabled={isDownloading}
                       className="p-2 bg-muted hover:bg-muted/70 text-foreground border border-border rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-0.5 disabled:opacity-60"
@@ -236,6 +251,14 @@ export default function MenteeCertificatesPage() {
           })}
         </div>
       )}
+
+      {/* The case behind one certificate, for the person who earned it. */}
+      <MenteeEvidenceDrawer
+        templateId={whyCert?.templateId ?? null}
+        menteeId={whyCert?.menteeId ?? null}
+        onClose={() => setWhyCert(null)}
+        canDecide={false}
+      />
 
       {/* Full-screen preview modal */}
       {previewCert && (
