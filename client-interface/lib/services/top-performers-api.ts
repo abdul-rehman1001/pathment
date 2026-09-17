@@ -6,20 +6,39 @@ export interface PerformanceRankRow {
   mentee: { id: string; firstName: string; lastName: string; email: string; profilePictureUrl?: string | null } | null;
   clanId: string | null;
   clanName: string | null;
-  rank: number;
+  /** Null when the score has too little evidence to place them. */
+  rank: number | null;
   score: number;
+  band?: string;
+  /** Why they hold no rank — shown so the absence is explained, not hidden. */
+  notRankedBecause?: string | null;
   signals: PerformanceSignals;
+}
+
+/**
+ * Both halves of the board.
+ *
+ * The unranked are returned deliberately: the score needs three reviewed tasks
+ * and 20% of the programme behind somebody before it will place them, and a
+ * mentor must still be able to put forward the person it cannot yet see.
+ */
+export interface PerformanceBoard {
+  ranked: PerformanceRankRow[];
+  notRanked: PerformanceRankRow[];
+  rankedCount: number;
 }
 
 export interface PerformanceSignals {
   tasksCompleted: number;
-  tasksTotal: number;
   completionRate: number;
   onTimeRate: number;
   avgRating: number | null;
-  openBlockers: number;
-  blockersResolved: number;
+  effortHours?: number | null;
+  activeWeeks?: number | null;
   attendancePct: number | null;
+  openBlockers?: number;
+  blockersResolved?: number;
+  tasksTotal?: number;
 }
 
 export interface PerformanceNomination {
@@ -51,7 +70,7 @@ export const topPerformersApi = {
     if (opts.programId) qs.set('programId', opts.programId);
     const clanId = opts.clanId;
     if (clanId) qs.set('clanId', clanId);
-    return apiClient.get<{ success: boolean; data: PerformanceRankRow[] }>(
+    return apiClient.get<{ success: boolean; data: PerformanceBoard }>(
       `/top-performers/ranking?${qs.toString()}`
     );
   },
