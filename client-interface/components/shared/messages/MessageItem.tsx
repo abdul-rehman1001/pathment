@@ -122,7 +122,7 @@ export default function MessageItem({
           className={`px-4 py-2.5 shadow-xs ${bubbleCornersClass} ${
             isMine
               ? 'bg-brand-600 text-white shadow-brand-600/10'
-              : 'bg-card border border-slate-200/90 dark:border-slate-800 text-slate-800 dark:text-slate-100'
+              : 'bg-card border border-border text-foreground'
           } ${message.id.startsWith('temp-') ? 'opacity-70 animate-pulse' : ''}`}
         >
           {startsRun && !isMine && (
@@ -134,7 +134,7 @@ export default function MessageItem({
           <FormattedMessageText text={message.messageText} />
 
           <div className={`flex items-center gap-1.5 mt-1 ${isMine ? 'justify-end' : 'justify-start'}`}>
-            <span className={`text-[10px] ${isMine ? 'text-white/70' : 'text-slate-400 dark:text-slate-500'}`}>
+            <span className={`text-[10px] ${isMine ? 'text-white/70' : 'text-muted-foreground'}`}>
               {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </span>
 
@@ -180,7 +180,7 @@ export default function MessageItem({
         <div
           className={`absolute -top-10 ${
             isMine ? 'right-0' : 'left-0'
-          } z-10 origin-bottom flex items-center gap-1 rounded-full border border-slate-200/90 dark:border-slate-800 bg-card/95 backdrop-blur-md px-2 py-1 shadow-md opacity-0 scale-90 translate-y-1 pointer-events-none transition-all duration-150 ease-out group-hover/msg:opacity-100 group-hover/msg:scale-100 group-hover/msg:translate-y-0 group-hover/msg:pointer-events-auto focus-within:opacity-100 focus-within:scale-100 focus-within:translate-y-0 focus-within:pointer-events-auto`}
+          } z-10 origin-bottom flex items-center gap-1 rounded-full border border-border bg-card/95 backdrop-blur-md px-2 py-1 shadow-md opacity-0 scale-90 translate-y-1 pointer-events-none transition-all duration-150 ease-out group-hover/msg:opacity-100 group-hover/msg:scale-100 group-hover/msg:translate-y-0 group-hover/msg:pointer-events-auto focus-within:opacity-100 focus-within:scale-100 focus-within:translate-y-0 focus-within:pointer-events-auto`}
         >
           {QUICK_REACTIONS.map((emoji) => {
             const active = groupedReactions.some((g) => g.emoji === emoji && g.mine);
@@ -190,7 +190,7 @@ export default function MessageItem({
                 type="button"
                 onClick={() => onReact(message.id, emoji)}
                 className={`w-7 h-7 rounded-full text-base leading-none flex items-center justify-center transition-transform duration-150 hover:scale-125 active:scale-95 ${
-                  active ? 'bg-brand-50 dark:bg-brand-500/20' : 'hover:bg-slate-100 dark:hover:bg-slate-800'
+                  active ? 'bg-brand-500/20' : 'hover:bg-slate-100 dark:hover:bg-white/10'
                 }`}
                 aria-label={`React with ${emoji}`}
               >
@@ -215,8 +215,8 @@ export default function MessageItem({
                 title={entry.mine ? 'You reacted - click to remove' : 'Click to react'}
                 className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs shadow-2xs transition-all hover:-translate-y-0.5 active:translate-y-0 ${
                   entry.mine
-                    ? 'border-brand-300 ring-1 ring-brand-300/40 bg-brand-50 dark:bg-brand-500/20 text-brand-700 dark:text-brand-300'
-                    : 'border-slate-200 dark:border-slate-800 bg-card text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    ? 'border-brand-500/40 ring-1 ring-brand-500/30 bg-brand-500/15 text-brand-700 dark:text-brand-300'
+                    : 'border-border bg-card text-foreground hover:bg-slate-100 dark:hover:bg-white/10'
                 }`}
               >
                 <span className="leading-none text-xs">{entry.emoji}</span>
