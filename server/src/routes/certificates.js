@@ -32,6 +32,16 @@ router.get(
   certificateController.getQualification
 );
 
+// Why one mentee is getting the certificate they are getting. Readable by the
+// mentee themselves, the mentors of their clan, and admins — the service scopes
+// it; the role list here only says who may ask.
+router.get(
+  '/templates/:id/mentees/:menteeId/evidence',
+  authenticate,
+  authorize(['admin', 'mentor', 'mentee']),
+  certificateController.getMenteeEvidence
+);
+
 router.put(
   '/templates/:id',
   authenticate,

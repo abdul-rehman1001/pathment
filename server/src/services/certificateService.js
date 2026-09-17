@@ -310,6 +310,111 @@ class CertificateService {
   }
 
   /**
+   * The whole case for one mentee's certificate, in one payload.
+   *
+   * "Why did this person get Silver?" has, until now, only been answerable by
+   * reading a stored AI result — which does not exist until somebody runs the
+   * evaluation, and goes stale the moment a task is marked complete. So the
+   * metrics here are recomputed live from the record, and the AI's opinion is
+   * reported beside them as one input rather than as the answer.
+   *
+   * Four things go out together because they are only meaningful together:
+   *
+   *   metrics       what the record says today — completion, on-time,
+   *                 blockers, attendance, rating
+   *   constraints   how those measure up against each tier's thresholds,
+   *                 computed here rather than trusted from an old run
+   *   ai            what the AI proposed, and the reasoning it gave
+   *   verification  what a mentor decided, and — when they overruled the AI —
+   *                 why. This is the part an admin comes here to read.
+   *
+   * Scoped like every other read: a mentor sees the people they mentor, an
+   * admin sees everyone, and a mentee can open their own.
+   */
+  async getMenteeEvidence(templateId, menteeId, user) {
+    const template = await models.CertificateTemplate.findByPk(templateId);
+    if (!template) throw new NotFoundError('Certificate template not found');
+
+    await this.assertCanActOnMentee(user, menteeId, 'Access denied to this mentee');
+
+    const mentee = await models.User.findByPk(menteeId, {
+      attributes: ['id', 'firstName', 'lastName', 'email', 'profilePictureUrl']
+    });
+    if (!mentee) throw new NotFoundError('Mentee not found');
+
+    const criteria = sortCriteriaByPriority(Array.isArray(template.criteria) ? template.criteria : []);
+
+    const membership = await models.ClanMembership.findOne({
+      where: { userId: menteeId, role: 'mentee', status: { [Op.in]: VISIBLE_MEMBERSHIP_STATUSES } },
+      include: [{
+        model: models.Clan, as: 'clan',
+        where: template.programId ? { programId: template.programId } : undefined,
+        attributes: ['id', 'name'],
+        required: Boolean(template.programId)
+      }]
+    });
+    const clanId = membership?.clan?.id ?? null;
+
+    const [metrics] = await aggregateMenteeData([menteeId], clanId);
+    const { maxEligibleTier, hardChecks } = preCheckHardConstraints(metrics, criteria);
+
+    const aiResults = Array.isArray(template.aiEvaluation?.results) ? template.aiEvaluation.results : [];
+    const ai = aiResults.find((r) => (r.mentee_id || r.id) === menteeId) ?? null;
+
+    const verification = await models.CertificateVerification.findOne({
+      where: { templateId, menteeId },
+      include: [{ model: models.User, as: 'verifier', attributes: ['id', 'firstName', 'lastName'], required: false }]
+    });
+
+    const instance = await models.CertificateInstance.findOne({
+      where: { templateId, menteeId },
+      attributes: ['id', 'tier', 'certificateNumber', 'createdAt']
+    });
+
+    return {
+      mentee: {
+        id: mentee.id,
+        firstName: mentee.firstName,
+        lastName: mentee.lastName,
+        email: mentee.email,
+        profilePictureUrl: mentee.profilePictureUrl
+      },
+      clan: membership?.clan ? { id: membership.clan.id, name: membership.clan.name } : null,
+      criteria: criteria.map((c) => ({
+        id: c.id,
+        name: c.name,
+        minScorePercent:   c.minScorePercent   ?? null,
+        maxOpenBlockers:   c.maxOpenBlockers   ?? null,
+        minCompletionRate: c.minCompletionRate ?? null,
+        minOnTimeRate:     c.minOnTimeRate     ?? null,
+        minAvgRating:      c.minAvgRating      ?? null,
+        minAttendanceRate: c.minAttendanceRate ?? null
+      })),
+      metrics,
+      constraints: { maxEligibleTier, hardChecks },
+      ai,
+      verification: verification ? {
+        status:         verification.status,
+        aiTier:         verification.aiTier,
+        aiMatchScore:   verification.aiMatchScore,
+        finalTier:      verification.finalTier,
+        overridden:     verification.overridden,
+        overrideReason: verification.overrideReason,
+        verifiedAt:     verification.verifiedAt,
+        verifiedBy:     verification.verifier
+          ? `${verification.verifier.firstName || ''} ${verification.verifier.lastName || ''}`.trim()
+          : null
+      } : null,
+      issued: instance ? {
+        id:                instance.id,
+        tier:              instance.tier,
+        certificateNumber: instance.certificateNumber,
+        issuedAt:          instance.createdAt
+      } : null
+    };
+  }
+
+  /**
    * Resolve a certificate number for the PUBLIC verification page.
    *
    * Unauthenticated by design — the whole point of printing a number on a

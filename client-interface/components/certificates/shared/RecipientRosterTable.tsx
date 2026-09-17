@@ -31,7 +31,8 @@ export interface RecipientRosterTableProps {
   allSelected: boolean;
   assignedTiers: Record<string, string>;
   handleTierChange: (menteeId: string, tierId: string) => void;
-  onInspectAI: (aiResult: any) => void;
+  /** Open the full record for this recipient — why they are getting what they are getting. */
+  onInspectRecipient: (recipient: { mentee_id: string }) => void;
   loading: boolean;
   getTierName: (tierId: string) => string;
   recipientTypeLabel?: string;
@@ -57,7 +58,7 @@ export function RecipientRosterTable({
   allSelected,
   assignedTiers,
   handleTierChange,
-  onInspectAI,
+  onInspectRecipient,
   loading,
   getTierName,
   recipientTypeLabel = 'Mentee',
@@ -176,17 +177,19 @@ export function RecipientRosterTable({
                     >
                       {aiEvalMap[m.id].match_score}%
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => onInspectAI(aiEvalMap[m.id])}
-                      className="p-0.5 hover:bg-violet-500/20 rounded text-violet-600 dark:text-violet-400 transition-colors"
-                      title="View AI Analysis & Breakdown"
-                    >
-                      <Info className="w-3.5 h-3.5" />
-                    </button>
                   </div>
                 ) : (
                   <span className="text-[10px] text-muted-foreground/50 font-semibold select-none">—</span>
+                )}
+                {!m.isPaused && (
+                  <button
+                    type="button"
+                    onClick={() => onInspectRecipient(aiEvalMap[m.id] ?? { mentee_id: m.id })}
+                    className="p-1 rounded-lg text-muted-foreground hover:text-brand-600 hover:bg-brand-500/10 transition-colors"
+                    title="Why this certificate?"
+                  >
+                    <Info className="w-3.5 h-3.5" />
+                  </button>
                 )}
               </div>
 

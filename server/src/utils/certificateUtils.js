@@ -456,8 +456,35 @@ async function aggregateMenteeData(menteeIds, clanId = null) {
 
     const completedTasks = myTasks.filter(t => t.status === 'completed');
     const totalTasks     = myTasks.length;
-    const completionRate = totalTasks > 0
-      ? Math.round((completedTasks.length / totalTasks) * 100)
+
+    /**
+     * Completion rate is progress through the ROADMAP: of the roadmap tasks
+     * assigned to this person, how many are done.
+     *
+     * Custom one-off tasks a mentor adds are real work but they are not the
+     * curriculum, and counting them moved the denominator differently for
+     * every mentee — two people with identical roadmap progress scored
+     * differently because one had extra ad-hoc tasks. A tier threshold like
+     * "80% completion" only means something against a fixed syllabus.
+     *
+     * Someone with no roadmap tasks at all falls back to everything assigned,
+     * because 0% would read as "did nothing" when the truth is "nothing from a
+     * roadmap was ever assigned". `basis` records which denominator was used
+     * so the certificate evidence can say so rather than leave it inferred.
+     */
+    // `isCustomTask` is the repo's own discriminator, set at assignment time as
+    // `roadmapTaskId ? false : true` and read the same way everywhere else
+    // (taskService maps it straight to source 'custom' vs 'roadmap').
+    const roadmapTasks     = myTasks.filter(t => !t.isCustomTask);
+    const roadmapCompleted = roadmapTasks.filter(t => t.status === 'completed');
+    const customTasks      = myTasks.filter(t => t.isCustomTask);
+    const customCompleted  = customTasks.filter(t => t.status === 'completed');
+
+    const usingRoadmap    = roadmapTasks.length > 0;
+    const completionTotal = usingRoadmap ? roadmapTasks.length : totalTasks;
+    const completionDone  = usingRoadmap ? roadmapCompleted.length : completedTasks.length;
+    const completionRate  = completionTotal > 0
+      ? Math.round((completionDone / completionTotal) * 100)
       : 0;
 
     const ratedTasks = completedTasks.filter(t => t.finalRating != null);
@@ -514,6 +541,17 @@ async function aggregateMenteeData(menteeIds, clanId = null) {
       tasks:            taskSummaries,
       total_tasks:      totalTasks,
       completed_tasks:  completedTasks.length,
+      // What the completion rate above was actually measured over, so a person
+      // reading the number can see the sum rather than trust it.
+      completion_basis: {
+        basis:             usingRoadmap ? 'roadmap' : 'all_assigned',
+        counted_total:     completionTotal,
+        counted_completed: completionDone,
+        roadmap_total:     roadmapTasks.length,
+        roadmap_completed: roadmapCompleted.length,
+        custom_total:      customTasks.length,
+        custom_completed:  customCompleted.length
+      },
       score_breakdown: {
         points_pct:      Math.round(pointsPct),
         rating_pct:      Math.round(ratingPct),

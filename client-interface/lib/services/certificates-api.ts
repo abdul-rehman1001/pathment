@@ -232,7 +232,123 @@ export interface VerificationSummary {
   clans: VerificationClanStatus[];
 }
 
+// ── "Why this certificate?" — one mentee's whole case ───────────────────────
+
+/** What the record says about a mentee today, recomputed on every read. */
+export interface MenteeMetrics {
+  mentee_id: string;
+  clan_id: string | null;
+  clan_name: string | null;
+  normalized_score: number;
+  /** Progress through the ROADMAP — see `completion_basis` for the sum. */
+  completion_rate: number;
+  on_time_rate: number;
+  avg_rating: number | null;
+  total_tasks: number;
+  completed_tasks: number;
+  /** Which denominator `completion_rate` used, and the counts behind it. */
+  completion_basis?: {
+    basis: 'roadmap' | 'all_assigned';
+    counted_total: number;
+    counted_completed: number;
+    roadmap_total: number;
+    roadmap_completed: number;
+    custom_total: number;
+    custom_completed: number;
+  };
+  score_breakdown: {
+    points_pct: number;
+    rating_pct: number;
+    task_score: number;
+    blocker_score: number;
+    on_time_pct: number;
+    attendance_pct: number | null;
+    composite: number;
+  };
+  blockers: {
+    total: number;
+    resolved: number;
+    open: number;
+    open_by_severity?: Record<string, number>;
+    categories?: string[];
+  };
+  cohort_reviews: {
+    total_sessions: number;
+    present: number;
+    excused: number;
+    absent: number;
+    attendance_pct: number | null;
+    data_available: boolean;
+  };
+  tasks?: Array<{
+    title: string;
+    status: string;
+    type: string;
+    difficulty: string;
+    isCustomTask: boolean;
+    isLate: boolean;
+    rating: number | null;
+  }>;
+}
+
+/** One tier's thresholds, as configured on the template. */
+export interface TierThresholds {
+  id: string;
+  name: string;
+  minScorePercent: number | null;
+  maxOpenBlockers: number | null;
+  minCompletionRate: number | null;
+  minOnTimeRate: number | null;
+  minAvgRating: number | null;
+  minAttendanceRate: number | null;
+}
+
+export interface TierConstraintChecks {
+  score_ok: boolean;
+  blockers_ok: boolean;
+  completion_rate_ok: boolean;
+  on_time_rate_ok: boolean;
+  rating_ok: boolean;
+  attendance_ok: boolean;
+}
+
+export interface MenteeEvidence {
+  mentee: { id: string; firstName: string; lastName: string; email: string; profilePictureUrl?: string | null };
+  clan: { id: string; name: string } | null;
+  criteria: TierThresholds[];
+  metrics: MenteeMetrics;
+  constraints: {
+    /** The highest tier whose hard thresholds this mentee actually clears. */
+    maxEligibleTier: string;
+    hardChecks: Record<string, TierConstraintChecks>;
+  };
+  /** What the AI proposed, when it has been run. One input, not the answer. */
+  ai: AIEvaluationResult | null;
+  /** What a mentor decided — and, when they overruled the AI, why. */
+  verification: {
+    status: 'pending' | 'verified';
+    aiTier: string | null;
+    aiMatchScore: number | null;
+    finalTier: string | null;
+    overridden: boolean;
+    overrideReason: string | null;
+    verifiedAt: string | null;
+    verifiedBy: string | null;
+  } | null;
+  issued: { id: string; tier: string; certificateNumber: string | null; issuedAt: string } | null;
+}
+
 export const certificatesApi = {
+
+  /**
+   * Why one mentee is getting the certificate they are getting: live metrics,
+   * how they measure against each tier, the AI's opinion, and any mentor
+   * override with its reason. Scoped server-side.
+   */
+  getMenteeEvidence: (templateId: string, menteeId: string) =>
+    apiClient.get<{ success: boolean; data: MenteeEvidence }>(
+      `/certificates/templates/${templateId}/mentees/${menteeId}/evidence`
+    ),
 
   // ── Verification round ────────────────────────────────────────────────────
 

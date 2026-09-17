@@ -54,6 +54,16 @@ const uploadAsset = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Asset uploaded successfully', { url }));
 });
 
+/**
+ * The case for one mentee's certificate: live metrics, how they measure against
+ * each tier, what the AI proposed, and what a mentor decided — including why,
+ * when they overruled it.
+ */
+const getMenteeEvidence = catchAsync(async (req, res) => {
+  const data = await certificateService.getMenteeEvidence(req.params.id, req.params.menteeId, req.user);
+  successResponse(res, data);
+});
+
 const getQualification = catchAsync(async (req, res) => {
   const result = await certificateService.getQualification(req.params.id, req.query.mentorId, req.user, { clanId: portalOf(req).clanId });
   res.status(200).json(successResponse('Qualification calculation complete', result));
@@ -197,6 +207,7 @@ module.exports = {
   getCertificateInstance,
   uploadAsset,
   getQualification,
+  getMenteeEvidence,
   sendToMentors,
   getTemplateHistory,
   deleteCertificateInstance,

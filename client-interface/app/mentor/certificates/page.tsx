@@ -15,7 +15,7 @@ import CertificateHistoryLog from '@/components/admin/certificates/CertificateHi
 import { DuplicateWarnModal } from '@/components/shared';
 import { getTierBadgeColor, getTierButtonColor, getTierIconColor } from '@/lib/utils/certificates';
 import { Drawer } from '@/components/shared/Drawer';
-import { AIDetailDrawer, AIEvaluationBanner, RecipientRosterTable, CertificatePreview, RosterFilterBar, type CertificateRenderData, type ReviewFilter, type RosterSort } from '@/components/certificates/shared';
+import { MenteeEvidenceDrawer, AIEvaluationBanner, RecipientRosterTable, CertificatePreview, RosterFilterBar, type CertificateRenderData, type ReviewFilter, type RosterSort } from '@/components/certificates/shared';
 import { useAIEvaluationProgress } from '@/components/admin/certificates/hooks';
 import { downloadCertificateAsPng } from '@/lib/utils/certificate-renderer';
 
@@ -129,7 +129,7 @@ export default function MentorCertificatesPage() {
   >(null);
 
   const [mentorTiers, setMentorTiers] = useState<Record<string, string>>({});
-  const [aiDetailMentee, setAiDetailMentee] = useState<any | null>(null);
+  const [inspectedRecipient, setInspectedRecipient] = useState<any | null>(null);
 
   const {
     aiResults, setAiResults, aiRanAt, setAiRanAt, runningAI,
@@ -1192,13 +1192,12 @@ export default function MentorCertificatesPage() {
                 />
 
               {}
-              <AIDetailDrawer
-                mentee={aiDetailMentee}
-                onClose={() => setAiDetailMentee(null)}
-                criteria={criteria}
-                selectedTier={aiDetailMentee ? (mentorTiers[aiDetailMentee.mentee_id] ?? aiDetailMentee.certificate_tier) : undefined}
+              <MenteeEvidenceDrawer
+                templateId={activeTemplateId}
+                menteeId={inspectedRecipient?.mentee_id ?? null}
+                onClose={() => setInspectedRecipient(null)}
                 onTierChange={handleTierChange}
-                overrideLabel="Override Tier (Mentor)"
+                onDecided={loadReview}
               />
 
 
@@ -1274,7 +1273,7 @@ export default function MentorCertificatesPage() {
                   allSelected={allSelected}
                   assignedTiers={mentorTiers}
                   handleTierChange={handleTierChange}
-                  onInspectAI={setAiDetailMentee}
+                  onInspectRecipient={setInspectedRecipient}
                   loading={loadingQualifications}
                   getTierName={getTierName}
                   userRole="mentor"

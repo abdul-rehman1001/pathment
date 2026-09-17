@@ -19,7 +19,7 @@ import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { orgRoadmapApi } from '@/lib/services/roadmap-api';
 import { programsApi } from '@/lib/services/program-api';
 import { getTierButtonColor, getTierIconColor } from '@/lib/utils/certificates';
-import { AIDetailDrawer, AIEvaluationBanner, CriteriaTable, RecipientRosterTable, VerificationBanner, RosterFilterBar } from '@/components/certificates/shared';
+import { MenteeEvidenceDrawer, AIEvaluationBanner, CriteriaTable, RecipientRosterTable, VerificationBanner, RosterFilterBar } from '@/components/certificates/shared';
 import { SelectMenu } from '@/components/shared/SelectMenu';
 import CertificateHistoryLog from './CertificateHistoryLog';
 import {
@@ -86,7 +86,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
   const [qualifiedData, setQualifiedData] = useState<Record<string, any[]>>({});
   const [loadingQualifications, setLoadingQualifications] = useState(false);
 
-  const [aiDetailMentee, setAiDetailMentee] = useState<any | null>(null);
+  const [inspectedRecipient, setInspectedRecipient] = useState<any | null>(null);
   const [expandedAIRows, setExpandedAIRows] = useState<Set<string>>(new Set());
 
   const {
@@ -1544,13 +1544,12 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
             />
 
             {}
-            <AIDetailDrawer
-              mentee={aiDetailMentee}
-              onClose={() => setAiDetailMentee(null)}
-              criteria={criteria}
-              selectedTier={aiDetailMentee ? (adminTiers[aiDetailMentee.mentee_id] ?? aiDetailMentee.certificate_tier) : undefined}
+            <MenteeEvidenceDrawer
+              templateId={templateId}
+              menteeId={inspectedRecipient?.mentee_id ?? null}
+              onClose={() => setInspectedRecipient(null)}
               onTierChange={handleTierChange}
-              overrideLabel="Override Tier (Admin)"
+              onDecided={() => setRefreshKey(k => k + 1)}
             />
 
             {}
@@ -1653,7 +1652,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
               allSelected={allSelected}
               assignedTiers={adminTiers}
               handleTierChange={handleTierChange}
-              onInspectAI={setAiDetailMentee}
+              onInspectRecipient={setInspectedRecipient}
               loading={loadingQualifications}
               getTierName={getTierName}
               userRole="admin"
