@@ -1,4 +1,4 @@
-const { models, Sequelize } = require('../db');
+const { models, Sequelize, sequelize } = require('../db');
 const { NotFoundError, ValidationError } = require('../utils/errors/errorTypes');
 const notificationOrchestrator = require('./notificationOrchestrator');
 const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
@@ -6,6 +6,7 @@ const { todayInZone } = require('../utils/timezone');
 const authzService = require('./authzService');
 const logger = require('../utils/logger');
 const { ensureMenteeProfile } = require('./menteeProfile');
+const performanceService = require('./performanceService');
 const {
   currentStreak,
   longestStreak,
@@ -456,47 +457,104 @@ class GamificationService {
   }
 
   /**
-   * Leaderboard ranked by points EARNED IN THE PERIOD - computed live from the
-   * PointsHistory ledger so daily/weekly/monthly are actually different from
-   * all-time (they previously all showed the same all-time rank).
+   * The leaderboard ranks on the PROGRESS SCORE — the same number the mentor
+   * portal shows under Teaching, computed by the same service.
+   *
+   * It has been three different things. Originally the sum of every point
+   * anybody had been given, which made it a badge table: badges were 65% of all
+   * points at an average of 60 an award while finishing a task paid about 10,
+   * so the two mentees who had done the most work on the platform sat seventh
+   * and eighth behind people with nine tasks. Ranking on completed work fixed
+   * that but invented a second definition of "doing well" beside the one the
+   * mentors already used.
+   *
+   * There is now one. The progress score weighs seven things — progress against
+   * where the programme expects you, output weighted by difficulty, effort,
+   * quality adjusted for how generously your own mentor rates, reliability,
+   * attendance, consistency — with per-clan weights an admin can tune. A mentee
+   * and their mentor now read the same number off two different screens.
+   *
+   * Two of those dimensions are percentiles, so the peer group is part of the
+   * answer: everybody is scored against their own programme, in one pass.
    */
-  async getLeaderboard(programId = null, periodType = 'all_time', limit = 50) {
-    const now = new Date();
-    let since = null; // 'YYYY-MM-DD' window start; null = all-time
-    if (periodType === 'daily') since = now.toISOString().split('T')[0];
-    else if (periodType === 'weekly') since = this.getWeekStart(now);
-    else if (periodType === 'monthly') since = this.getMonthStart(now);
+  async getLeaderboard({ user = null, programId = null, limit = 50 } = {}) {
+    const menteeIds = await this._peerGroupFor(user, programId);
+    if (!menteeIds.length) return [];
 
-    const where = {};
-    if (since) where.createdAt = { [Sequelize.Op.gte]: since };
+    const { ranked } = await performanceService.leaderboard(menteeIds, { limit });
 
-    const rows = await models.PointsHistory.findAll({
-      attributes: ['userId', [Sequelize.fn('SUM', Sequelize.col('points_change')), 'pts']],
-      where,
-      group: ['userId'],
-      order: [[Sequelize.fn('SUM', Sequelize.col('points_change')), 'DESC']],
-      limit,
-      raw: true
-    });
-
-    const positive = rows.filter((r) => Number(r.pts) > 0);
-    if (!positive.length) return [];
-
-    const userIds = positive.map((r) => r.userId);
-    const users = await models.User.findAll({
-      where: { id: userIds },
-      attributes: ['id', 'firstName', 'lastName', 'email']
-    });
-    const byId = new Map(users.map((u) => [u.id, u]));
-
-    return positive.map((r, index) => ({
-      id: `lb-${r.userId}-${periodType}`,
-      userId: r.userId,
-      rank: index + 1,
-      points: Number(r.pts) || 0,
-      periodType,
-      user: byId.get(r.userId) || null
+    return ranked.map((row) => ({
+      id: `lb-${row.id}`,
+      userId: row.id,
+      rank: row.rank,
+      score: row.score,
+      band: row.band,
+      // The evidence travels with the score: "99, from 45 tasks at 96% on time"
+      // is a sentence a mentee can check against their own week.
+      tasksCompleted: row.evidence?.tasksCompleted ?? 0,
+      onTimeRate: row.evidence?.onTimeRate ?? null,
+      user: {
+        id: row.id,
+        firstName: (row.name || '').split(' ')[0] || '',
+        lastName: (row.name || '').split(' ').slice(1).join(' '),
+        email: '',
+        profilePictureUrl: row.profilePictureUrl ?? null
+      }
     }));
+  }
+
+  /**
+   * Where a mentee stands, and why they might not stand anywhere.
+   *
+   * The score has an eligibility bar — enough reviewed tasks, enough of the
+   * programme behind you — because ranking somebody on two data points is not
+   * a ranking. Somebody below it is told what is missing rather than given a
+   * meaningless position.
+   */
+  async progressStandingFor(userId) {
+    const menteeIds = await this._peerGroupFor({ id: userId }, null);
+    if (!menteeIds.length) return { rank: null, score: null, notRankedBecause: null };
+
+    const { ranked, notRanked } = await performanceService.leaderboard(menteeIds, {});
+    const mine = ranked.find((row) => row.id === userId);
+    if (mine) return { rank: mine.rank, score: mine.score, band: mine.band, notRankedBecause: null };
+
+    const waiting = notRanked.find((row) => row.id === userId);
+    return {
+      rank: null,
+      score: waiting?.score ?? null,
+      band: waiting?.band ?? null,
+      notRankedBecause: waiting?.notRankedBecause ?? null
+    };
+  }
+
+  /**
+   * Who this mentee is measured against: everybody in their own programme.
+   *
+   * Not the whole platform — two of the score's dimensions are percentiles, and
+   * a percentile against people on a different syllabus says nothing.
+   */
+  async _peerGroupFor(user, programId) {
+    let targetProgramId = programId;
+
+    if (!targetProgramId && user?.id) {
+      const membership = await models.ClanMembership.findOne({
+        where: { userId: user.id, role: 'mentee' },
+        include: [{ model: models.Clan, as: 'clan', attributes: ['programId'], required: true }]
+      });
+      targetProgramId = membership?.clan?.programId ?? null;
+    }
+    if (!targetProgramId) return [];
+
+    const memberships = await models.ClanMembership.findAll({
+      where: { role: 'mentee', status: { [Sequelize.Op.in]: ['active', 'paused'] } },
+      include: [{
+        model: models.Clan, as: 'clan',
+        where: { programId: targetProgramId }, attributes: ['id'], required: true
+      }],
+      attributes: ['userId']
+    });
+    return [...new Set(memberships.map((m) => m.userId))];
   }
 
   async getUserBadges(userId) {
@@ -550,30 +608,18 @@ class GamificationService {
     const recentBadges = await this.getUserBadges(userId);
     const recentPoints = await this.getUserPointsHistory(userId, 10);
 
-    let userLeaderboardRank = await models.LeaderboardEntry.findOne({
-      where: {
-        userId,
-        periodType: 'all_time',
-        programId: null
-      }
-    });
-
     /**
-     * Somebody who has earned nothing is not in the running, and saying they
-     * are 551st is worse than saying nothing: it counts the 550 people ahead
-     * of them while ignoring the 502 level with them on zero. The screen
-     * already renders a null rank as "Unranked", which is the truth.
+     * The same number, from the same ledger, as the list printed beside it.
+     *
+     * This used to count mentee profiles holding more TOTAL points, while the
+     * board listed something else entirely — so the rank and the list were two
+     * answers to one question. It also meant somebody who had earned nothing
+     * was told they were 551st: a count of the 550 people ahead that ignored
+     * the 502 sitting level with them on zero. No work, no rank; the screen
+     * renders that as "Unranked", which is the truth.
      */
-    const earnedPoints = Number(menteeProfile.totalPoints || 0);
-    if (earnedPoints <= 0) {
-      userLeaderboardRank = null;
-    } else if (!userLeaderboardRank) {
-      const higherRankedCount = await models.MenteeProfile.count({
-        where: { totalPoints: { [Sequelize.Op.gt]: earnedPoints } }
-      });
-
-      userLeaderboardRank = { rank: higherRankedCount + 1 };
-    }
+    const standing = await this.progressStandingFor(userId);
+    const userLeaderboardRank = standing.rank === null ? null : { rank: standing.rank };
 
     // Counted from the daily log at the moment of asking, so this screen and
     // the phone cannot disagree. The stored counter is still written, because
@@ -595,6 +641,10 @@ class GamificationService {
       totalProgramsCompleted: Number(menteeProfile.totalProgramsCompleted || 0),
       avgTaskRating: parseFloat(menteeProfile.avgTaskRating) || 0,
       leaderboardRank: userLeaderboardRank ? userLeaderboardRank.rank : null,
+      progressScore: standing.score,
+      progressBand: standing.band ?? null,
+      /** Why they hold no rank yet, in words a mentee can act on. */
+      notRankedBecause: standing.notRankedBecause,
       recentBadges: recentBadges.slice(0, 5),
       recentPoints
     };

@@ -365,7 +365,11 @@ async function aggregateMenteeData(menteeIds, clanId = null) {
     include: [{
       model: models.RoadmapTask,
       as: 'roadmapTask',
-      attributes: ['title', 'type', 'difficulty', 'description', 'pointsBase']
+      attributes: ['title', 'type', 'difficulty', 'description', 'pointsBase', 'roadmapId', 'taskOrder'],
+      // Which syllabus the task belongs to. An admin asking why somebody is
+      // getting a certificate wants the roadmap and what is left of it, not a
+      // flat list of titles with no shape.
+      include: [{ model: models.Roadmap, as: 'roadmap', attributes: ['id', 'name'], required: false }]
     }],
     raw: false
   });
@@ -442,6 +446,10 @@ async function aggregateMenteeData(menteeIds, clanId = null) {
       taskSummaries.push({
         title:       taskTitle,
         description: taskDesc ? taskDesc.slice(0, 300) : null,
+        roadmapId:   t.isCustomTask ? null : (t.roadmapTask?.roadmapId ?? null),
+        roadmapName: t.isCustomTask ? null : (t.roadmapTask?.roadmap?.name ?? null),
+        taskOrder:   t.roadmapTask?.taskOrder ?? null,
+        dueDate:     t.dueDate ?? null,
         type:        t.roadmapTask?.type ?? (t.isCustomTask ? 'custom' : 'general'),
         difficulty:  t.roadmapTask?.difficulty ?? 'medium',
         status:      t.status,

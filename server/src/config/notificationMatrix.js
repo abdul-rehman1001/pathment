@@ -32,6 +32,10 @@ EXTENSION_HANDLED: 'extension_handled',
   MENTEE_TRANSFER_REQUESTED: 'mentee_transfer_requested',
   MENTEE_TRANSFER_DECIDED: 'mentee_transfer_decided',
   PROMOTION_NOMINATED: 'promotion_nominated',
+  // A mentor put somebody forward as a top performer; the admin decides.
+  TOP_PERFORMER_NOMINATED: 'top_performer_nominated',
+  // The admin decided — the nominating mentor, and a winner, both hear.
+  TOP_PERFORMER_DECIDED: 'top_performer_decided',
   REVIEW_UNLOCK_REQUESTED: 'review_unlock_requested',
   REVIEW_UNLOCK_HANDLED: 'review_unlock_handled',
   MENTEE_PAUSE_SUGGESTED: 'mentee_pause_suggested',
@@ -325,6 +329,20 @@ const NOTIFICATION_MATRIX = {
     // mentee, so the per-notification actionUrl resolves the audience.
     audience: 'any',
     preferenceKey: 'mentee_transfer_decided',
+    channels: { inApp: true, email: true, chat: false }
+  },
+  [NOTIFICATION_EVENTS.TOP_PERFORMER_NOMINATED]: {
+    type: 'system',
+    audience: 'admin',
+    preferenceKey: 'top_performer_nominated',
+    channels: { inApp: true, email: false, chat: false }
+  },
+  [NOTIFICATION_EVENTS.TOP_PERFORMER_DECIDED]: {
+    type: 'system',
+    // Dual-use: the nominating mentor hears either way; a mentee only hears
+    // when they have won, so a decline never reaches the person it is about.
+    audience: 'any',
+    preferenceKey: 'top_performer_decided',
     channels: { inApp: true, email: true, chat: false }
   },
   [NOTIFICATION_EVENTS.PROMOTION_NOMINATED]: {

@@ -280,15 +280,36 @@ export interface MenteeMetrics {
     attendance_pct: number | null;
     data_available: boolean;
   };
-  tasks?: Array<{
-    title: string;
-    status: string;
-    type: string;
-    difficulty: string;
-    isCustomTask: boolean;
-    isLate: boolean;
-    rating: number | null;
-  }>;
+  tasks?: EvidenceTask[];
+}
+
+/** One assigned task, as proof of work. */
+export interface EvidenceTask {
+  title: string;
+  description?: string | null;
+  status: string;
+  type: string;
+  difficulty: string;
+  isCustomTask: boolean;
+  isLate: boolean;
+  rating: number | null;
+  pointsPct?: number | null;
+  roadmapId?: string | null;
+  roadmapName?: string | null;
+  taskOrder?: number | null;
+  dueDate?: string | null;
+}
+
+/** A roadmap the mentee was set, and how far through it they are. */
+export interface EvidenceRoadmap {
+  id: string | null;
+  name: string;
+  total: number;
+  completed: number;
+  remaining: number;
+  late: number;
+  percent: number;
+  tasks: EvidenceTask[];
 }
 
 /** One tier's thresholds, as configured on the template. */
@@ -317,6 +338,8 @@ export interface MenteeEvidence {
   clan: { id: string; name: string } | null;
   criteria: TierThresholds[];
   metrics: MenteeMetrics;
+  /** The work itself, grouped by the roadmap it came from. */
+  roadmaps: EvidenceRoadmap[];
   constraints: {
     /** The highest tier whose hard thresholds this mentee actually clears. */
     maxEligibleTier: string;

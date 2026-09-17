@@ -170,5 +170,6 @@ router.use('/feedback', require('./feedback'));
 
 // Custom Certificate Management System
 router.use('/certificates', require('./certificates'));
+router.use('/top-performers', require('./topPerformers'));
 
 module.exports = router;

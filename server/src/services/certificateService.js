@@ -43,6 +43,51 @@ function deduplicateById(arr) {
   });
 }
 
+/**
+ * Turn a flat list of a mentee's tasks into the roadmaps they came from.
+ *
+ * Custom one-off tasks a mentor added are collected separately rather than
+ * dropped: they are real work and the admin should see them, but they are not
+ * part of any syllabus and counting them as roadmap progress is what made the
+ * completion rate mean different things for different people.
+ */
+function groupTasksByRoadmap(tasks) {
+  const byRoadmap = new Map();
+  const custom = [];
+
+  for (const task of tasks) {
+    if (!task.roadmapId) { custom.push(task); continue; }
+    if (!byRoadmap.has(task.roadmapId)) {
+      byRoadmap.set(task.roadmapId, {
+        id: task.roadmapId,
+        name: task.roadmapName || 'Roadmap',
+        tasks: []
+      });
+    }
+    byRoadmap.get(task.roadmapId).tasks.push(task);
+  }
+
+  const summarise = (group) => {
+    const done = group.tasks.filter((t) => t.status === 'completed');
+    const ordered = [...group.tasks].sort((a, b) => (a.taskOrder ?? 0) - (b.taskOrder ?? 0));
+    return {
+      ...group,
+      tasks: ordered,
+      total: group.tasks.length,
+      completed: done.length,
+      remaining: group.tasks.length - done.length,
+      late: done.filter((t) => t.isLate).length,
+      percent: group.tasks.length ? Math.round((done.length / group.tasks.length) * 100) : 0
+    };
+  };
+
+  const out = [...byRoadmap.values()].map(summarise);
+  if (custom.length) {
+    out.push(summarise({ id: null, name: 'Custom tasks (not part of a roadmap)', tasks: custom }));
+  }
+  return out;
+}
+
 class CertificateService {
   // ==================== QUALIFICATION & SCOPE METHODS ====================
 
@@ -371,6 +416,17 @@ class CertificateService {
     const [metrics] = await aggregateMenteeData([menteeId], clanId);
     const { maxEligibleTier, hardChecks } = preCheckHardConstraints(metrics, criteria);
 
+    /**
+     * The work itself, grouped by the roadmap it belongs to.
+     *
+     * "Why does this person get Gold" is only half answered by a completion
+     * percentage. The other half is the syllabus: which roadmap they were set,
+     * how much of it is done, and precisely what is outstanding. An admin who
+     * cannot rely on a mentor's judgement alone needs the evidence under it,
+     * and a number without the tasks behind it is still just a claim.
+     */
+    const roadmaps = groupTasksByRoadmap(metrics.tasks || []);
+
     // Pull THIS mentee's AI result out of the array in the database rather than
     // shipping the whole array back to pick one from. Guarded on the element
     // actually being an array, since a template that has never been evaluated
@@ -428,6 +484,7 @@ class CertificateService {
         minAttendanceRate: c.minAttendanceRate ?? null
       })),
       metrics,
+      roadmaps,
       constraints: { maxEligibleTier, hardChecks },
       ai,
       verification: verification ? {

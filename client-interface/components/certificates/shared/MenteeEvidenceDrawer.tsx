@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
-  AlertTriangle, Award, CheckCircle2, Clock, Loader2, RefreshCw, Sparkles, XCircle,
+  AlertTriangle, Award, CheckCircle2, ChevronDown, Circle, Clock, Loader2, RefreshCw,
+  Sparkles, XCircle,
 } from 'lucide-react';
 import { Drawer } from '@/components/shared/Drawer';
 import { Avatar } from '@/components/shared/Avatar';
 import { SelectMenu } from '@/components/shared/SelectMenu';
-import { certificatesApi, type MenteeEvidence } from '@/lib/services/certificates-api';
+import { certificatesApi, type MenteeEvidence, type EvidenceRoadmap } from '@/lib/services/certificates-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { getTierBadgeColor } from '@/lib/utils/certificates';
 
@@ -229,6 +230,8 @@ export function MenteeEvidenceDrawer({
               </div>
             </section>
           )}
+
+          <WorkBlock roadmaps={evidence.roadmaps || []} />
 
           <ThresholdBlock evidence={evidence} tier={draftTier || aiTier} tierName={tierName} />
 
@@ -562,5 +565,94 @@ function ThresholdRow({ label, ok, detail }: { label: string; ok: boolean; detai
         {detail}
       </span>
     </div>
+  );
+}
+
+/**
+ * The work behind the grade, roadmap by roadmap.
+ *
+ * A completion percentage is a claim; the tasks under it are the evidence. An
+ * admin deciding whether to trust a mentor's grade needs to see which syllabus
+ * the mentee was set, how much of it is finished, and exactly what is still
+ * outstanding — so each roadmap opens to the task list rather than stopping at
+ * a number.
+ *
+ * Collapsed by default: the counts answer the usual question, and the list is
+ * there for the times they do not.
+ */
+function WorkBlock({ roadmaps }: { roadmaps: EvidenceRoadmap[] }) {
+  const [open, setOpen] = useState<string | null>(null);
+
+  if (!roadmaps.length) {
+    return (
+      <section className="space-y-2.5">
+        <SectionLabel>The work</SectionLabel>
+        <p className="rounded-2xl border border-dashed border-border bg-card p-4 text-xs text-muted-foreground">
+          No tasks have been assigned to this mentee yet.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="space-y-2.5">
+      <SectionLabel>The work</SectionLabel>
+      {roadmaps.map((roadmap) => {
+        const key = roadmap.id ?? 'custom';
+        const isOpen = open === key;
+        return (
+          <div key={key} className="rounded-2xl border border-border bg-card overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setOpen(isOpen ? null : key)}
+              className="flex w-full items-center justify-between gap-3 p-4 text-left hover:bg-muted/30"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-foreground truncate">{roadmap.name}</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  <span className="font-medium text-foreground">{roadmap.completed} of {roadmap.total}</span> done
+                  {roadmap.remaining > 0 && ` · ${roadmap.remaining} outstanding`}
+                  {roadmap.late > 0 && ` · ${roadmap.late} late`}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-base font-semibold tabular-nums text-brand-600 dark:text-brand-400">
+                  {roadmap.percent}%
+                </span>
+                <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+              </div>
+            </button>
+
+            {/* A bar reads faster than a number when comparing two mentees. */}
+            <div className="h-1 w-full bg-muted">
+              <div className="h-full bg-brand-500" style={{ width: `${roadmap.percent}%` }} />
+            </div>
+
+            {isOpen && (
+              <ul className="divide-y divide-border border-t border-border">
+                {roadmap.tasks.map((task, i) => (
+                  <li key={`${task.title}-${i}`} className="flex items-start gap-2.5 px-4 py-2.5">
+                    {task.status === 'completed'
+                      ? <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500 mt-0.5" />
+                      : <Circle className="w-4 h-4 shrink-0 text-muted-foreground/50 mt-0.5" />}
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-xs ${task.status === 'completed' ? 'text-foreground' : 'text-muted-foreground'}`}>
+                        {task.title}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        {task.status === 'completed' ? 'Completed' : task.status.replace(/_/g, ' ')}
+                        {task.rating != null && ` · rated ${task.rating}/5`}
+                        {task.isLate && ' · late'}
+                        {task.difficulty && ` · ${task.difficulty}`}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        );
+      })}
+    </section>
   );
 }
