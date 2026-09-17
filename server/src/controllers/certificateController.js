@@ -61,7 +61,7 @@ const uploadAsset = catchAsync(async (req, res) => {
  */
 const getMenteeEvidence = catchAsync(async (req, res) => {
   const data = await certificateService.getMenteeEvidence(req.params.id, req.params.menteeId, req.user);
-  successResponse(res, data);
+  res.status(200).json(successResponse('Certificate evidence retrieved', data));
 });
 
 const getQualification = catchAsync(async (req, res) => {

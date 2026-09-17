@@ -18,13 +18,15 @@
  * be scoped exactly like every other read — a mentor sees their own clan.
  */
 
+const request = require('supertest');
+const app = require('../../src/index');
 const { models } = require('../../src/db');
 const clanService = require('../../src/services/clanService');
 const certificateService = require('../../src/services/certificateService');
 const verification = require('../../src/services/certificateVerificationService');
 const {
   cleanDb, createAdmin, createMentor, createMentee, createProgram,
-  createRoadmap, createRoadmapTask, createEnrollment
+  createRoadmap, createRoadmapTask, createEnrollment, authHeader
 } = require('../helpers/seed');
 
 describe('certificate evidence for one mentee', () => {
@@ -258,6 +260,51 @@ describe('certificate evidence for one mentee', () => {
       );
       const ev = await certificateService.getMenteeEvidence(template.id, mentee.id, admin);
       expect(ev.ai).toBeNull();
+    });
+  });
+
+  describe('over HTTP', () => {
+    /**
+     * These exist because the service tests all passed while the endpoint hung
+     * for thirty seconds in production.
+     *
+     * The controller called `successResponse(res, data)` — but in this codebase
+     * `successResponse(message, data, status)` is a pure FORMATTER that returns
+     * an object; it never touches `res`. So the handler did every query, built
+     * the payload, and then sent nothing. The request sat open until Heroku's
+     * router killed it with an H12 at 30s, and no error was ever logged because
+     * nothing had gone wrong — the response was simply never written.
+     *
+     * Calling the service directly can never catch that. Something has to make
+     * a real request and insist on a real response.
+     */
+    const url = () => `/api/certificates/templates/${template.id}/mentees/${mentee.id}/evidence`;
+
+    it('actually responds, with the payload', async () => {
+      await assign({ status: 'completed' });
+
+      const res = await request(app).get(url()).set('Authorization', authHeader(admin));
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.mentee.id).toBe(mentee.id);
+      expect(res.body.data.metrics.completion_rate).toBe(100);
+    });
+
+    it('answers a mentor of that clan', async () => {
+      const res = await request(app).get(url()).set('Authorization', authHeader(lead));
+      expect(res.status).toBe(200);
+      expect(res.body.data.mentee.id).toBe(mentee.id);
+    });
+
+    it('refuses a mentor from another clan', async () => {
+      const res = await request(app).get(url()).set('Authorization', authHeader(outsider));
+      expect(res.status).toBe(403);
+    });
+
+    it('refuses an anonymous caller', async () => {
+      const res = await request(app).get(url());
+      expect(res.status).toBe(401);
     });
   });
 
