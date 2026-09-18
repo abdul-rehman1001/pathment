@@ -20,10 +20,9 @@ const {
   createMentor,
   createMentee,
   createProgram,
-  createProgramLevel,
   createEnrollment,
+  createClan,
   createRoadmap,
-  createRoadmapWeek,
   createRoadmapTask,
   createAssignedTask,
   authHeader,
@@ -39,17 +38,17 @@ describe('Mentor Submission Review', () => {
     mentee = await createMentee({ email: 'mentee@test.com' });
 
     const program = await createProgram({ createdBy: admin.id, status: 'published' });
-    const level = await createProgramLevel({ programId: program.id });
+    // Mentor access to a mentee comes from a shared clan, not from the
+    // mentorId stamped on the task. See createClan in the seed helpers.
+    await createClan({ programId: program.id, createdBy: admin.id, leadMentor: mentor, mentees: [mentee] });
     const enrollment = await createEnrollment({
       menteeId: mentee.id,
       programId: program.id,
-      levelId: level.id,
       status: 'active',
     });
 
-    const roadmap = await createRoadmap({ programId: program.id, levelId: level.id, createdBy: admin.id });
-    const week = await createRoadmapWeek({ roadmapId: roadmap.id });
-    const roadmapTask = await createRoadmapTask({ weekId: week.id });
+    const roadmap = await createRoadmap({ programId: program.id, createdBy: admin.id });
+    const roadmapTask = await createRoadmapTask({ roadmapId: roadmap.id });
 
     task = await createAssignedTask({
       menteeId: mentee.id,
@@ -146,7 +145,12 @@ describe('Mentor Submission Review', () => {
 
     expect(res.status).toBeGreaterThanOrEqual(400);
     expect(res.body.success).toBe(false);
-    expect(res.body.message.toLowerCase()).toMatch(/rating/i);
+    // Field-level detail lives in `errors[]`, not in the top-level message —
+    // that is the error envelope this API commits to, and `message` is the
+    // generic "Validation failed". Asserting on the message was reading the
+    // wrong half of the response.
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+    expect(res.body.errors.some((e) => /rating/i.test(e.field) || /rating/i.test(e.message))).toBe(true);
   });
 
   // TC-MR12

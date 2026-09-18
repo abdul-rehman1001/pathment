@@ -22,6 +22,15 @@ type InviteDetails = {
   applicant?: { firstName: string; lastName: string } | null;
 };
 
+type ClanJoinDetails = {
+  role: 'mentee';
+  emailLocked: boolean;
+  program?: { id: string; name: string } | null;
+  clan?: { id: string; name: string } | null;
+  requiresApproval?: boolean;
+  joinPath?: string;
+};
+
 export default function RegisterPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -41,58 +50,78 @@ export default function RegisterPage() {
   const [inviteLoading, setInviteLoading] = useState(true);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteDetails, setInviteDetails] = useState<InviteDetails | null>(null);
+  const [clanJoinDetails, setClanJoinDetails] = useState<ClanJoinDetails | null>(null);
 
   const inviteToken = searchParams.get('invite')?.trim() || '';
+  const clanJoinSlug = searchParams.get('clanJoin')?.trim() || '';
+  const joinReturnPath = clanJoinSlug ? `/clan/join/${encodeURIComponent(clanJoinSlug)}` : '';
 
-  // Redirect if already logged in
+  // Redirect if already logged in — preserve clan join continuation when present.
   useEffect(() => {
     if (!isLoading && user) {
-      const dashboard = `/${user.role}/dashboard`;
-      router.push(dashboard);
+      router.push(joinReturnPath || `/${user.role}/dashboard`);
     }
-  }, [user, isLoading, router]);
+  }, [user, isLoading, router, joinReturnPath]);
 
-  // Validate invite token before allowing registration
+  // Validate invite token OR public clan join slug before allowing registration
   useEffect(() => {
-    if (!inviteToken) {
+    if (inviteToken && clanJoinSlug) {
       setInviteLoading(false);
-      setInviteError('An invite link is required to create an account.');
+      setInviteError('Use either an invite link or a clan joining link, not both.');
       return;
     }
 
-    const validateInvite = async () => {
+    if (!inviteToken && !clanJoinSlug) {
+      setInviteLoading(false);
+      setInviteError('An invite link or clan joining link is required to create an account.');
+      return;
+    }
+
+    const validate = async () => {
       try {
         setInviteLoading(true);
         setInviteError(null);
 
-        const response = await apiClient.get<any>(apiConfig.endpoints.validateInvite(inviteToken));
-        const invite = response?.data?.invite || response?.invite;
+        if (inviteToken) {
+          const response = await apiClient.get<any>(apiConfig.endpoints.validateInvite(inviteToken));
+          const invite = response?.data?.invite || response?.invite;
 
-        if (!invite || !invite.role || !invite.email) {
-          throw new Error('Invalid invite response');
+          if (!invite || !invite.role || !invite.email) {
+            throw new Error('Invalid invite response');
+          }
+
+          setInviteDetails(invite);
+          setClanJoinDetails(null);
+          setFormData((prev) => ({
+            ...prev,
+            email: invite.email,
+            firstName: prev.firstName || invite.applicant?.firstName || '',
+            lastName: prev.lastName || invite.applicant?.lastName || '',
+          }));
+          return;
         }
 
-        setInviteDetails(invite);
-        // Prefill name from the original application so the applicant doesn't
-        // re-type what they already gave at intake.
-        setFormData((prev) => ({
-          ...prev,
-          email: invite.email,
-          firstName: prev.firstName || invite.applicant?.firstName || '',
-          lastName: prev.lastName || invite.applicant?.lastName || '',
-        }));
+        const response = await apiClient.get<any>(apiConfig.endpoints.validateClanJoin(clanJoinSlug));
+        const details = response?.data?.clanJoin || response?.clanJoin;
+        if (!details?.clan?.name) {
+          throw new Error('Invalid clan join response');
+        }
+        setClanJoinDetails(details);
+        setInviteDetails(null);
       } catch (error: any) {
-        const message = extractApiErrorMessage(error, 'This invite is invalid or expired.');
+        const message = extractApiErrorMessage(
+          error,
+          inviteToken ? 'This invite is invalid or expired.' : 'This clan joining link is invalid or no longer available.'
+        );
         setInviteError(message);
       } finally {
         setInviteLoading(false);
       }
     };
 
-    validateInvite();
-  }, [inviteToken]);
+    validate();
+  }, [inviteToken, clanJoinSlug]);
 
-  // Show loading while checking auth
   if (isLoading || inviteLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -101,7 +130,6 @@ export default function RegisterPage() {
     );
   }
 
-  // Don't render register form if user is logged in
   if (user) {
     return null;
   }
@@ -110,14 +138,17 @@ export default function RegisterPage() {
     e.preventDefault();
     const newErrors: Record<string, string> = {};
 
-    if (!inviteToken) {
-      newErrors.general = 'A valid invite link is required to register.';
+    if (!inviteToken && !clanJoinSlug) {
+      newErrors.general = 'A valid invite or clan joining link is required to register.';
     }
     if (inviteError) {
       newErrors.general = inviteError;
     }
-    if (!inviteDetails) {
+    if (inviteToken && !inviteDetails) {
       newErrors.general = 'Invite details could not be loaded.';
+    }
+    if (clanJoinSlug && !clanJoinDetails) {
+      newErrors.general = 'Clan joining details could not be loaded.';
     }
 
     if (!formData.firstName) newErrors.firstName = 'First name is required';
@@ -136,17 +167,25 @@ export default function RegisterPage() {
 
     setLoading(true);
     try {
-      await register({
+      const payload = {
         firstName: formData.firstName,
         lastName: formData.lastName,
         email: formData.email,
         password: formData.password,
         confirmPassword: formData.confirmPassword,
-        inviteToken
-      });
+        ...(inviteToken ? { inviteToken } : { clanJoinSlug }),
+      };
+      const result = await register(payload);
       setShowSuccess(true);
-      toast.success('Account created! You can now log in.');
-      setTimeout(() => router.push('/login'), 1500);
+
+      if (clanJoinSlug) {
+        const next = result?.clanJoin?.joinPath || joinReturnPath;
+        toast.success('Account created! Log in to continue joining the clan.');
+        setTimeout(() => router.push(`/login?next=${encodeURIComponent(next)}`), 1500);
+      } else {
+        toast.success('Account created! You can now log in.');
+        setTimeout(() => router.push('/login'), 1500);
+      }
     } catch (err: any) {
       const message = extractApiErrorMessage(err, 'Registration failed');
       toast.error(message);
@@ -156,23 +195,25 @@ export default function RegisterPage() {
     }
   };
 
+  const emailLocked = Boolean(inviteDetails?.email);
+
   return (
     <div className="space-y-6">
-      {/* Logo & Header */}
       <div className="text-center">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo-tile.png" alt="Pathment" className="inline-block w-16 h-16 rounded-2xl shadow-sm mb-4" />
         <h1 className="text-brand-900 mb-2">Create your Pathment account</h1>
-        <p className="text-slate-600">Invite-only signup for approved users</p>
+        <p className="text-slate-600">
+          {clanJoinSlug ? 'Continue from your clan joining link' : 'Invite-only signup for approved users'}
+        </p>
       </div>
 
-      {/* Registration Form */}
       <div className="bg-card rounded-2xl shadow-xl shadow-slate-200/50 p-8 border border-slate-100">
         {inviteError && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
             <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
             <div>
-              <p className="text-red-900">Invite required</p>
+              <p className="text-red-900">{inviteToken ? 'Invite required' : 'Joining link unavailable'}</p>
               <p className="text-red-700 text-sm mt-1">{inviteError}</p>
             </div>
           </div>
@@ -194,18 +235,35 @@ export default function RegisterPage() {
           </div>
         )}
 
+        {!inviteError && clanJoinDetails && (
+          <div className="mb-6 p-4 bg-brand-50 dark:bg-brand-500/10 border border-brand-200 dark:border-brand-500/20 rounded-xl">
+            <p className="text-brand-900 text-sm">
+              You&apos;re joining <span className="font-semibold">{clanJoinDetails.clan?.name}</span>
+              {clanJoinDetails.program ? <> in <span className="font-semibold">{clanJoinDetails.program.name}</span></> : null}
+            </p>
+            <p className="text-brand-700 text-sm mt-1">
+              After you create your account and log in, you&apos;ll send a join request for Lead Mentor approval.
+            </p>
+          </div>
+        )}
+
         {showSuccess && (
           <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl flex items-start gap-3">
             <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
             <div>
               <p className="text-green-900">Account created successfully!</p>
-              <p className="text-green-700 text-sm mt-1">Redirecting to login...</p>
+              <p className="text-green-700 text-sm mt-1">
+                {clanJoinSlug ? 'Redirecting to login to continue joining…' : 'Redirecting to login...'}
+              </p>
             </div>
           </div>
         )}
 
+        {errors.general && !inviteError && (
+          <div className="mb-4 text-sm text-red-600">{errors.general}</div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* First Name & Last Name */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-slate-700 text-sm mb-2">First Name</label>
@@ -248,7 +306,6 @@ export default function RegisterPage() {
             </div>
           </div>
 
-          {/* Email */}
           <div>
             <label className="block text-slate-700 text-sm mb-2">Email Address</label>
             <div className="relative">
@@ -257,8 +314,8 @@ export default function RegisterPage() {
                 type="email"
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  disabled={!!inviteDetails?.email}
-                className={`w-full pl-11 pr-4 py-3 border ${errors.email ? 'border-red-300' : 'border-slate-200'} rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent`}
+                disabled={emailLocked}
+                className={`w-full pl-11 pr-4 py-3 border ${errors.email ? 'border-red-300' : 'border-slate-200'} rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent disabled:bg-slate-50`}
                 placeholder="you@example.com"
               />
             </div>
@@ -270,7 +327,6 @@ export default function RegisterPage() {
             )}
           </div>
 
-          {/* Password */}
           <div>
             <label className="block text-slate-700 text-sm mb-2">Password</label>
             <div className="relative">
@@ -299,7 +355,6 @@ export default function RegisterPage() {
             <PasswordRequirements password={formData.password} />
           </div>
 
-          {/* Confirm Password */}
           <div>
             <label className="block text-slate-700 text-sm mb-2">Confirm Password</label>
             <div className="relative">
@@ -327,41 +382,26 @@ export default function RegisterPage() {
             )}
           </div>
 
-          {/* Submit Button */}
           <button
             type="submit"
-            disabled={loading || !!inviteError}
-            className="w-full bg-brand-600 hover:bg-brand-700 disabled:bg-brand-400 text-white py-3 rounded-xl transition-colors flex items-center justify-center gap-2 group"
+            disabled={loading || Boolean(inviteError)}
+            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-3 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
           >
-            {loading ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                Creating account...
-              </>
-            ) : (
-              <>
-                Create Account
-                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-              </>
-            )}
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
+            Create account
           </button>
         </form>
 
-        {/* Login Link */}
-        <div className="mt-6 text-center">
-          <p className="text-slate-600 text-sm">
-            Already have an account?{' '}
-            <Link href="/login" className="text-brand-600 hover:text-brand-700">
-              Sign in
-            </Link>
-          </p>
-        </div>
+        <p className="text-center text-sm text-slate-500 mt-6">
+          Already have an account?{' '}
+          <Link
+            href={joinReturnPath ? `/login?next=${encodeURIComponent(joinReturnPath)}` : '/login'}
+            className="font-medium text-brand-700 hover:text-brand-800"
+          >
+            Log in
+          </Link>
+        </p>
       </div>
-
-      {/* Footer */}
-      <p className="text-center text-slate-500 text-sm">
-        By signing up, you agree to our Terms of Service and Privacy Policy
-      </p>
     </div>
   );
 }

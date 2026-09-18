@@ -1,19 +1,23 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { Check, Crown, HeartHandshake, Loader2, Search, Shield, SlidersHorizontal, Trash2, UserPlus, Users2, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useClan, ALL_CLANS } from '@/lib/context/ClanContext';
+import { Check, ChevronDown, ChevronUp, Crown, HeartHandshake, Inbox, Link2, Loader2, Search, Shield, SlidersHorizontal, Trash2, UserPlus, Users2, X, Copy, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { apiClient } from '@/lib/services/api-client';
 import { clanApi } from '@/lib/services/clan-api';
 import { clanRequestsApi } from '@/lib/services/clan-requests-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
+import { formatRelativeTime } from '@/lib/utils/date';
 import Link from 'next/link';
 import { Drawer } from '@/components/shared/Drawer';
 import { Avatar } from '@/components/shared/Avatar';
 import { CoMentorPermissionsDrawer } from '@/components/shared/CoMentorPermissionsDrawer';
 import { IncomingTransfers, OutgoingTransfers } from '@/components/mentor/IncomingTransfers';
 import { useConfirm } from '@/lib/context/ConfirmContext';
+import { publicJoinBlockedMessage, publicJoinRequestLabel, publicJoinRequesterLocation, useClanPublicJoin } from '@/lib/hooks/mentor';
+import { todayInZone } from '@/lib/utils/datetime';
 
 interface Member {
   role: 'lead_mentor' | 'co_mentor' | 'core_team' | 'mentee';
@@ -44,6 +48,11 @@ const initials = (u: { firstName: string; lastName: string; email: string }) =>
 export default function ClanTeamPage() {
   const [memberships, setMemberships] = useState<MyMembership[]>([]);
   const [loading, setLoading] = useState(true);
+  // The sidebar picker is the ONLY clan control. This page used to stack every
+  // clan the mentor runs, one full roster after another, so picking "Viral Loop"
+  // still left Core Team's 37 mentees above it — a wall to scroll past and a
+  // contradiction of the control they had just used.
+  const { clans, activeClanId } = useClan();
 
   useEffect(() => {
     clanApi.myMemberships()
@@ -55,6 +64,14 @@ export default function ClanTeamPage() {
       .catch(() => toast.error('Could not load your clans'))
       .finally(() => setLoading(false));
   }, []);
+
+  // 'All clans' is a deliberate choice, so it still shows every roster.
+  const visible = useMemo(
+    () => (activeClanId === ALL_CLANS ? memberships : memberships.filter((m) => m.clan.id === activeClanId)),
+    [memberships, activeClanId]
+  );
+  const hiddenByClan = memberships.length - visible.length;
+  const activeClanName = clans.find((c) => c.id === activeClanId)?.name ?? null;
 
   return (
     <div className="space-y-6">
@@ -75,9 +92,16 @@ export default function ClanTeamPage() {
         <div className="rounded-2xl border border-dashed border-slate-200 bg-card p-12 text-center text-slate-400">
           You&apos;re not part of any clan as a mentor yet.
         </div>
+      ) : visible.length === 0 ? (
+        // Selected a clan they mentor but hold no team role in. Say so rather
+        // than rendering nothing.
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-card p-12 text-center text-slate-400">
+          You don&apos;t manage a team in {activeClanName || 'this clan'}.
+          {hiddenByClan > 0 && ` Switch clans in the sidebar to see your other ${hiddenByClan === 1 ? 'one' : hiddenByClan}.`}
+        </div>
       ) : (
         <div className="space-y-5">
-          {memberships.map((m) => (
+          {visible.map((m) => (
             <ClanTeamCard key={m.clan.id} clanId={m.clan.id} myRole={m.role} />
           ))}
         </div>
@@ -229,6 +253,8 @@ function ClanTeamCard({ clanId, myRole }: { clanId: string; myRole: string }) {
         )}
       </div>
 
+      {myRole === 'lead_mentor' && <PublicJoinLeadPanel clanId={clanId} onChanged={load} />}
+
       <div className="mt-5 space-y-5">
         <Section icon={<Crown className="w-3.5 h-3.5" />} title="Lead mentor" items={lead} removable={false} />
         <Section icon={<Shield className="w-3.5 h-3.5" />} title="Co-mentors" items={co} removable managePerms />
@@ -244,6 +270,339 @@ function ClanTeamCard({ clanId, myRole }: { clanId: string; myRole: string }) {
       {canManageTeam && adding && <AddTeamMemberDrawer clanId={clanId} onClose={() => setAdding(false)} onAdded={() => { setAdding(false); load(); }} />}
       {canAddMentees && addingMentees && <AddMenteesDrawer clanId={clanId} clanName={clan.name} onClose={() => setAddingMentees(false)} onChanged={() => load()} />}
       {canManageTeam && permMember && <CoMentorPermissionsDrawer clanId={clanId} userId={permMember.user.id} name={name(permMember.user)} onClose={() => setPermMember(null)} onSaved={load} />}
+    </div>
+  );
+}
+
+/** Lead-mentor public joining link + pending join requests (drawer). */
+function PublicJoinLeadPanel({ clanId, onChanged }: { clanId: string; onChanged?: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [requestsOpen, setRequestsOpen] = useState(false);
+  const [rejectTarget, setRejectTarget] = useState<{ id: string; name: string } | null>(null);
+  const [rejectNote, setRejectNote] = useState('');
+  const {
+    state,
+    requests,
+    pendingCount,
+    loading,
+    busy,
+    actingId,
+    windowDraft,
+    setWindowDraft,
+    copyLink,
+    generate,
+    saveJoinWindow,
+    disable,
+    regenerate,
+    approve,
+    reject,
+  } = useClanPublicJoin(clanId);
+
+  const field = 'w-full rounded-lg border border-slate-200 bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500';
+  // Same floor as cohort apply window: start cannot be before today; end cannot be before start or today.
+  const todayStr = todayInZone();
+  const endsMin = [windowDraft.startsDate, todayStr].filter(Boolean).sort().pop() as string;
+
+  const onApprove = async (requestId: string) => {
+    if (await approve(requestId)) onChanged?.();
+  };
+
+  const closeRejectModal = () => {
+    setRejectTarget(null);
+    setRejectNote('');
+  };
+
+  const confirmReject = async () => {
+    if (!rejectTarget) return;
+    const ok = await reject(rejectTarget.id, rejectNote);
+    if (ok) {
+      closeRejectModal();
+      onChanged?.();
+    }
+  };
+
+  const windowHint = state?.publicJoinWindowStatus && state.publicJoinWindowStatus !== 'active'
+    ? `Window ${state.publicJoinWindowStatus}`
+    : null;
+
+  return (
+    <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50/80">
+      <div className="flex flex-wrap items-center gap-3 p-4">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="flex-1 min-w-0 flex items-center gap-3 text-left rounded-xl px-1 py-0.5 hover:bg-slate-100/80"
+        >
+          <span className="w-10 h-10 rounded-xl bg-brand-100 text-brand-700 inline-flex items-center justify-center shrink-0">
+            <Link2 className="w-5 h-5" />
+          </span>
+          <span className="min-w-0">
+            <span className="text-sm font-semibold text-slate-900 block">Public clan joining</span>
+            <span className="text-xs text-slate-500 mt-0.5 block">
+              {open
+                ? 'Anyone with the link can request to join. Membership still requires your approval.'
+                : windowHint || (state?.publicJoinEnabled ? 'Public joining link is active.' : 'Expand to manage the joining link and window.')}
+            </span>
+          </span>
+        </button>
+        <div className="flex items-center gap-2 shrink-0 ml-auto">
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            aria-label={open ? 'Hide public joining details' : 'Show public joining details'}
+            className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-semibold shadow-sm transition-colors ${
+              open
+                ? 'border border-slate-200 bg-card text-slate-700 hover:bg-slate-50'
+                : 'bg-brand-600 text-white hover:bg-brand-700'
+            }`}
+          >
+            {open ? 'Hide details' : 'Show details'}
+            {open ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+          </button>
+          <button
+            type="button"
+            onClick={() => setRequestsOpen(true)}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-card px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            <Inbox className="w-4 h-4 text-brand-600" />
+            Join requests
+            <span className={`min-w-5 h-5 px-1.5 rounded-full text-[11px] font-semibold inline-flex items-center justify-center ${
+              pendingCount > 0 ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-500'
+            }`}>
+              {pendingCount}
+            </span>
+          </button>
+        </div>
+      </div>
+
+      {open && (
+      <div className="px-4 pb-4 space-y-4">
+      {loading ? (
+        <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin text-brand-600" /></div>
+      ) : !state?.publicJoinAllowed ? (
+        <p className="text-sm text-slate-600 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+          Public joining has not been enabled for this clan by an administrator.
+          Contact an administrator if this clan should use a public joining link.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          <div>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <p className="text-xs font-medium text-slate-500">
+                Optional join window <span className="font-normal">· leave blank for no limit</span>
+              </p>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={saveJoinWindow}
+                className="text-xs font-medium text-brand-700 hover:text-brand-800 disabled:opacity-40"
+              >
+                {busy ? 'Saving…' : 'Save window'}
+              </button>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-2.5">
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">Starts</label>
+                <input
+                  type="date"
+                  min={todayStr}
+                  value={windowDraft.startsDate}
+                  onChange={(e) => setWindowDraft({ startsDate: e.target.value })}
+                  className={`${field} [color-scheme:light] dark:[color-scheme:dark]`}
+                />
+                <input type="time" value={windowDraft.startsTime} onChange={(e) => setWindowDraft({ startsTime: e.target.value })} className={`${field} mt-1.5`} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">Ends</label>
+                <input
+                  type="date"
+                  min={endsMin}
+                  value={windowDraft.endsDate}
+                  onChange={(e) => setWindowDraft({ endsDate: e.target.value })}
+                  className={`${field} [color-scheme:light] dark:[color-scheme:dark]`}
+                />
+                <input type="time" value={windowDraft.endsTime} onChange={(e) => setWindowDraft({ endsTime: e.target.value })} className={`${field} mt-1.5`} />
+              </div>
+            </div>
+            {state.publicJoinWindowStatus && state.publicJoinWindowStatus !== 'active' ? (
+              <p className="text-xs text-amber-700 mt-2">
+                Window {state.publicJoinWindowStatus}
+              </p>
+            ) : null}
+          </div>
+
+          {state.publicJoinEnabled && state.publicJoinUrl ? (
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                readOnly
+                value={state.publicJoinUrl}
+                className="flex-1 rounded-lg border border-slate-200 bg-card px-3 py-2 text-xs text-slate-700"
+              />
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={copyLink} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-card px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                  <Copy className="w-4 h-4" /> Copy
+                </button>
+                <button type="button" disabled={busy} onClick={regenerate} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-card px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+                  <RefreshCw className="w-4 h-4" /> Regenerate
+                </button>
+                <button type="button" disabled={busy} onClick={disable} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50">
+                  Disable
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-sm text-slate-600">
+                {state.publicJoinLinkExists
+                  ? 'Public joining is currently disabled.'
+                  : 'No public joining link has been generated yet.'}
+              </p>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={generate}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+              >
+                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
+                {state.publicJoinLinkExists ? 'Enable link' : 'Generate public joining link'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+      </div>
+      )}
+
+      <Drawer
+        open={requestsOpen}
+        onClose={() => setRequestsOpen(false)}
+        title="Join requests"
+        subtitle={pendingCount === 0
+          ? 'No pending requests right now'
+          : `${pendingCount} pending`}
+        width="md"
+      >
+        {pendingCount === 0 ? (
+          <div className="py-10 text-center">
+            <Inbox className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+            <p className="text-sm text-slate-500">You’re all caught up.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {typeof requests[0]?.seatsRemaining === 'number' ? (
+              <p className="text-xs text-slate-500 px-0.5 pb-1">
+                {requests[0].seatsRemaining} seat{requests[0].seatsRemaining === 1 ? '' : 's'} remaining
+              </p>
+            ) : null}
+            {requests.map((req) => {
+              const label = publicJoinRequestLabel(req);
+              const acting = actingId === req.id;
+              const blocked = publicJoinBlockedMessage(req);
+              const location = publicJoinRequesterLocation(req);
+              const u = req.user;
+              const meta = [u?.currentOccupation, location].filter(Boolean).join(' · ');
+
+              return (
+                <div key={req.id} className="bg-card rounded-2xl border border-slate-200 p-4 space-y-3">
+                  <div className="flex items-start gap-3">
+                    <Avatar name={label} src={u?.profilePictureUrl} size="md" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-slate-900 truncate">{label}</p>
+                      <p className="text-xs text-slate-500 truncate mt-0.5">{u?.email}</p>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Requested {formatRelativeTime(req.createdAt)}
+                      </p>
+                      {meta ? <p className="text-xs text-slate-600 mt-1 truncate">{meta}</p> : null}
+                      {u?.emailVerified === false ? (
+                        <p className="text-[11px] text-amber-700 mt-1">Email not verified</p>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {req.message ? (
+                    <div className="rounded-lg bg-slate-50 px-3 py-2">
+                      <p className="text-[11px] font-medium text-slate-400 mb-0.5">Applicant&apos;s message</p>
+                      <p className="text-xs text-slate-700 whitespace-pre-wrap">“{req.message}”</p>
+                    </div>
+                  ) : null}
+
+                  {blocked ? (
+                    <p className="text-xs text-amber-800 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                      {blocked}
+                    </p>
+                  ) : null}
+
+                  <div className="flex items-center justify-end gap-1.5">
+                    <button
+                      type="button"
+                      disabled={acting}
+                      onClick={() => setRejectTarget({ id: req.id, name: label })}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 text-xs font-medium hover:border-red-300 hover:text-red-600 disabled:opacity-50"
+                    >
+                      <X className="w-3.5 h-3.5" /> Reject
+                    </button>
+                    <button
+                      type="button"
+                      disabled={acting || Boolean(blocked)}
+                      onClick={() => onApprove(req.id)}
+                      title={blocked || undefined}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-medium hover:bg-emerald-100 disabled:opacity-50"
+                    >
+                      {acting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                      Approve
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Drawer>
+
+      {rejectTarget ? (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-card rounded-2xl p-6 w-full max-w-md shadow-xl">
+            <h3 className="text-slate-900 text-lg font-semibold mb-1">Reject join request?</h3>
+            <p className="text-slate-600 text-sm mb-4">
+              {rejectTarget.name} can request again later unless you leave the link disabled.
+              Add an optional note they will see in their notification.
+            </p>
+            <label htmlFor="join-reject-note" className="block text-xs font-medium text-slate-500 mb-1.5">
+              Decision note <span className="font-normal text-slate-400">(optional)</span>
+            </label>
+            <textarea
+              id="join-reject-note"
+              value={rejectNote}
+              onChange={(e) => setRejectNote(e.target.value.slice(0, 2000))}
+              placeholder="e.g. Clan is focusing on a different skill track this cohort…"
+              rows={3}
+              maxLength={2000}
+              className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none mb-4"
+            />
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={closeRejectModal}
+                disabled={actingId === rejectTarget.id}
+                className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmReject}
+                disabled={actingId === rejectTarget.id}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50"
+              >
+                {actingId === rejectTarget.id ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                Confirm rejection
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

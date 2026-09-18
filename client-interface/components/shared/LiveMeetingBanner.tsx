@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Video, X } from 'lucide-react';
 import { liveMeetingApi, type LiveMeeting } from '@/lib/services/live-meeting-api';
 import { LiveMeetingOverlay } from '@/components/shared/LiveMeetingOverlay';
+import { usePolling } from '@/lib/hooks/shared/usePolling';
 
 const POLL_MS = 45000;
 
@@ -18,20 +19,16 @@ export function LiveMeetingBanner() {
   const [joining, setJoining] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
+  // Errors deliberately propagate to usePolling, which reads `retryAfter` off a
+  // 429 and waits it out. Swallowing them here (as this used to) meant the
+  // banner kept polling straight through a rate limit and helped hold it open.
+  // The banner is best-effort either way: a failure just shows nothing.
   const poll = useCallback(async () => {
-    try {
-      const r = await liveMeetingApi.live();
-      setMeetings(r.data?.meetings ?? []);
-    } catch {
-      // Silent — the banner is best-effort; unauthenticated/expired sessions just show nothing.
-    }
+    const r = await liveMeetingApi.live();
+    setMeetings(r.data?.meetings ?? []);
   }, []);
 
-  useEffect(() => {
-    poll();
-    const t = setInterval(poll, POLL_MS);
-    return () => clearInterval(t);
-  }, [poll]);
+  usePolling(poll, { intervalMs: POLL_MS });
 
   // Only surface meetings that are actually LIVE and not dismissed.
   const live = meetings.find((m) => m.status === 'live' && !dismissed.has(m.id));

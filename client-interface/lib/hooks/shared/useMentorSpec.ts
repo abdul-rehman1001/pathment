@@ -1,32 +1,25 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { mentorSpecApi, type MentorSpec } from '@/lib/services/mentor-spec-api';
+import { qk, useApiQuery, STALE } from '@/lib/query';
 
 const EMPTY: MentorSpec = { intro: '', principles: [], responsibilities: [], conduct: [], time: [], faqs: [] };
 
 export function useMentorSpec() {
-  const [spec, setSpec] = useState<MentorSpec | null>(null);
-  const [loading, setLoading] = useState(true);
+  const client = useQueryClient();
 
-  const fetchSpec = useCallback(async () => {
-    try {
-      setLoading(true);
-      const res = await mentorSpecApi.get();
-      setSpec(res?.data?.spec ?? EMPTY);
-    } catch {
-      setSpec(EMPTY);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const { data, loading, refetch } = useApiQuery<MentorSpec>({
+    queryKey: qk.mentor.spec,
+    queryFn: async () => (await mentorSpecApi.get())?.data?.spec ?? EMPTY,
+    staleTime: STALE.long,
+  });
 
   const save = useCallback(async (next: MentorSpec) => {
     const res = await mentorSpecApi.save(next);
-    setSpec(res?.data?.spec ?? next);
-  }, []);
+    client.setQueryData(qk.mentor.spec, res?.data?.spec ?? next);
+  }, [client]);
 
-  useEffect(() => { fetchSpec(); }, [fetchSpec]);
-
-  return { spec, loading, refetch: fetchSpec, save };
+  return { spec: data ?? null, loading, refetch, save };
 }

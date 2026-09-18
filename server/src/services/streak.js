@@ -88,26 +88,42 @@ function longestStreak(dateKeys) {
 const STREAK_BONUSES = { 7: 50, 14: 100, 30: 200, 60: 300, 100: 500 };
 
 /**
- * Which milestones a streak has just passed.
+ * Which milestones a streak of this length has reached.
  *
- * Given where it was and where it now is, this returns the milestones in
- * between. Two things depend on it. A streak recounted rather than incremented
- * can be recomputed several times in one day, and this returns nothing the
- * second time, so nobody is paid twice for the same seven days. And a mentee
- * backfilling days they forgot to log can cross more than one milestone at
- * once, which the old code, only ever able to step by one, could not express.
+ * Every milestone at or below the current run, with no reference to where the
+ * streak was before. That is the whole point: the previous value is a stored
+ * counter, and a counter that can go DOWN cannot decide what has been paid.
+ *
+ * It went down all the time — a genuine break sets it to zero, and so does a
+ * recount on a day nobody has logged yet. Whatever it was, the next call asked
+ * `milestonesCrossed(0, 60)` and cheerfully re-paid 7, 14, 30 and 60. One
+ * mentee collected the full set four times and finished on 3,276 points when
+ * she had earned 1,326; another was paid the seven-day bonus eight times.
+ *
+ * What has already been paid is a fact about the ledger, not about a counter,
+ * so the caller reads it from there and subtracts. This function only answers
+ * "what does a run this long qualify for".
  */
-function milestonesCrossed(previous, current) {
+function milestonesReached(current) {
   return Object.keys(STREAK_BONUSES)
     .map(Number)
-    .filter((milestone) => milestone > previous && milestone <= current)
+    .filter((milestone) => milestone <= current)
     .sort((left, right) => left - right);
+}
+
+/** Pull the milestone back out of a ledger row's reason, or null. */
+function milestoneFromReason(reason) {
+  const match = /^(\d+) day streak bonus$/.exec(String(reason || '').trim());
+  if (!match) return null;
+  const milestone = Number(match[1]);
+  return STREAK_BONUSES[milestone] ? milestone : null;
 }
 
 module.exports = {
   shiftDayKey,
   currentStreak,
   longestStreak,
-  milestonesCrossed,
+  milestonesReached,
+  milestoneFromReason,
   STREAK_BONUSES,
 };

@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
+import { qk, useApiQuery } from '@/lib/query';
 import { taskApi } from '@/lib/services/task-api';
 import { submissionService } from '@/lib/services/submissionService';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
@@ -27,9 +28,6 @@ export interface UseMentorTaskDetailReturn {
 }
 
 export function useMentorTaskDetail(taskId: string): UseMentorTaskDetailReturn {
-  const [task, setTask] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [cancellingTask, setCancellingTask] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [isCancelling, setIsCancelling] = useState(false);
@@ -37,21 +35,12 @@ export function useMentorTaskDetail(taskId: string): UseMentorTaskDetailReturn {
   const [newDueDate, setNewDueDate] = useState('');
   const [isHandlingExtension, setIsHandlingExtension] = useState(false);
 
-  const fetchTask = useCallback(async () => {
-    if (!taskId) return;
-    try {
-      const response = await taskApi.getTaskById(taskId);
-      setTask(response.data.task);
-    } catch (err: unknown) {
-      setError(extractApiErrorMessage(err, 'Failed to load task'));
-    } finally {
-      setLoading(false);
-    }
-  }, [taskId]);
-
-  useEffect(() => {
-    fetchTask();
-  }, [fetchTask]);
+  const { data: task, loading, error, refetch: fetchTask } = useApiQuery<any>({
+    queryKey: qk.mentor.taskDetail(taskId),
+    queryFn: async () => (await taskApi.getTaskById(taskId)).data.task,
+    enabled: !!taskId,
+    errorMessage: 'Failed to load task',
+  });
 
   const handleExtension = useCallback(
     async (approved: boolean, submissionId: string) => {
@@ -97,9 +86,9 @@ export function useMentorTaskDetail(taskId: string): UseMentorTaskDetailReturn {
   }, [taskId, cancelReason, fetchTask]);
 
   return {
-    task,
+    task: task ?? null,
     loading,
-    error,
+    error: error ?? '',
     cancellingTask,
     cancelReason,
     isCancelling,

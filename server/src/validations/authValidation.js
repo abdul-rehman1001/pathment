@@ -62,12 +62,15 @@ const authSchemas = {
       'any.only': 'Passwords do not match',
       'string.empty': 'Confirm password is required'
     }),
-    inviteToken: Joi.string().trim().required().messages({
-      'string.empty': 'Invite token is required'
-    }),
+    // Classic email-locked invite OR public clan join slug (multi-use). Exactly one.
+    inviteToken: Joi.string().trim().optional(),
+    clanJoinSlug: Joi.string().trim().max(64).optional(),
     phoneNumber: patterns.phoneNumber,
     dateOfBirth: Joi.date().max('now').optional(),
     bio: Joi.string().max(500).optional()
+  }).xor('inviteToken', 'clanJoinSlug').messages({
+    'object.xor': 'Provide either an invite token or a clan join link, not both',
+    'object.missing': 'An invite token or clan join link is required'
   }),
 
   // NOTE: validate() runs with stripUnknown:true, so anything not declared here

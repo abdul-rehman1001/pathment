@@ -1,14 +1,12 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { usePathname, useRouter } from 'next/navigation';
 import { Bell, X, Check, Trash2, Clock, ListTodo, MessageSquare, Award, Trophy, Zap, ChevronRight } from 'lucide-react';
-import { io } from 'socket.io-client';
-import { messagingApi } from '@/lib/services/messaging-api';
-import { getToken } from '@/lib/services/token-store';
 import { useAuth } from '@/lib/context/AuthContext';
 import { matchesRole, roleFromPathname, type NotificationRole } from '@/lib/utils/notification-audience';
+import { useNotificationFeed, toMessageText } from '@/lib/hooks/shared/useNotificationFeed';
 
 interface Notification {
   id: string;
@@ -27,37 +25,8 @@ interface Notification {
 
 interface NotificationDrawerProps {
   userId: string;
-  apiBaseUrl: string;
   showLabel?: boolean;
 }
-
-interface NotificationSocketPayload {
-  id?: string;
-  type?: string;
-  audience?: 'mentor' | 'mentee' | 'admin' | 'any';
-  title?: string;
-  message?: unknown;
-  actionUrl?: string;
-}
-
-const toNotificationMessageText = (value: unknown): string => {
-  if (typeof value === 'string') {
-    return value;
-  }
-
-  if (value && typeof value === 'object') {
-    const candidate = (value as { messageText?: unknown }).messageText;
-    if (typeof candidate === 'string') {
-      return candidate;
-    }
-  }
-
-  return 'You have a new message';
-};
-
-const isNonMessageNotification = (notification: { type?: string }): boolean => {
-  return notification.type !== 'message';
-};
 
 // Per-type icon + tint so notifications are scannable at a glance.
 const TYPE_ICON: Record<string, { Icon: typeof Bell; cls: string }> = {
@@ -81,17 +50,23 @@ const getRoleNotificationsPath = (pathname: string): string => {
 
 export default function NotificationDrawer({
   userId,
-  apiBaseUrl,
   showLabel = false
 }: NotificationDrawerProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { activeRole } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showAllRoles, setShowAllRoles] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  // The feed itself is shared: this bell renders twice (desktop sidebar + mobile
+  // header) and both are always in the DOM, so owning the state here meant two
+  // of every fetch and two sockets. See useNotificationFeed.
+  const {
+    notifications, loading, reload, markRead, markAllRead, remove,
+  } = useNotificationFeed(userId);
+  // Only blank the list when there is genuinely nothing to show; a background
+  // refresh must not replace a populated list with a spinner.
+  const isLoading = loading && notifications.length === 0;
 
   const notificationsPath = getRoleNotificationsPath(pathname || '');
 
@@ -113,104 +88,16 @@ export default function NotificationDrawer({
   );
   const hiddenOtherRoleCount = notifications.length - roleScoped.length;
 
-  // Load notifications on mount and when drawer opens
-  const loadNotifications = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const data = await messagingApi.listNotifications(50);
-      setNotifications(data.notifications.filter(isNonMessageNotification));
-    } catch (error) {
-      console.error('Failed to load notifications:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  // Initialize socket connection for realtime updates
-  useEffect(() => {
-    if (!userId) return;
-
-    const socketUrl = apiBaseUrl.endsWith('/api') 
-      ? apiBaseUrl.slice(0, -4) 
-      : apiBaseUrl;
-
-    const newSocket = io(socketUrl, {
-      auth: {
-        token: getToken()
-      }
-    });
-
-    const handleNotificationNew = (data: NotificationSocketPayload) => {
-      const incomingType = data?.type || 'message';
-      if (incomingType === 'message') {
-        return;
-      }
-
-      setNotifications((prev) => [
-        {
-          id: data?.id || `notif-${Date.now()}`,
-          type: incomingType,
-          audience: data?.audience,
-          title: data?.title || 'New message',
-          message: toNotificationMessageText(data?.message),
-          status: 'unread',
-          actionUrl: data?.actionUrl,
-          createdAt: new Date().toISOString()
-        },
-        ...prev
-      ]);
-    };
-
-    const handleUnreadCountUpdate = async (data: { unreadCount: number }) => {
-      if (typeof data?.unreadCount !== 'number') {
-        return;
-      }
-
-      try {
-        const latest = await messagingApi.listNotifications(50);
-        setNotifications(latest.notifications.filter(isNonMessageNotification));
-      } catch (error) {
-        console.error('Failed to refresh notification count:', error);
-      }
-    };
-
-    newSocket.on('notification:new', handleNotificationNew);
-    newSocket.on('notification:unread-count', handleUnreadCountUpdate);
-
-    return () => {
-      newSocket.off('notification:new', handleNotificationNew);
-      newSocket.off('notification:unread-count', handleUnreadCountUpdate);
-      newSocket.disconnect();
-    };
-  }, [apiBaseUrl, userId]);
-
   // Ensure we only render portal on client.
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
-  // Keep bell count accurate even before opening drawer.
+  // Opening the drawer asks for a fresh read; the cache serves the current list
+  // meanwhile, so there is no spinner over existing data.
   useEffect(() => {
-    if (!userId) return;
-
-    const loadUnreadCount = async () => {
-      try {
-        const data = await messagingApi.listNotifications(50);
-        setNotifications(data.notifications.filter(isNonMessageNotification));
-      } catch (error) {
-        console.error('Failed to load notification count:', error);
-      }
-    };
-
-    loadUnreadCount();
-  }, [userId]);
-
-  // Load notifications when drawer opens
-  useEffect(() => {
-    if (isOpen) {
-      loadNotifications();
-    }
-  }, [isOpen, loadNotifications]);
+    if (isOpen) reload();
+  }, [isOpen, reload]);
 
   // Lock background scroll while sheet is open.
   useEffect(() => {
@@ -224,40 +111,9 @@ export default function NotificationDrawer({
     };
   }, [isOpen]);
 
-  const handleMarkRead = async (notificationId: string) => {
-    try {
-      await messagingApi.markNotificationRead(notificationId);
-      setNotifications((prev) =>
-        prev.map((n) =>
-          n.id === notificationId
-            ? { ...n, status: 'read' as const, readAt: new Date().toISOString() }
-            : n
-        )
-      );
-    } catch (error) {
-      console.error('Failed to mark notification as read:', error);
-    }
-  };
-
-  const handleMarkAllRead = async () => {
-    try {
-      await messagingApi.markAllNotificationsRead();
-      setNotifications((prev) =>
-        prev.map((n) => ({ ...n, status: 'read' as const, readAt: new Date().toISOString() }))
-      );
-    } catch (error) {
-      console.error('Failed to mark all notifications as read:', error);
-    }
-  };
-
-  const handleDelete = async (notificationId: string) => {
-    try {
-      await messagingApi.deleteNotification(notificationId);
-      setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
-    } catch (error) {
-      console.error('Failed to delete notification:', error);
-    }
-  };
+  const handleMarkRead = (notificationId: string) => markRead(notificationId);
+  const handleMarkAllRead = () => markAllRead();
+  const handleDelete = (notificationId: string) => remove(notificationId);
 
   const handleNotificationClick = (notification: Notification) => {
     if (notification.actionUrl) {
@@ -426,7 +282,7 @@ export default function NotificationDrawer({
                             <p className="text-sm font-medium text-slate-900 truncate">{notification.title}</p>
                             {notification.status === 'unread' && <span className="w-2 h-2 rounded-full bg-brand-600 shrink-0" />}
                           </div>
-                          <p className="mt-1 text-xs text-slate-600 line-clamp-2">{toNotificationMessageText(notification.message)}</p>
+                          <p className="mt-1 text-xs text-slate-600 line-clamp-2">{toMessageText(notification.message)}</p>
                           <div className="mt-2 flex items-center gap-2">
                             <p className="text-xs text-slate-400">{formatTime(notification.createdAt)}</p>
                             {notification.actionUrl && notification.actionLabel && (

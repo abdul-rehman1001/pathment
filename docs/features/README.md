@@ -35,6 +35,7 @@ Every feature file follows the same template so things are easy to find and reme
 | --- | --- |
 | [Intake & Assessments](./intake-and-assessments.md) | Public program catalog, shareable cohort apply links, applications, magic-link, admin-built assessments, accept → invite → register → placement, carry-forward. |
 | [Programs, Cohorts & Clans](./programs-cohorts-clans.md) | The org structure: programs, intake cohorts, mentor-led clans, memberships, clan change requests, cross-clan help. |
+| [Public Clan Joining Link](./clan-public-join.md) | Shareable multi-use clan URLs: admin permission, Lead Mentor link + approve/reject, visitor register/login → join request. |
 | [Matching & Placement](./matching-and-placement.md) | Clan-based placement + AI mentor-match suggestions. |
 
 ### Doing the work
@@ -52,6 +53,7 @@ Every feature file follows the same template so things are easy to find and reme
 | [Notifications & Email](./notifications-and-email.md) | The notification matrix, in-app + email, preference gating, Resend. |
 | [Community](./community.md) | Scoped feeds (clan/cohort/program/global), posts, comments, kudos, Q&A, moderation. |
 | [Gamification](./gamification.md) | Points, badges, challenges, leaderboards, the gift catalog + redemptions. |
+| [Certificates](./certificates.md) | Template builder, certificate types + criteria, AI grading, issuance, and tier-aware layers (per-type wording and badges). |
 
 ### Insight, intelligence & knowledge
 | Feature | What it covers |

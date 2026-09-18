@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { toast } from 'sonner';
 import { clanApi } from '@/lib/services/clan-api';
+import { qk, useApiQuery } from '@/lib/query';
 
 export interface MentorClan {
   id: string;
@@ -29,31 +28,19 @@ export interface UseMentorProgramsReturn {
   fetchPrograms: () => Promise<void>;
 }
 
+const EMPTY: MentorProgram[] = [];
+
 /**
  * Programs the mentor runs, derived from the clans they lead/co-mentor - so a
  * mentor sees a program the moment they're assigned a clan in it, even before
  * any mentees arrive (clan-based assignment, not 1:1 matches).
  */
 export function useMentorPrograms(): UseMentorProgramsReturn {
-  const [programs, setPrograms] = useState<MentorProgram[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data, loading, refetch } = useApiQuery<MentorProgram[]>({
+    queryKey: qk.mentor.programs,
+    queryFn: async () => (await clanApi.mentorPrograms())?.data?.programs ?? [],
+    errorMessage: 'Failed to load your programs',
+  });
 
-  const fetchPrograms = useCallback(async () => {
-    try {
-      setLoading(true);
-      const res = await clanApi.mentorPrograms();
-      setPrograms(res?.data?.programs ?? []);
-    } catch {
-      toast.error('Failed to load your programs');
-      setPrograms([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchPrograms();
-  }, [fetchPrograms]);
-
-  return { programs, loading, fetchPrograms };
+  return { programs: data ?? EMPTY, loading, fetchPrograms: refetch };
 }

@@ -11,7 +11,6 @@ import {
   BookOpen,
   Sparkles,
   XCircle,
-  AlertCircle,
   User,
   Award,
   MessageSquare,
@@ -24,6 +23,7 @@ import {
 import { ResourceLink } from '@/components/shared/ResourceLink';
 import { SubmissionFileList } from '@/components/shared/SubmissionFileList';
 import { useTaskDetail } from '@/lib/hooks/mentee';
+import { ResourceError } from '@/components/shared/ResourceError';
 import { PageHeader, StatusBadge } from '@/components/admin/ui';
 import { useActivityTracker } from '@/lib/hooks/shared/useActivityTracker';
 import { FrictionPanel } from '@/components/mentee/FrictionPanel';
@@ -39,7 +39,7 @@ interface PageProps {
 export default function TaskDetailsPage({ params }: PageProps) {
   const resolvedParams = use(params);
   const router = useRouter();
-  const { task, loading, error, refetch } = useTaskDetail(resolvedParams.id);
+  const { task, loading, error, errorStatus, refetch } = useTaskDetail(resolvedParams.id);
   const { trackEvent } = useActivityTracker();
   const [submitOpen, setSubmitOpen] = useState(false);
   const [interviewResultsOpen, setInterviewResultsOpen] = useState(false);
@@ -64,10 +64,14 @@ export default function TaskDetailsPage({ params }: PageProps) {
 
   if (error || !task) {
     return (
-      <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
-        <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
-        <p className="text-red-900">{error || 'Task not found'}</p>
-      </div>
+      <ResourceError
+        status={errorStatus ?? (task ? null : 404)}
+        resource="task"
+        message={error}
+        backHref="/mentee/tasks"
+        backLabel="Back to tasks"
+        onRetry={refetch}
+      />
     );
   }
 

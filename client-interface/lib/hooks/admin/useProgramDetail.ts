@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { qk, useApiQuery } from '@/lib/query';
 import { useParams } from 'next/navigation';
 import { programManagementApi } from '@/lib/services/program-api';
 import { enrollmentApi } from '@/lib/services/enrollment-api';
@@ -52,20 +54,57 @@ interface UseProgramDetailReturn {
   handleVisibilityUpdate: (newVisibility: string) => Promise<void>;
   updatingStatus: boolean;
   fetchEnrollments: () => Promise<void>;
+  /** HTTP status when the load failed — lets the page tell 403 from 404. */
+  errorStatus: number | null;
   refetch: () => Promise<void>;
 }
+
+const NO_ENROLLMENTS: ProgramEnrollment[] = [];
 
 export function useProgramDetail(): UseProgramDetailReturn {
   const params = useParams();
   const id = params?.id as string;
 
-  const [program, setProgram] = useState<ProgramDetailProgram | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [enrollments, setEnrollments] = useState<ProgramEnrollment[]>([]);
-  const [loadingEnrollments, setLoadingEnrollments] = useState(false);
+  const client = useQueryClient();
   const [shareOpen, setShareOpen] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const shareRef = useRef<HTMLDivElement>(null!);
+
+  const { data: program, loading, errorStatus, refetch: fetchProgram } = useApiQuery<ProgramDetailProgram | null>({
+    queryKey: qk.admin.program(id),
+    queryFn: async () => {
+      const response = (await programManagementApi.programs.getById(id)) as {
+        data?: { program?: ProgramDetailProgram };
+        program?: ProgramDetailProgram;
+      };
+      return response?.data?.program ?? response?.program ?? null;
+    },
+    enabled: !!id,
+    errorMessage: 'Failed to load program',
+  });
+
+  // Loaded on demand (when the page opens the enrolments tab), as before.
+  const {
+    data: enrollments, loading: loadingEnrollments, refetch: fetchEnrollments,
+  } = useApiQuery<ProgramEnrollment[]>({
+    queryKey: qk.admin.programEnrollments(id),
+    queryFn: async () => {
+      const response = (await enrollmentApi.getAll({ programId: id })) as {
+        data?: { enrollments?: ProgramEnrollment[] };
+        enrollments?: ProgramEnrollment[];
+      };
+      return response?.data?.enrollments ?? response?.enrollments ?? [];
+    },
+    enabled: false,
+    errorMessage: 'Failed to load enrollments',
+  });
+
+  /** Optimistic patch of the cached program, with the previous value returned. */
+  const patchProgram = useCallback((patch: Partial<ProgramDetailProgram>) => {
+    client.setQueryData<ProgramDetailProgram | null>(
+      qk.admin.program(id), (prev) => (prev ? { ...prev, ...patch } : prev)
+    );
+  }, [client, id]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -76,45 +115,6 @@ export function useProgramDetail(): UseProgramDetailReturn {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  const fetchProgram = useCallback(async () => {
-    if (!id) return;
-    try {
-      setLoading(true);
-      const response = (await programManagementApi.programs.getById(id)) as {
-        data?: { program?: ProgramDetailProgram };
-        program?: ProgramDetailProgram;
-      };
-      setProgram(response?.data?.program ?? response?.program ?? null);
-    } catch (err: unknown) {
-      console.error('Failed to fetch program:', err);
-      toast.error(extractApiErrorMessage(err, 'Failed to load program'));
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
-
-  const fetchEnrollments = useCallback(async () => {
-    if (!id) return;
-    try {
-      setLoadingEnrollments(true);
-      const response = (await enrollmentApi.getAll({ programId: id })) as {
-        data?: { enrollments?: ProgramEnrollment[] };
-        enrollments?: ProgramEnrollment[];
-      };
-      setEnrollments(response?.data?.enrollments ?? response?.enrollments ?? []);
-    } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } } };
-      console.error('Failed to fetch enrollments:', e);
-      toast.error('Failed to load enrollments');
-    } finally {
-      setLoadingEnrollments(false);
-    }
-  }, [id]);
-
-  useEffect(() => {
-    if (id) fetchProgram();
-  }, [id, fetchProgram]);
 
   const handleApproveEnrollment = useCallback(async (enrollmentId: string) => {
     try {
@@ -143,7 +143,7 @@ export function useProgramDetail(): UseProgramDetailReturn {
     if (!program) return;
     const prevStatus = program.status;
     // Optimistic update
-    setProgram((prev) => (prev ? { ...prev, status: newStatus } : prev));
+    patchProgram({ status: newStatus });
     setUpdatingStatus(true);
     try {
       await (programManagementApi.programs.update as (id: string, data: object) => Promise<unknown>)(id, { status: newStatus });
@@ -156,28 +156,28 @@ export function useProgramDetail(): UseProgramDetailReturn {
       toast.success(labels[newStatus] ?? 'Status updated successfully');
     } catch (err: unknown) {
       // Roll back optimistic update on failure
-      setProgram((prev) => (prev ? { ...prev, status: prevStatus } : prev));
+      patchProgram({ status: prevStatus });
       toast.error(extractApiErrorMessage(err, 'Failed to update program status'));
     } finally {
       setUpdatingStatus(false);
     }
-  }, [id, program]);
+  }, [id, program, patchProgram]);
 
   const handleVisibilityUpdate = useCallback(async (newVisibility: string) => {
     if (!program) return;
     const prev = (program as { visibility?: string }).visibility;
-    setProgram((p) => (p ? { ...p, visibility: newVisibility } : p));
+    patchProgram({ visibility: newVisibility } as Partial<ProgramDetailProgram>);
     setUpdatingStatus(true);
     try {
       await (programManagementApi.programs.update as (id: string, data: object) => Promise<unknown>)(id, { visibility: newVisibility });
       toast.success(newVisibility === 'public' ? 'Program is now public' : 'Program is now private');
     } catch (err: unknown) {
-      setProgram((p) => (p ? { ...p, visibility: prev } : p));
+      patchProgram({ visibility: prev } as Partial<ProgramDetailProgram>);
       toast.error(extractApiErrorMessage(err, 'Failed to update visibility'));
     } finally {
       setUpdatingStatus(false);
     }
-  }, [id, program]);
+  }, [id, program, patchProgram]);
 
   const copyToClipboard = useCallback((text: string, label: string) => {
     navigator.clipboard
@@ -191,9 +191,9 @@ export function useProgramDetail(): UseProgramDetailReturn {
 
   return {
     id,
-    program,
+    program: program ?? null,
     loading,
-    enrollments,
+    enrollments: enrollments ?? NO_ENROLLMENTS,
     loadingEnrollments,
     shareOpen,
     shareRef,
@@ -205,6 +205,7 @@ export function useProgramDetail(): UseProgramDetailReturn {
     handleVisibilityUpdate,
     updatingStatus,
     fetchEnrollments,
+    errorStatus,
     refetch: fetchProgram,
   };
 }

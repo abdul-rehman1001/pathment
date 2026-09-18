@@ -16,10 +16,9 @@ const {
   createMentor,
   createMentee,
   createProgram,
-  createProgramLevel,
   createEnrollment,
+  createClan,
   createRoadmap,
-  createRoadmapWeek,
   createRoadmapTask,
   createMatch,
   authHeader,
@@ -35,19 +34,19 @@ describe('Mentor Task Management', () => {
     mentee = await createMentee({ email: 'mentee@test.com' });
 
     const program = await createProgram({ createdBy: admin.id, status: 'published' });
-    const level = await createProgramLevel({ programId: program.id });
+    // Mentor access to a mentee comes from a shared clan, not from the
+    // mentorId stamped on the task. See createClan in the seed helpers.
+    await createClan({ programId: program.id, createdBy: admin.id, leadMentor: mentor, mentees: [mentee] });
     enrollment = await createEnrollment({
       menteeId: mentee.id,
       programId: program.id,
-      levelId: level.id,
       status: 'active',
     });
 
-    const roadmap = await createRoadmap({ programId: program.id, levelId: level.id, createdBy: admin.id });
-    const week = await createRoadmapWeek({ roadmapId: roadmap.id });
-    roadmapTask = await createRoadmapTask({ weekId: week.id, title: 'Build Login API' });
+    const roadmap = await createRoadmap({ programId: program.id, createdBy: admin.id });
+    roadmapTask = await createRoadmapTask({ roadmapId: roadmap.id, title: 'Build Login API' });
 
-    await createMatch({ mentorId: mentor.id, menteeId: mentee.id, enrollmentId: enrollment.id, levelId: level.id, matchedBy: admin.id });
+    await createMatch({ mentorId: mentor.id, menteeId: mentee.id, enrollmentId: enrollment.id, matchedBy: admin.id });
   });
 
   // TC-MR03

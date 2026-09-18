@@ -3,6 +3,7 @@ const { RagFacade } = require('../features/rag');
 const { successResponse } = require('../utils/responses');
 const { catchAsync } = require('../middlewares/errorHandler');
 const { emitToConversation, emitToUser } = require('../socket');
+const { portalOf } = require('../middlewares/portalScope');
 
 const serializeNotification = (notification) => {
   const item = notification?.toJSON ? notification.toJSON() : notification;
@@ -28,7 +29,12 @@ const serializeNotification = (notification) => {
 };
 
 exports.getConversations = catchAsync(async (req, res) => {
-  const conversations = await messagingService.listConversations(req.user.id, req.query);
+  const conversations = await messagingService.listConversations(req.user.id, {
+    ...req.query,
+    // The inbox belongs to the portal it was opened from, so a dual-role user's
+    // mentee inbox doesn't list the threads they hold as a mentor.
+    portal: portalOf(req)
+  });
   res.status(200).json(successResponse('Conversations fetched successfully', { conversations }));
 });
 

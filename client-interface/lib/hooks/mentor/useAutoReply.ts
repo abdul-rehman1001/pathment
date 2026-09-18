@@ -1,5 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+'use client';
+
+import { useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { autoReplyApi, type AutoReplyStatus } from '@/lib/services/auto-reply-api';
+import { qk, useApiQuery } from '@/lib/query';
 
 /**
  * What auto reply needs before it can be switched on, and whether it is.
@@ -9,33 +13,20 @@ import { autoReplyApi, type AutoReplyStatus } from '@/lib/services/auto-reply-ap
  * writing has been studied, and none of that is knowable from the page.
  */
 export function useAutoReply() {
-  const [status, setStatus] = useState<AutoReplyStatus | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const client = useQueryClient();
 
-  const refetch = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      setStatus(await autoReplyApi.status());
-    } catch (e: unknown) {
-      const message = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      setError(message || 'Could not load auto reply');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
+  const { data, loading, error, refetch } = useApiQuery<AutoReplyStatus>({
+    queryKey: qk.mentor.autoReply,
+    queryFn: () => autoReplyApi.status(),
+    errorMessage: 'Could not load auto reply',
+  });
 
   /** Returns the server's message when it refuses, so the page can show it. */
   const setEnabled = useCallback(async (enabled: boolean) => {
     const next = await autoReplyApi.setEnabled(enabled);
-    setStatus(next);
+    client.setQueryData(qk.mentor.autoReply, next);
     return next;
-  }, []);
+  }, [client]);
 
-  return { status, loading, error, refetch, setEnabled };
+  return { status: data ?? null, loading, error, refetch, setEnabled };
 }

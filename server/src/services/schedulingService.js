@@ -4,6 +4,7 @@ const { NotFoundError, ValidationError } = require('../utils/errors/errorTypes')
 const notificationOrchestrator = require('./notificationOrchestrator');
 const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
 const { zonedWallClockToUtc, todayInZone } = require('../utils/timezone');
+const { VISIBLE_MEMBERSHIP_STATUSES } = require('../config/membership');
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const HORIZON_DAYS = 28; // materialize recurring availability ~4 weeks ahead
@@ -211,8 +212,17 @@ class SchedulingService {
     });
     matches.forEach((m) => ids.add(m.mentorId));
 
+    // Paused counts. A paused mentee still has mentors — the pause email tells
+    // them to message their mentor and ask to be resumed, and this set is what
+    // messagingService.getAllowedRecipientIds gates that on. Filtering to
+    // 'active' left them with nobody they were allowed to talk to.
     const menteeClans = await models.ClanMembership.findAll({
-      where: { userId: menteeId, status: 'active', role: 'mentee' }, attributes: ['clanId']
+      where: {
+        userId: menteeId,
+        status: { [Op.in]: VISIBLE_MEMBERSHIP_STATUSES },
+        role: 'mentee'
+      },
+      attributes: ['clanId']
     });
     const clanIds = menteeClans.map((c) => c.clanId);
     if (clanIds.length) {

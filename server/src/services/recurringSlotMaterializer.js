@@ -12,6 +12,7 @@ class RecurringSlotMaterializer {
     try {
       const menteeSchedules = await models.MenteeSchedule.findAll();
       let createdCount = 0;
+      let updatedCount = 0;
 
       for (const ms of menteeSchedules) {
         const schedule = Array.isArray(ms.schedule) ? ms.schedule : [];
@@ -25,21 +26,28 @@ class RecurringSlotMaterializer {
           if (!rec.title || !rec.startsOn || rec.dayOfWeek == null || !rec.timeLocal) continue;
 
           try {
-            const res = await this._processSlotForMentee(ms.menteeId, mentorId, slot.id, rec);
-            createdCount += (res?.createdForSlot || 0);
+            // `_processSlotForMentee` returns { createdForSlot, updatedForSlot },
+            // not a number. Adding the object to a number stringified it, so
+            // createdCount came out as "0[object Object]" — which is not > 0,
+            // so the "materialized N task(s)" line never printed however much
+            // work the tick actually did, and any caller reading the count got
+            // a string. `activateSlotForMentor` already unwraps it this way.
+            const result = await this._processSlotForMentee(ms.menteeId, mentorId, slot.id, rec);
+            createdCount += Number(result?.createdForSlot) || 0;
+            updatedCount += Number(result?.updatedForSlot) || 0;
           } catch (err) {
             console.error(`[recurringSlotMaterializer] Error processing slot ${slot.id} for mentee ${ms.menteeId}:`, err.message);
           }
         }
       }
 
-      if (createdCount > 0) {
-        console.log(`[recurringSlotMaterializer] Materialized ${createdCount} recurring schedule task(s)`);
+      if (createdCount > 0 || updatedCount > 0) {
+        console.log(`[recurringSlotMaterializer] Materialized ${createdCount} and updated ${updatedCount} recurring schedule task(s)`);
       }
-      return { createdCount };
+      return { createdCount, updatedCount };
     } catch (error) {
       console.error('[recurringSlotMaterializer] tick failed:', error.message);
-      return { createdCount: 0, error: error.message };
+      return { createdCount: 0, updatedCount: 0, error: error.message };
     }
   }
 

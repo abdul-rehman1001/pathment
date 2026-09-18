@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+'use client';
+
 import { mentorApi } from '@/lib/services/mentor-api';
+import { qk, useApiQuery } from '@/lib/query';
 import type { CohortMentee } from './useMentorCohort';
 
 export interface ProfileBlocker {
@@ -91,28 +93,15 @@ export interface UseMenteeProfileReturn {
 }
 
 export function useMenteeProfile(menteeId: string): UseMenteeProfileReturn {
-  const [profile, setProfile] = useState<MenteeProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchProfile = useCallback(async () => {
-    if (!menteeId) return;
-    try {
-      setLoading(true);
-      setError(null);
+  const { data, loading, error, refetch } = useApiQuery<MenteeProfile | null>({
+    queryKey: qk.mentee.profile(menteeId),
+    queryFn: async () => {
       const res = await mentorApi.getMenteeProfile(menteeId);
-      setProfile(res?.data?.profile ?? null);
-    } catch (err) {
-      setError('Failed to load mentee insights');
-      setProfile(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [menteeId]);
+      return res?.data?.profile ?? null;
+    },
+    enabled: !!menteeId,
+    errorMessage: 'Failed to load mentee insights',
+  });
 
-  useEffect(() => {
-    fetchProfile();
-  }, [fetchProfile]);
-
-  return { profile, loading, error, refetch: fetchProfile };
+  return { profile: data ?? null, loading, error, refetch };
 }

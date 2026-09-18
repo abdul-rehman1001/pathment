@@ -1,10 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { qk, useApiQuery } from '@/lib/query';
 import { useParams } from 'next/navigation';
 import { menteeApi } from '@/lib/services/mentee-api';
-import { extractApiErrorMessage } from '@/lib/utils/api-error';
-import { toast } from 'sonner';
 
 export interface MenteeProfileData {
   currentEducation?: string;
@@ -106,72 +104,46 @@ interface UseMenteeProfileReturn {
   stats: MenteeStats | null;
   isLoading: boolean;
   error: string | null;
+  /** HTTP status when the load failed — lets the page tell 403 from 404. */
+  errorStatus: number | null;
   refetch: () => Promise<void>;
 }
 
+type MenteeProfileBundle = Omit<UseMenteeProfileReturn, 'isLoading' | 'error' | 'errorStatus' | 'refetch'>;
+
+const EMPTY: MenteeProfileBundle = {
+  mentee: null,
+  admission: null,
+  assignedMentor: null,
+  coMentors: [],
+  currentClan: null,
+  enrollments: [],
+  recentTasks: [],
+  stats: null,
+};
+
 export function useMenteeProfile(): UseMenteeProfileReturn {
   const { id } = useParams<{ id: string }>();
-  const [mentee, setMentee] = useState<MenteeDetail | null>(null);
-  const [assignedMentor, setAssignedMentor] = useState<MenteePerson | null>(null);
-  const [admission, setAdmission] = useState<MenteeAdmission | null>(null);
-  const [coMentors, setCoMentors] = useState<MenteePerson[]>([]);
-  const [currentClan, setCurrentClan] = useState<UseMenteeProfileReturn['currentClan']>(null);
-  const [enrollments, setEnrollments] = useState<MenteeEnrollment[]>([]);
-  const [recentTasks, setRecentTasks] = useState<MenteeRecentTask[]>([]);
-  const [stats, setStats] = useState<MenteeStats | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  const fetchMentee = useCallback(async () => {
-    if (!id) return;
-    try {
-      setIsLoading(true);
-      setError(null);
-      const response = (await menteeApi.getById(id)) as {
-        data?: {
-          mentee?: MenteeDetail;
-          assignedMentor?: MenteePerson | null;
-          admission?: MenteeAdmission | null;
-          coMentors?: MenteePerson[];
-          currentClan?: UseMenteeProfileReturn['currentClan'];
-          enrollments?: MenteeEnrollment[];
-          recentTasks?: MenteeRecentTask[];
-          stats?: MenteeStats;
-        };
-      };
+  const { data, loading, error, errorStatus, refetch } = useApiQuery<MenteeProfileBundle>({
+    queryKey: qk.admin.menteeProfileDetail(id ?? ''),
+    queryFn: async () => {
+      const response = (await menteeApi.getById(id)) as { data?: Partial<MenteeProfileBundle> };
       const d = response?.data;
-      setMentee(d?.mentee ?? null);
-      setAssignedMentor(d?.assignedMentor ?? null);
-      setAdmission(d?.admission ?? null);
-      setCoMentors(d?.coMentors ?? []);
-      setCurrentClan(d?.currentClan ?? null);
-      setEnrollments(d?.enrollments ?? []);
-      setRecentTasks(d?.recentTasks ?? []);
-      setStats(d?.stats ?? null);
-    } catch (err: unknown) {
-      const msg = extractApiErrorMessage(err, 'Failed to load mentee profile');
-      setError(msg);
-      toast.error(msg);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [id]);
+      return {
+        mentee: d?.mentee ?? null,
+        admission: d?.admission ?? null,
+        assignedMentor: d?.assignedMentor ?? null,
+        coMentors: d?.coMentors ?? [],
+        currentClan: d?.currentClan ?? null,
+        enrollments: d?.enrollments ?? [],
+        recentTasks: d?.recentTasks ?? [],
+        stats: d?.stats ?? null,
+      };
+    },
+    enabled: !!id,
+    errorMessage: 'Failed to load mentee profile',
+  });
 
-  useEffect(() => {
-    fetchMentee();
-  }, [fetchMentee]);
-
-  return {
-    mentee,
-    admission,
-    assignedMentor,
-    coMentors,
-    currentClan,
-    enrollments,
-    recentTasks,
-    stats,
-    isLoading,
-    error,
-    refetch: fetchMentee,
-  };
+  return { ...(data ?? EMPTY), isLoading: loading, error, errorStatus, refetch };
 }

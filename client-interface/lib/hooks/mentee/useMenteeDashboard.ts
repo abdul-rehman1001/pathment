@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { enrollmentApi } from '@/lib/services/enrollment-api';
-import { toast } from 'sonner';
+import { qk, useApiQuery } from '@/lib/query';
 import { useAuth } from '@/lib/context/AuthContext';
 
 // Statuses where the mentee is actively working a program.
@@ -31,33 +31,25 @@ export interface UseMenteeDashboardReturn {
   markReviewed: (enrollmentId: string) => void;
 }
 
+const EMPTY: any[] = [];
+
 export function useMenteeDashboard(): UseMenteeDashboardReturn {
   const { user } = useAuth();
-  const [enrollments, setEnrollments] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const [feedbackTarget, setFeedbackTarget] = useState<UseMenteeDashboardReturn['feedbackTarget']>(null);
   const [reviewedEnrollmentIds, setReviewedEnrollmentIds] = useState<Set<string>>(new Set());
 
-  const fetchEnrollments = useCallback(async () => {
-    if (!user?.id) return;
-    try {
-      setLoading(true);
-      const response = await enrollmentApi.getAll({ menteeId: user.id });
-      const list = response?.data?.enrollments || response?.enrollments || [];
-      setEnrollments(list);
-    } catch (err: any) {
-      console.error('Failed to fetch enrollments:', err);
-      toast.error('Failed to load your enrollments');
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.id]);
+  const { data, loading, refetch } = useApiQuery<any[]>({
+    queryKey: qk.me.enrollments(user?.id ?? ''),
+    queryFn: async () => {
+      const response = await enrollmentApi.getAll({ menteeId: user!.id });
+      return response?.data?.enrollments || response?.enrollments || [];
+    },
+    enabled: !!user?.id,
+    errorMessage: 'Failed to load your enrollments',
+  });
 
-  useEffect(() => {
-    if (user?.id) {
-      fetchEnrollments();
-    }
-  }, [user?.id, fetchEnrollments]);
+  const enrollments = data ?? EMPTY;
+  const fetchEnrollments = refetch;
 
   const openFeedback = useCallback((enrollmentId: string, programName: string) => {
     setFeedbackTarget({ enrollmentId, programName });

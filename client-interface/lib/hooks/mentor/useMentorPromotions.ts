@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+'use client';
+
 import { mentorApi } from '@/lib/services/mentor-api';
+import { qk, useApiQuery } from '@/lib/query';
 
 export type PromotionStage = 'nominated' | 'interview' | 'approved' | 'promoted' | 'rejected';
 
@@ -34,28 +36,14 @@ export interface UseMentorPromotionsReturn {
   refetch: () => Promise<void>;
 }
 
+const EMPTY: PromotionCandidate[] = [];
+
 export function useMentorPromotions(): UseMentorPromotionsReturn {
-  const [candidates, setCandidates] = useState<PromotionCandidate[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, loading, error, refetch } = useApiQuery<PromotionCandidate[]>({
+    queryKey: qk.mentor.promotions,
+    queryFn: async () => (await mentorApi.listPromotions())?.data?.candidates ?? [],
+    errorMessage: 'Failed to load promotion candidates',
+  });
 
-  const fetchCandidates = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await mentorApi.listPromotions();
-      setCandidates(res?.data?.candidates ?? []);
-    } catch {
-      setError('Failed to load promotion candidates');
-      setCandidates([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchCandidates();
-  }, [fetchCandidates]);
-
-  return { candidates, loading, error, refetch: fetchCandidates };
+  return { candidates: data ?? EMPTY, loading, error, refetch };
 }

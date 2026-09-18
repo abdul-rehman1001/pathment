@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+'use client';
+
 import { libraryApi } from '@/lib/services/library-api';
+import { qk, useApiQuery, STALE } from '@/lib/query';
 
 export interface LibraryDoc {
   id: string;
@@ -22,27 +24,15 @@ export interface UseLibraryReturn {
   refetch: () => Promise<void>;
 }
 
+const EMPTY: LibraryDoc[] = [];
+
 export function useLibrary(): UseLibraryReturn {
-  const [documents, setDocuments] = useState<LibraryDoc[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, loading, error, refetch } = useApiQuery<LibraryDoc[]>({
+    queryKey: qk.mentor.library,
+    queryFn: async () => (await libraryApi.list())?.data?.documents ?? [],
+    staleTime: STALE.long,
+    errorMessage: 'Failed to load the library',
+  });
 
-  const fetchAll = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await libraryApi.list();
-      setDocuments(res?.data?.documents ?? []);
-    } catch {
-      setError('Failed to load the library');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchAll();
-  }, [fetchAll]);
-
-  return { documents, loading, error, refetch: fetchAll };
+  return { documents: data ?? EMPTY, loading, error, refetch };
 }

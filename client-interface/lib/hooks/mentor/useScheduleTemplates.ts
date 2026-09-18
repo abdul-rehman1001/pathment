@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+'use client';
+
 import { scheduleApi, type ScheduleBlock } from '@/lib/services/schedule-api';
+import { qk, useApiQuery, STALE } from '@/lib/query';
 
 export interface ScheduleTemplate {
   id: string;
@@ -17,29 +19,20 @@ export interface UseScheduleTemplatesReturn {
   refetch: () => Promise<void>;
 }
 
+interface Templates { local: ScheduleTemplate[]; org: ScheduleTemplate[] }
+
+const EMPTY: Templates = { local: [], org: [] };
+
 export function useScheduleTemplates(): UseScheduleTemplatesReturn {
-  const [local, setLocal] = useState<ScheduleTemplate[]>([]);
-  const [org, setOrg] = useState<ScheduleTemplate[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchAll = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  const { data, loading, error, refetch } = useApiQuery<Templates>({
+    queryKey: qk.mentor.scheduleTemplates,
+    queryFn: async () => {
       const res = await scheduleApi.listTemplates();
-      setLocal(res?.data?.local ?? []);
-      setOrg(res?.data?.org ?? []);
-    } catch {
-      setError('Failed to load schedule templates');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      return { local: res?.data?.local ?? [], org: res?.data?.org ?? [] };
+    },
+    staleTime: STALE.long,
+    errorMessage: 'Failed to load schedule templates',
+  });
 
-  useEffect(() => {
-    fetchAll();
-  }, [fetchAll]);
-
-  return { local, org, loading, error, refetch: fetchAll };
+  return { ...(data ?? EMPTY), loading, error, refetch };
 }

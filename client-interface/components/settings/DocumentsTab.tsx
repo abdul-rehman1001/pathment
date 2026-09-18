@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { UploadCloud, FileText, Trash2, Loader2, CheckCircle2, AlertCircle, Bot, BookOpenCheck, HelpCircle, Lightbulb, Circle, KeyRound, Sparkles, Lock } from 'lucide-react';
 import { useAutoReply } from '@/lib/hooks/mentor';
+import { qk, useApiQuery, STALE } from '@/lib/query';
 import { messagingApi } from '@/lib/services/messaging-api';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/admin/ui';
@@ -27,6 +28,8 @@ const STEP_ICON: Record<string, typeof KeyRound> = {
   style: Sparkles,
 };
 
+const NO_DOCUMENTS: Document[] = [];
+
 export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: DocumentsTabProps = {}) {
   // Readiness comes from the server, which also enforces it. The toggle is not
   // a toggle until auto reply would actually work: switching it on early would
@@ -35,8 +38,6 @@ export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: Do
   const { status, refetch: refetchStatus } = useAutoReply();
   const canEnable = status?.canEnable ?? false;
   const steps = status?.steps ?? [];
-  const [documents, setDocuments] = useState<Document[]>([]);
-  const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [deleteDocumentId, setDeleteDocumentId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -62,30 +63,15 @@ export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: Do
     }
   };
 
-  const fetchDocuments = async () => {
-    try {
-      const data = await messagingApi.getMentorDocuments();
-      setDocuments(data);
-    } catch (err) {
-      toast.error('Failed to load documents');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchDocuments();
-    // Poll every 10s if any doc is 'processing'
-    const interval = setInterval(() => {
-      setDocuments((currentDocs) => {
-        if (currentDocs.some((d) => d.status === 'processing')) {
-          fetchDocuments();
-        }
-        return currentDocs;
-      });
-    }, 10000);
-    return () => clearInterval(interval);
-  }, []);
+  // Poll only while something is still processing, and let a 429 pause it
+  // rather than being ignored (the old setInterval swallowed every error).
+  const { data: documents = NO_DOCUMENTS, loading, refetch: fetchDocuments } = useApiQuery<Document[]>({
+    queryKey: qk.messaging.mentorDocuments,
+    queryFn: () => messagingApi.getMentorDocuments(),
+    staleTime: STALE.short,
+    refetchInterval: (docs) => (docs?.some((d) => d.status === 'processing') ? 10_000 : false),
+    errorMessage: 'Failed to load documents',
+  });
 
   const handleFileDrop = async (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -127,7 +113,7 @@ export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: Do
     try {
       await messagingApi.deleteMentorDocument(deleteDocumentId);
       toast.success('Document deleted');
-      setDocuments(documents.filter((d) => d.id !== deleteDocumentId));
+      await fetchDocuments();
     } catch (err) {
       toast.error('Failed to delete document');
     } finally {

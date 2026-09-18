@@ -12,6 +12,7 @@ export const clanApi = {
   insights: () => apiClient.get('/clans/insights'),
   /** Programs the current mentor runs, with their clans + roster counts. */
   mentorPrograms: () => apiClient.get('/clans/mentor/programs'),
+  mentorProgramDetail: (programId: string) => apiClient.get(`/clans/mentor/programs/${programId}`),
   /** The current user's active clan memberships (with role per clan). */
   myMemberships: () => apiClient.get('/clans/me/memberships'),
   get: (id: string) => apiClient.get(`/clans/${id}`),
@@ -52,4 +53,92 @@ export const clanApi = {
   /** Move a mentee to a different clan (admin). Same program keeps progress; a
    *  different program wipes the old enrollment + tasks (clean transfer). */
   reassign: (menteeId: string, toClanId: string) => apiClient.post('/clans/reassign', { menteeId, toClanId }),
+
+  // ── Public clan joining link ─────────────────────────────────────────────
+  getPublicJoinState: (id: string) =>
+    apiClient.get<any>(`/clans/${id}/public-join`).then((r) => r.data as PublicJoinState),
+  /** Admin: grant/revoke publicJoinAllowed only (join window is lead-mentor owned). */
+  setPublicJoinAccess: (id: string, payload: { allowed: boolean }) =>
+    apiClient.patch<any>(`/clans/${id}/public-join/access`, payload).then((r) => r.data as PublicJoinState),
+  bulkSetPublicJoinAccess: (payload: { clanIds: string[]; allowed: boolean }) =>
+    apiClient.post<any>('/clans/public-join/bulk-access', payload)
+      .then((r) => r.data as { updated: number; clans: (PublicJoinState & { clanId: string })[] }),
+  /** Lead: mint/enable link and optionally set the join window (wall-clock + timezone). */
+  generatePublicJoinLink: (id: string, payload: PublicJoinWindowPayload = {}) =>
+    apiClient.post<any>(`/clans/${id}/public-join/link`, payload).then((r) => r.data as PublicJoinState),
+  disablePublicJoinLink: (id: string) =>
+    apiClient.delete<any>(`/clans/${id}/public-join/link`).then((r) => r.data as PublicJoinState),
+  regeneratePublicJoinLink: (id: string, payload: PublicJoinWindowPayload = {}) =>
+    apiClient.post<any>(`/clans/${id}/public-join/regenerate`, payload).then((r) => r.data as PublicJoinState),
+  listJoinRequests: (id: string, status?: string) =>
+    apiClient.get<any>(`/clans/${id}/join-requests`, { params: status ? { status } : {} })
+      .then((r) => (r.data?.requests || []) as ClanJoinRequestRow[]),
+  approveJoinRequest: (id: string, requestId: string) =>
+    apiClient.post<any>(`/clans/${id}/join-requests/${requestId}/approve`, {}),
+  rejectJoinRequest: (id: string, requestId: string, note?: string) =>
+    apiClient.post<any>(`/clans/${id}/join-requests/${requestId}/reject`, note ? { note } : {}),
 };
+
+/** Wall-clock join window sent with generate/regenerate (same shape as cohort apply window). */
+export interface PublicJoinWindowPayload {
+  timezone?: string | null;
+  startsDate?: string | null;
+  startsTime?: string | null;
+  endsDate?: string | null;
+  endsTime?: string | null;
+  startsAt?: string | null;
+  endsAt?: string | null;
+}
+
+export interface PublicJoinState {
+  clanId?: string;
+  clanName?: string;
+  publicJoinAllowed: boolean;
+  publicJoinEnabled: boolean;
+  publicJoinLinkExists: boolean;
+  publicJoinUsable?: boolean;
+  publicJoinUrl: string | null;
+  publicJoinStartsAt?: string | null;
+  publicJoinEndsAt?: string | null;
+  publicJoinTimezone?: string | null;
+  publicJoinWindowStatus?: 'active' | 'upcoming' | 'expired';
+}
+
+export interface ClanJoinRequestRow {
+  id: string;
+  clanId: string;
+  userId: string;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  source: string;
+  message?: string | null;
+  resolutionNote?: string | null;
+  reviewedAt?: string | null;
+  createdAt: string;
+  alreadyMember?: boolean;
+  placedElsewhere?: { clanId: string; clanName: string } | null;
+  seatsRemaining?: number | null;
+  blockedReason?: 'member_elsewhere' | 'clan_full' | 'user_inactive' | null;
+  user?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    role?: string | null;
+    status?: string | null;
+    profilePictureUrl?: string | null;
+    bio?: string | null;
+    city?: string | null;
+    country?: string | null;
+    languages?: string[];
+    emailVerified?: boolean;
+    memberSince?: string | null;
+    currentEducation?: string | null;
+    currentOccupation?: string | null;
+    learningGoals?: string[];
+    interests?: string[];
+    priorExperience?: string | null;
+    linkedinUrl?: string | null;
+    githubUrl?: string | null;
+    portfolioUrl?: string | null;
+  } | null;
+}

@@ -1,6 +1,7 @@
 const { catchAsync } = require('../middlewares/errorHandler');
 const { successResponse } = require('../utils/responses');
 const clanService = require('../services/clanService');
+const clanPublicJoinService = require('../services/clanPublicJoinService');
 const clanHealthService = require('../services/clanHealthService');
 const authzService = require('../services/authzService');
 const { PERMISSIONS } = require('../config/permissions');
@@ -65,6 +66,17 @@ const myMemberships = catchAsync(async (req, res) => {
 const mentorPrograms = catchAsync(async (req, res) => {
   const programs = await clanService.getMentorPrograms(req.user.id);
   res.status(200).json(successResponse('Mentor programs retrieved', { programs }));
+});
+
+/**
+ * GET /api/clans/mentor/programs/:programId
+ * One program the mentor runs, with each of their clans' full rosters — so the
+ * program page needs a single request rather than one per clan.
+ */
+const mentorProgramDetail = catchAsync(async (req, res) => {
+  const detail = await clanService.getMentorProgramDetail(req.user.id, req.params.programId);
+  if (!detail) throw new NotFoundError('Program not found');
+  res.status(200).json(successResponse('Mentor program retrieved', detail));
 });
 
 /**
@@ -230,6 +242,135 @@ const inviteToClan = catchAsync(async (req, res) => {
 });
 
 /**
+ * GET /api/clans/:id/public-join  (admin / lead mentor)
+ * Public-join settings for this clan (allowed/enabled/link URL).
+ */
+const getPublicJoinState = catchAsync(async (req, res) => {
+  const state = await clanPublicJoinService.getPublicJoinState(req.params.id, req.user);
+  res.status(200).json(successResponse('Public join state retrieved', state));
+});
+
+/**
+ * PATCH /api/clans/:id/public-join/access  (admin)
+ * Grant or revoke per-clan public-join permission (default off).
+ */
+const setPublicJoinAccess = catchAsync(async (req, res) => {
+  const state = await clanPublicJoinService.setPublicJoinAccess(
+    req.params.id,
+    req.body,
+    req.user
+  );
+  res.status(200).json(successResponse(
+    req.body.allowed ? 'Public joining access granted' : 'Public joining access removed',
+    state
+  ));
+});
+
+/**
+ * POST /api/clans/public-join/bulk-access  (admin)
+ * Grant or revoke public-join permission for multiple clans.
+ */
+const bulkSetPublicJoinAccess = catchAsync(async (req, res) => {
+  const result = await clanPublicJoinService.bulkSetPublicJoinAccess(req.body, req.user);
+  res.status(200).json(successResponse(
+    req.body.allowed
+      ? `Public joining access granted for ${result.updated} clan${result.updated === 1 ? '' : 's'}`
+      : `Public joining access removed for ${result.updated} clan${result.updated === 1 ? '' : 's'}`,
+    result
+  ));
+});
+
+/**
+ * POST /api/clans/:id/public-join/link  (lead mentor)
+ * Mint or re-enable the shareable joining link (optional join window in body).
+ */
+const generatePublicJoinLink = catchAsync(async (req, res) => {
+  const state = await clanPublicJoinService.generateOrEnableLink(req.params.id, req.user, req.body);
+  res.status(200).json(successResponse('Public joining link ready', state));
+});
+
+/**
+ * DELETE /api/clans/:id/public-join/link  (lead mentor)
+ * Disable the link without discarding the slug.
+ */
+const disablePublicJoinLink = catchAsync(async (req, res) => {
+  const state = await clanPublicJoinService.disableLink(req.params.id, req.user);
+  res.status(200).json(successResponse('Public joining link disabled', state));
+});
+
+/**
+ * POST /api/clans/:id/public-join/regenerate  (lead mentor)
+ * Replace the slug so old URLs stop working (optional join window in body).
+ */
+const regeneratePublicJoinLink = catchAsync(async (req, res) => {
+  const state = await clanPublicJoinService.regenerateLink(req.params.id, req.user, req.body);
+  res.status(200).json(successResponse('Public joining link regenerated', state));
+});
+
+/**
+ * GET /api/clans/:id/join-requests  (lead mentor)
+ * List public-link join requests for this clan.
+ */
+const listJoinRequests = catchAsync(async (req, res) => {
+  const requests = await clanPublicJoinService.listJoinRequests(req.params.id, req.user, {
+    status: req.query.status
+  });
+  res.status(200).json(successResponse('Join requests retrieved', { requests }));
+});
+
+/**
+ * POST /api/clans/:id/join-requests/:requestId/approve  (lead mentor)
+ * Approve a pending request and place the mentee via clanService.addMember.
+ */
+const approveJoinRequest = catchAsync(async (req, res) => {
+  const result = await clanPublicJoinService.approveJoinRequest(
+    req.params.id,
+    req.params.requestId,
+    req.user
+  );
+  res.status(200).json(successResponse('Join request approved', result));
+});
+
+/**
+ * POST /api/clans/:id/join-requests/:requestId/reject  (lead mentor)
+ * Reject a pending request (optional note).
+ */
+const rejectJoinRequest = catchAsync(async (req, res) => {
+  const request = await clanPublicJoinService.rejectJoinRequest(
+    req.params.id,
+    req.params.requestId,
+    req.user,
+    { note: req.body?.note }
+  );
+  res.status(200).json(successResponse('Join request rejected', { request }));
+});
+
+/**
+ * GET /api/public/clans/join/:token  (public; optional auth)
+ * Clan preview + viewer status for the public joining page.
+ */
+const getPublicClanJoin = catchAsync(async (req, res) => {
+  const info = await clanPublicJoinService.getPublicClanInfo(
+    req.params.token,
+    req.user?.id || null
+  );
+  res.status(200).json(successResponse('Clan joining info retrieved', info));
+});
+
+/**
+ * POST /api/public/clans/join/:token/request  (authenticated)
+ * Submit a join request via the public link.
+ */
+const submitPublicJoinRequest = catchAsync(async (req, res) => {
+  const request = await clanPublicJoinService.createJoinRequest(
+    req.params.token,
+    req.user,
+    { message: req.body?.message }
+  );
+  res.status(201).json(successResponse('Join request submitted', { request }, 201));
+});
+
+/**
  * GET /api/clans/:id/invites  (admin / lead mentor of the clan)
  *
  * Every invite into THIS clan, whoever sent it. A lead mentor could create one
@@ -300,6 +441,7 @@ module.exports = {
   clanInsights,
   myMemberships,
   mentorPrograms,
+  mentorProgramDetail,
   getClan,
   createClan,
   updateClan,
@@ -313,5 +455,16 @@ module.exports = {
   reassignClan,
   grantClanRole,
   revokeClanRole,
-  inviteToClan
+  inviteToClan,
+  getPublicJoinState,
+  setPublicJoinAccess,
+  bulkSetPublicJoinAccess,
+  generatePublicJoinLink,
+  disablePublicJoinLink,
+  regeneratePublicJoinLink,
+  listJoinRequests,
+  approveJoinRequest,
+  rejectJoinRequest,
+  getPublicClanJoin,
+  submitPublicJoinRequest
 };

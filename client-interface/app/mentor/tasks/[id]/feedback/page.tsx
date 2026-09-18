@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import RichTextEditor from '@/components/shared/RichTextEditor';
 import { SubmissionFileList } from '@/components/shared/SubmissionFileList';
+import { ResourceError } from '@/components/shared/ResourceError';
 import { useMentorTaskFeedback } from '@/lib/hooks/mentor';
 import { PageHeader } from '@/components/admin/ui';
 import { pointsForDifficulty } from '@/lib/config/points';
@@ -56,6 +57,7 @@ export default function FeedbackProvision({ params }: PageProps) {
     updateInlineFeedback,
     removeInlineFeedback,
     handleSubmit,
+    errorStatus,
   } = useMentorTaskFeedback(resolvedParams.id);
 
   if (loading) {
@@ -68,9 +70,13 @@ export default function FeedbackProvision({ params }: PageProps) {
 
   if (!task || !submission) {
     return (
-      <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
-        <p className="text-red-900">Task or submission not found</p>
-      </div>
+      <ResourceError
+        status={errorStatus ?? (task ? null : 404)}
+        resource="submission"
+        message={error}
+        backHref="/mentor/approvals"
+        backLabel="Back to Approvals"
+      />
     );
   }
 

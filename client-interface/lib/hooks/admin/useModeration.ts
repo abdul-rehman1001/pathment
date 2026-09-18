@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+'use client';
+
+import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
+import { qk, useApiQuery, STALE } from '@/lib/query';
 import { communityApi } from '@/lib/services/community-api';
 
 export type ReportStatus = 'open' | 'reviewed' | 'dismissed';
@@ -17,30 +20,28 @@ export interface CommunityReportRow {
   targetDeleted: boolean;
 }
 
+const EMPTY: CommunityReportRow[] = [];
+
 export function useModeration() {
-  const [reports, setReports] = useState<CommunityReportRow[]>([]);
   const [status, setStatus] = useState<ReportStatus>('open');
-  const [loading, setLoading] = useState(true);
 
-  const fetchReports = useCallback(async () => {
-    try {
-      setLoading(true);
-      const r: any = await communityApi.reports(status);
-      setReports(r?.data?.reports ?? []);
-    } catch {
-      toast.error('Failed to load reports');
-      setReports([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [status]);
-
-  useEffect(() => { fetchReports(); }, [fetchReports]);
+  const { data, loading, refetch } = useApiQuery<CommunityReportRow[]>({
+    queryKey: qk.admin.moderation(status),
+    queryFn: async () => {
+      const r: any = await communityApi.reports(status); // eslint-disable-line @typescript-eslint/no-explicit-any
+      return r?.data?.reports ?? [];
+    },
+    staleTime: STALE.short,
+    errorMessage: 'Failed to load reports',
+  });
 
   const resolve = useCallback(async (id: string, s: 'reviewed' | 'dismissed') => {
-    try { await communityApi.resolveReport(id, s); toast.success(s === 'dismissed' ? 'Dismissed' : 'Marked reviewed'); await fetchReports(); }
-    catch { toast.error('Could not update report'); }
-  }, [fetchReports]);
+    try {
+      await communityApi.resolveReport(id, s);
+      toast.success(s === 'dismissed' ? 'Dismissed' : 'Marked reviewed');
+      await refetch();
+    } catch { toast.error('Could not update report'); }
+  }, [refetch]);
 
   const removeContent = useCallback(async (row: CommunityReportRow) => {
     try {
@@ -48,9 +49,9 @@ export function useModeration() {
       else await communityApi.deleteComment(row.targetId);
       await communityApi.resolveReport(row.id, 'reviewed');
       toast.success('Content removed');
-      await fetchReports();
+      await refetch();
     } catch { toast.error('Could not remove content'); }
-  }, [fetchReports]);
+  }, [refetch]);
 
-  return { reports, status, setStatus, loading, refetch: fetchReports, resolve, removeContent };
+  return { reports: data ?? EMPTY, status, setStatus, loading, refetch, resolve, removeContent };
 }

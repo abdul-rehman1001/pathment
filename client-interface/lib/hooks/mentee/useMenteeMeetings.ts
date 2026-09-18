@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+'use client';
+
+import { qk, useApiQuery } from '@/lib/query';
 import { meetingsApi } from '@/lib/services/meetings-api';
 
 export interface OpenSlot {
@@ -39,34 +41,29 @@ export interface UseMenteeMeetingsReturn {
   refetch: () => Promise<void>;
 }
 
+const NO_MENTORS: BookableMentor[] = [];
+const NO_MEETINGS: MenteeMeeting[] = [];
+
 export function useMenteeMeetings(): UseMenteeMeetingsReturn {
-  const [bookable, setBookable] = useState<BookableMentor[]>([]);
-  const [meetings, setMeetings] = useState<MenteeMeeting[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const bookableQuery = useApiQuery<BookableMentor[]>({
+    queryKey: qk.me.bookable,
+    queryFn: async () => (await meetingsApi.getBookable())?.data?.mentors ?? [],
+    errorMessage: 'Failed to load your meetings',
+  });
 
-  const fetchAll = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const [bookRes, meetRes] = await Promise.all([
-        meetingsApi.getBookable(),
-        meetingsApi.listMeetings(),
-      ]);
-      setBookable(bookRes?.data?.mentors ?? []);
-      setMeetings(meetRes?.data?.meetings ?? []);
-    } catch {
-      setError('Failed to load your meetings');
-      setBookable([]);
-      setMeetings([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const meetingsQuery = useApiQuery<MenteeMeeting[]>({
+    queryKey: qk.me.meetings,
+    queryFn: async () => (await meetingsApi.listMeetings())?.data?.meetings ?? [],
+    errorMessage: 'Failed to load your meetings',
+  });
 
-  useEffect(() => {
-    fetchAll();
-  }, [fetchAll]);
+  const refetch = async () => { await Promise.all([bookableQuery.refetch(), meetingsQuery.refetch()]); };
 
-  return { bookable, meetings, loading, error, refetch: fetchAll };
+  return {
+    bookable: bookableQuery.data ?? NO_MENTORS,
+    meetings: meetingsQuery.data ?? NO_MEETINGS,
+    loading: bookableQuery.loading || meetingsQuery.loading,
+    error: bookableQuery.error ?? meetingsQuery.error,
+    refetch,
+  };
 }

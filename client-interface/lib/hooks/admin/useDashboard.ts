@@ -1,9 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { qk, useApiQuery, STALE } from '@/lib/query';
 import { adminApi } from '@/lib/services/admin-api';
-import { extractApiErrorMessage } from '@/lib/utils/api-error';
-import { toast } from 'sonner';
 
 interface DashboardStats {
   totalPrograms: number;
@@ -43,25 +41,12 @@ interface UseDashboardReturn {
 }
 
 export function useDashboard(): UseDashboardReturn {
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data, loading, refetch } = useApiQuery<DashboardData>({
+    queryKey: qk.admin.dashboard,
+    queryFn: async () => (await adminApi.dashboard.getStats()) as DashboardData,
+    staleTime: STALE.short,
+    errorMessage: 'Failed to load dashboard data',
+  });
 
-  const fetchDashboardData = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await adminApi.dashboard.getStats();
-      setDashboardData(response as DashboardData);
-    } catch (err: unknown) {
-      console.error('Failed to fetch dashboard data:', err);
-      toast.error(extractApiErrorMessage(err, 'Failed to load dashboard data'));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchDashboardData();
-  }, [fetchDashboardData]);
-
-  return { dashboardData, loading, refetch: fetchDashboardData };
+  return { dashboardData: data ?? null, loading, refetch };
 }

@@ -80,13 +80,20 @@ export default function MenteeBlockers() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
 
+  // Ask for THIS person's roadblocks by name. Asking for "mine" without saying
+  // whose returned the union of every mentee the caller can see, so somebody who
+  // mentors a clan and learns in another opened their own Roadblocks page and
+  // found their mentees' roadblocks on it. The portal header scopes this too
+  // (lib/services/portal-scope.ts); naming the id makes the page's contract
+  // independent of that.
   const fetchAll = useCallback(async () => {
+    if (!user?.id) return;
     try {
       setLoading(true);
-      const res: any = await frictionApi.listBlockers();
+      const res: any = await frictionApi.listBlockers(user.id);
       setBlockers(res?.data?.blockers ?? []);
     } catch { toast.error('Could not load roadblocks'); } finally { setLoading(false); }
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
   useEffect(() => {
@@ -158,12 +165,12 @@ export default function MenteeBlockers() {
         </div>
       )}
 
-      {addOpen && <AddBlockerModal tasks={tasks} onClose={() => setAddOpen(false)} onAdded={async () => { setAddOpen(false); await fetchAll(); }} />}
+      {addOpen && user?.id && <AddBlockerModal menteeId={user.id} tasks={tasks} onClose={() => setAddOpen(false)} onAdded={async () => { setAddOpen(false); await fetchAll(); }} />}
     </div>
   );
 }
 
-function AddBlockerModal({ tasks, onClose, onAdded }: { tasks: TaskOpt[]; onClose: () => void; onAdded: () => void }) {
+function AddBlockerModal({ menteeId, tasks, onClose, onAdded }: { menteeId: string; tasks: TaskOpt[]; onClose: () => void; onAdded: () => void }) {
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('technical');
   const [severity, setSeverity] = useState<Blocker['severity']>('medium');
@@ -175,7 +182,7 @@ function AddBlockerModal({ tasks, onClose, onAdded }: { tasks: TaskOpt[]; onClos
     if (!title.trim()) { toast.error('Describe what is blocking you'); return; }
     try {
       setSaving(true);
-      await frictionApi.createBlocker({ title: title.trim(), category, severity, assignedTaskId: taskId || undefined });
+      await frictionApi.createBlocker({ menteeId, title: title.trim(), category, severity, assignedTaskId: taskId || undefined });
       toast.success('Roadblock logged');
       onAdded();
     } catch { toast.error('Could not log roadblock'); } finally { setSaving(false); }

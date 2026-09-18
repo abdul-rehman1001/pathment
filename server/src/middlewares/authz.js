@@ -34,6 +34,41 @@ function requirePermission(permission, scopeResolver = null) {
 }
 
 /**
+ * requireMenteeAccess('id')
+ *
+ * Gate a route on "may I see this mentee?" using the SAME rule the mentee-detail
+ * controllers use (cohortController, enrollmentController, taskController) —
+ * `authzService.canViewMentee`, which admits admins, the mentee themselves, a
+ * 1:1 MentorMenteeMatch, and anyone holding mentee.view at one of the mentee's
+ * clans.
+ *
+ * Prefer this over `requirePermission(MENTEE_VIEW, scope.mentee(...))` for
+ * per-mentee routes: `scope.mentee` resolves only the mentee's CLAN, so a mentee
+ * matched 1:1 with no clan placement resolves to a bare { userId } and is denied
+ * — which is how the activity summary came to 403 on mentees whose profile page
+ * loaded fine.
+ */
+function requireMenteeAccess(param = 'id') {
+  return async (req, res, next) => {
+    try {
+      if (!req.user) throw new AuthenticationError('You must be logged in to access this resource');
+
+      req._assignments = req.loadAssignments
+        ? await req.loadAssignments()
+        : (req._assignments || (await authzService.getAssignments(req.user)));
+
+      const allowed = await authzService.canViewMentee(req.user, req.params[param], {
+        assignments: req._assignments
+      });
+      if (!allowed) throw new AuthorizationError('You do not have access to this mentee');
+      next();
+    } catch (err) {
+      next(err);
+    }
+  };
+}
+
+/**
  * Admit the request when the user holds ANY of the listed permissions at the
  * resolved scope. Same assignment caching as requirePermission.
  */
@@ -151,4 +186,4 @@ const scope = {
     authzService.scopeOfAnnouncementAudience(req.body && req.body.audience, req.body && req.body.audienceId)
 };
 
-module.exports = { requirePermission, requireAnyPermission, requireAddClanMember, requirePermissionAnyScope, requirePermissionMinScope, scope };
+module.exports = { requirePermission, requireAnyPermission, requireAddClanMember, requireMenteeAccess, requirePermissionAnyScope, requirePermissionMinScope, scope };

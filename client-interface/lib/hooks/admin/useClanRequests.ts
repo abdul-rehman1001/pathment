@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+'use client';
+
+import { qk, useApiQuery } from '@/lib/query';
 import { clanRequestsApi } from '@/lib/services/clan-requests-api';
 
 export interface ChangeRequest {
@@ -33,29 +35,19 @@ export interface UseClanRequestsReturn {
   refetch: () => Promise<void>;
 }
 
+interface RequestsData { requests: ChangeRequest[]; crossClan: CrossClanItem[] }
+
+const EMPTY: RequestsData = { requests: [], crossClan: [] };
+
 export function useClanRequests(): UseClanRequestsReturn {
-  const [requests, setRequests] = useState<ChangeRequest[]>([]);
-  const [crossClan, setCrossClan] = useState<CrossClanItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchAll = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  const { data, loading, error, refetch } = useApiQuery<RequestsData>({
+    queryKey: qk.admin.clanRequests,
+    queryFn: async () => {
       const res = await clanRequestsApi.overview();
-      setRequests(res?.data?.requests ?? []);
-      setCrossClan(res?.data?.crossClan ?? []);
-    } catch {
-      setError('Failed to load clan requests');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      return { requests: res?.data?.requests ?? [], crossClan: res?.data?.crossClan ?? [] };
+    },
+    errorMessage: 'Failed to load clan requests',
+  });
 
-  useEffect(() => {
-    fetchAll();
-  }, [fetchAll]);
-
-  return { requests, crossClan, loading, error, refetch: fetchAll };
+  return { ...(data ?? EMPTY), loading, error, refetch };
 }
