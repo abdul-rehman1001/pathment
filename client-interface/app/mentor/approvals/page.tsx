@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useClan, ALL_CLANS } from '@/lib/context/ClanContext';
 import { toast } from 'sonner';
 import {
   ClipboardCheck, CheckCircle2, Clock, Loader2, ChevronRight, CalendarClock, Check, X,
@@ -44,7 +45,9 @@ function waitingDays(iso: string): number {
 type Tab = 'review' | 'changes' | 'extensions' | 'reviewed';
 
 export default function MentorApprovals() {
-  const { queue, changesRequested, reviewed, loading, error, refetch, bulkReview, handleExtension } = useMentorApprovals();
+  const { queue, changesRequested, reviewed, hiddenByClan, loading, error, refetch, bulkReview, handleExtension } = useMentorApprovals();
+  const { clans, activeClanId, setActiveClanId } = useClan();
+  const activeClanName = clans.find((c) => c.id === activeClanId)?.name ?? null;
   const [tab, setTab] = useState<Tab>('review');
   // Task-type filter, shared across every tab (assignment / quiz / interview / …).
   const [typeFilter, setTypeFilter] = useState('all');
@@ -481,7 +484,26 @@ export default function MentorApprovals() {
           {reviewItems.length === 0 ? (
             <div className="bg-card rounded-2xl border border-slate-200 py-16 text-center">
               <CheckCircle2 className="w-12 h-12 text-brand-300 mx-auto mb-3" />
-              <p className="text-slate-600">All caught up. Nothing is waiting on you.</p>
+              {/* "All caught up" is only true if it is true everywhere. When the
+                  clan picker is what emptied the queue, say which clan and offer
+                  the way back — otherwise this reads as work that is not there. */}
+              {hiddenByClan > 0 ? (
+                <>
+                  <p className="text-slate-600">Nothing waiting in {activeClanName || 'this clan'}.</p>
+                  <p className="text-slate-400 text-sm mt-1">
+                    {hiddenByClan} item{hiddenByClan === 1 ? '' : 's'} in your other clans.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setActiveClanId(ALL_CLANS)}
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-brand-500/40 bg-brand-500/10 px-3 py-1.5 text-xs font-bold text-brand-700 hover:bg-brand-500/20 transition-colors"
+                  >
+                    Show all clans
+                  </button>
+                </>
+              ) : (
+                <p className="text-slate-600">All caught up. Nothing is waiting on you.</p>
+              )}
             </div>
           ) : filteredReview.length === 0 ? (
             <div className="bg-card rounded-2xl border border-slate-200 py-16 text-center">

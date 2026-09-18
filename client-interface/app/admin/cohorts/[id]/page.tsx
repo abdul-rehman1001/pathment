@@ -22,21 +22,12 @@ import { LevelCriteriaEditor } from '@/components/admin/LevelCriteriaEditor';
 import { Drawer } from '@/components/shared/Drawer';
 import RichTextEditor from '@/components/shared/RichTextEditor';
 import { RichContent } from '@/components/shared/RichContent';
-import { getBrowserTimeZone } from '@/lib/utils/datetime';
+import { getBrowserTimeZone, splitLocal } from '@/lib/utils/datetime';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import type { IntakeFormField } from '@/lib/config/intakeFields';
 
 /** Same level-key normalization the server uses, so locally-derived keys match
  *  what the server stores (and the assessment pool's level tags line up). */
-/** Split a stored UTC instant into local date + time (HH:MM) for the date/time inputs. */
-function splitLocal(iso?: string | null): { date: string; time: string } {
-  if (!iso) return { date: '', time: '' };
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return { date: '', time: '' };
-  const p = (n: number) => String(n).padStart(2, '0');
-  return { date: `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`, time: `${p(d.getHours())}:${p(d.getMinutes())}` };
-}
-
 function normLevels(labels: string[]): { key: string; label: string }[] {
   const seen = new Set<string>();
   const out: { key: string; label: string }[] = [];

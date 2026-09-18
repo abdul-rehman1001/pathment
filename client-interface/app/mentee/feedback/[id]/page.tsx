@@ -12,7 +12,6 @@ import {
   ThumbsUp,
   Clock,
   Award,
-  AlertCircle,
   Loader2,
   MessageSquare,
   BookOpen,
@@ -20,6 +19,7 @@ import {
   User,
 } from 'lucide-react';
 import { useTaskDetail } from '@/lib/hooks/mentee';
+import { ResourceError } from '@/components/shared/ResourceError';
 import { toExternalHref } from '@/lib/utils/url';
 import { RichContent } from '@/components/shared/RichContent';
 import { SubmissionFileList } from '@/components/shared/SubmissionFileList';
@@ -31,7 +31,7 @@ interface PageProps {
 export default function FeedbackView({ params }: PageProps) {
   const { id } = use(params);
   const router = useRouter();
-  const { task, loading, error } = useTaskDetail(id);
+  const { task, loading, error, errorStatus } = useTaskDetail(id);
 
   if (loading) {
     return (
@@ -43,19 +43,13 @@ export default function FeedbackView({ params }: PageProps) {
 
   if (error || !task) {
     return (
-      <div className="space-y-4">
-        <button
-          onClick={() => router.push('/mentee/tasks')}
-          className="inline-flex items-center gap-2 text-slate-600 hover:text-slate-900"
-        >
-          <ArrowLeft className="w-5 h-5" />
-          Back to Tasks
-        </button>
-        <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
-          <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
-          <p className="text-red-900">{error || 'Task not found'}</p>
-        </div>
-      </div>
+      <ResourceError
+        status={errorStatus ?? (task ? null : 404)}
+        resource="task"
+        message={error}
+        backHref="/mentee/tasks"
+        backLabel="Back to Tasks"
+      />
     );
   }
 

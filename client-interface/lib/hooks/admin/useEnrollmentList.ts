@@ -1,9 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
+import { qk, useApiQuery } from '@/lib/query';
 import { enrollmentApi } from '@/lib/services/enrollment-api';
 import { usePagination } from '@/lib/hooks/shared/usePagination';
 import { useDebounce } from '@/lib/hooks/shared/useDebounce';
-import { extractApiErrorMessage } from '@/lib/utils/api-error';
-import { toast } from 'sonner';
 
 export type EnrollmentStatus =
   | 'pending_approval'
@@ -57,6 +56,17 @@ export interface Enrollment {
   }>;
 }
 
+interface EnrollmentStats {
+  total: number; active: number; pendingMatch: number;
+  pendingCompletion: number; completed: number; dropped: number;
+}
+interface EnrollmentPage { enrollments: Enrollment[]; total?: number }
+
+const NO_ENROLLMENTS: Enrollment[] = [];
+const NO_STATS: EnrollmentStats = {
+  total: 0, active: 0, pendingMatch: 0, pendingCompletion: 0, completed: 0, dropped: 0,
+};
+
 export function useEnrollmentList() {
   const pagination = usePagination({ initialPage: 1, initialLimit: 10 });
 
@@ -65,61 +75,42 @@ export function useEnrollmentList() {
 
   const debouncedSearch = useDebounce(search, 400);
 
-  const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const [stats, setStats] = useState({
-    total: 0,
-    active: 0,
-    pendingMatch: 0,
-    pendingCompletion: 0,
-    completed: 0,
-    dropped: 0,
+  const statsQuery = useApiQuery<EnrollmentStats>({
+    queryKey: qk.admin.enrollmentStats,
+    queryFn: async () => {
+      const res = await enrollmentApi.getStats() as { data?: { stats?: EnrollmentStats } };
+      return res?.data?.stats ?? NO_STATS;
+    },
   });
 
-  // Fetch overall stats once on mount (independent of pagination/filters)
-  useEffect(() => {
-    enrollmentApi.getStats()
-      .then((res: any) => {
-        const s = res?.data?.stats;
-        if (s) setStats(s);
-      })
-      .catch(() => {/* non-critical, silently ignore */});
-  }, []);
-
-  const fetchEnrollments = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
+  const { data, loading: isLoading, error, refetch } = useApiQuery<EnrollmentPage>({
+    queryKey: qk.admin.enrollmentList({
+      page: pagination.page, limit: pagination.limit, search: debouncedSearch, status,
+    }),
+    queryFn: async () => {
       const response = await enrollmentApi.getAll({
         page: pagination.page,
         limit: pagination.limit,
         ...(status !== 'all' && { status }),
         ...(debouncedSearch && { search: debouncedSearch }),
       });
+      return {
+        enrollments: response?.data?.enrollments ?? [],
+        total: response?.data?.pagination?.total,
+      };
+    },
+    errorMessage: 'Failed to load enrollments',
+  });
 
-      const list: Enrollment[] = response?.data?.enrollments ?? [];
-      const meta = response?.data?.pagination;
+  const enrollments = data?.enrollments ?? NO_ENROLLMENTS;
+  const stats = statsQuery.data ?? NO_STATS;
 
-      setEnrollments(list);
-      if (meta?.total !== undefined) {
-        pagination.setTotal(meta.total);
-      }
-    } catch (err: any) {
-      const msg = extractApiErrorMessage(err, 'Failed to load enrollments');
-      setError(msg);
-      toast.error(msg);
-    } finally {
-      setIsLoading(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pagination.page, pagination.limit, debouncedSearch, status]);
-
-  // Re-fetch when page / filters change
+  // The page total belongs to the pagination helper, not the query.
+  const total = data?.total;
   useEffect(() => {
-    fetchEnrollments();
-  }, [fetchEnrollments]);
+    if (total !== undefined) pagination.setTotal(total);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [total]);
 
   // Reset to page 1 whenever a filter changes
   useEffect(() => {
@@ -154,6 +145,6 @@ export function useEnrollmentList() {
     stats,
 
     // Actions
-    refetch: fetchEnrollments,
+    refetch,
   };
 }

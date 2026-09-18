@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+'use client';
+
+import { useCallback } from 'react';
 import { mentorApi } from '@/lib/services/mentor-api';
+import { qk, useApiQuery, useInvalidate, STALE } from '@/lib/query';
 
 export interface FeedbackSnippet {
   id: string;
@@ -15,40 +18,31 @@ export interface UseFeedbackSnippetsReturn {
   refetch: () => Promise<void>;
 }
 
+const EMPTY: FeedbackSnippet[] = [];
+
 /**
  * The mentor's saved feedback snippets — reusable bits of review feedback shown
  * in both review drawers. CRUD against /mentor/feedback-snippets.
  */
 export function useFeedbackSnippets(): UseFeedbackSnippetsReturn {
-  const [snippets, setSnippets] = useState<FeedbackSnippet[]>([]);
-  const [loading, setLoading] = useState(true);
+  const invalidate = useInvalidate();
 
-  const fetchSnippets = useCallback(async () => {
-    try {
-      setLoading(true);
-      const list = await mentorApi.listFeedbackSnippets();
-      setSnippets(list ?? []);
-    } catch {
-      setSnippets([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchSnippets();
-  }, [fetchSnippets]);
+  const { data, loading, refetch } = useApiQuery<FeedbackSnippet[]>({
+    queryKey: qk.mentor.feedbackSnippets,
+    queryFn: async () => (await mentorApi.listFeedbackSnippets()) ?? [],
+    staleTime: STALE.long,
+  });
 
   const create = useCallback(async (payload: { label: string; body: string }) => {
     const snippet = await mentorApi.createFeedbackSnippet(payload);
-    setSnippets((prev) => [snippet, ...prev]);
+    await invalidate(qk.mentor.feedbackSnippets);
     return snippet;
-  }, []);
+  }, [invalidate]);
 
   const remove = useCallback(async (id: string) => {
     await mentorApi.removeFeedbackSnippet(id);
-    setSnippets((prev) => prev.filter((s) => s.id !== id));
-  }, []);
+    await invalidate(qk.mentor.feedbackSnippets);
+  }, [invalidate]);
 
-  return { snippets, loading, create, remove, refetch: fetchSnippets };
+  return { snippets: data ?? EMPTY, loading, create, remove, refetch };
 }

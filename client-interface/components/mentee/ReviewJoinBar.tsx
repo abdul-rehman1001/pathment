@@ -4,7 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { Video, X, ExternalLink } from 'lucide-react';
 import { menteeApi } from '@/lib/services/mentee-api';
-import { getSocket } from '@/lib/services/socket-client';
+import { acquireSocket } from '@/lib/services/socket-client';
+import { usePolling } from '@/lib/hooks/shared/usePolling';
 import { useCall } from '@/lib/context/CallContext';
 
 interface ActiveReview {
@@ -35,23 +36,23 @@ export function ReviewJoinBar() {
   const { startCall, updateCall, call, leaveGuestCall, registerDock, isLive } = useCall();
   const inCall = isLive(active?.sessionId);
 
+  // Errors propagate so usePolling can honour a 429's retry-after; the last
+  // state is kept either way, which is the behaviour the old catch preserved.
   const poll = useCallback(async () => {
-    try {
-      const res = await menteeApi.getActiveReview() as { data?: { meeting: ActiveReview | null } };
-      setActive(res?.data?.meeting ?? null);
-    } catch { /* transient — keep the last state */ }
+    const res = await menteeApi.getActiveReview() as { data?: { meeting: ActiveReview | null } };
+    setActive(res?.data?.meeting ?? null);
   }, []);
 
+  usePolling(poll, { intervalMs: 12_000 });
+
   useEffect(() => {
-    poll();
-    const t = setInterval(poll, 12_000);
     // Real-time: the server emits `review:started` to the clan's mentees the
     // moment the mentor opens the room — re-poll immediately so the banner shows
     // without waiting for the interval. The interval stays as a fallback.
-    const socket = getSocket();
-    const onStarted = () => { setDismissed(null); poll(); };
+    const socket = acquireSocket();
+    const onStarted = () => { setDismissed(null); poll().catch(() => {}); };
     socket?.on('review:started', onStarted);
-    return () => { clearInterval(t); socket?.off('review:started', onStarted); };
+    return () => { socket?.off('review:started', onStarted); };
   }, [poll]);
 
   const join = useCallback((review: ActiveReview) => {

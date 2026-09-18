@@ -96,6 +96,40 @@ One consistent envelope for **every** failure:
   retry / go-home / show the reference id) instead of white-screening. Helpers: `extractApiErrorMessage`,
   `getErrorCode`, `getRequestId`, `getRateLimit` (`lib/utils/api-error.ts`).
 
+### Portal scope (which hat is the caller wearing?)
+
+One account can hold several roles at once - lead mentor of one clan, co-mentor of a
+second, learner in a third. Authorization answers *may I*; it does not answer *which of
+my roles is this question about*. Without that second answer every "my stuff" endpoint
+replied with the **union** of every hat, so a mentor's own Roadblocks page listed their
+mentees' roadblocks and their mentee inbox listed the threads they hold as a mentor.
+
+The portal now travels with the request:
+
+| Header | Value | Set from |
+| --- | --- | --- |
+| `X-Portal-Role` | `mentee` \| `mentor` \| `admin` | the URL prefix (`/mentee/...`) |
+| `X-Active-Clan` | a clan uuid | the mentor clan selector (`ClanContext`) |
+
+- **Client:** `lib/services/portal-scope.ts` builds the headers; both axios clients inject
+  them on every request. It reads the pathname rather than React state so the interceptors
+  (which sit outside the component tree) can use it - the same rule the notification bell
+  already uses (`roleFromPathname`).
+- **Server:** `middlewares/portalScope.js` parses them into `req.portal` (parse only - no
+  DB, no I/O). `authzService.menteeIdsForPortal(user, portal)` turns that into "who is this
+  page about": the caller alone in the mentee portal, their mentees (optionally one clan)
+  in the mentor portal, `null` for no narrowing.
+
+**It can only ever narrow.** `req.portal` is a stated preference, not a grant: every
+consumer still runs the authorization it ran before, and a portal the user does not
+actually hold resolves to nothing rather than to more. A request with no portal header
+(an older client, a script, a test) behaves exactly as it did - so adopting it on a new
+endpoint is additive, and client and server can ship in either order.
+
+Consumers today: `frictionService` (blockers + delays), `messagingService.listConversations`,
+`frictionController.targetMenteeId`. Reach for it on any new endpoint that answers a
+question about "me" rather than about a named resource.
+
 ### Auth
 
 - **Login** issues a short-lived **JWT access token** + a DB-backed **refresh token**

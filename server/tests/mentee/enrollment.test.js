@@ -4,7 +4,11 @@
  * TC-M14  Enroll in a published program → Pending Match status
  * TC-M15  Attempt duplicate enrollment in same program
  * TC-M16  View enrolled program in dashboard
- * TC-M17  Select starting level during program onboarding
+ *
+ * TC-M17 ("select starting level during onboarding") is gone: programs are no
+ * longer divided into levels. It had already stopped testing anything — its own
+ * assertion fell back to re-checking the programId whenever the level endpoint
+ * answered 4xx, which by then it always did.
  */
 
 const request = require('supertest');
@@ -14,20 +18,18 @@ const {
   createAdmin,
   createMentee,
   createProgram,
-  createProgramLevel,
   createEnrollment,
   authHeader,
 } = require('../helpers/seed');
 
 describe('Mentee Enrollment', () => {
-  let admin, mentee, program, level;
+  let admin, mentee, program;
 
   beforeEach(async () => {
     await cleanDb();
     admin = await createAdmin();
     mentee = await createMentee({ email: 'awaisfatehali@gmail.com', password: 'Test@1234!' });
     program = await createProgram({ createdBy: admin.id, name: 'Web Dev Program', status: 'published' });
-    level = await createProgramLevel({ programId: program.id, name: 'Foundation', order: 1 });
   });
 
   // TC-M14
@@ -80,31 +82,4 @@ describe('Mentee Enrollment', () => {
     expect(match.status).toBeTruthy();
   });
 
-  // TC-M17
-  it('TC-M17: assigns Foundation level when mentee selects it during onboarding', async () => {
-    // Enroll the mentee first
-    const enrollRes = await request(app)
-      .post(`/api/programs/${program.id}/enroll`)
-      .set('Authorization', authHeader(mentee))
-      .send();
-
-    expect(enrollRes.status).toBe(201);
-    const enrollmentId = enrollRes.body.data.enrollment.id;
-
-    // Update the enrollment to set the level (PATCH status or a dedicated level-select endpoint)
-    const res = await request(app)
-      .patch(`/api/enrollments/${enrollmentId}/status`)
-      .set('Authorization', authHeader(mentee))
-      .send({ status: 'pending_match', currentLevelId: level.id });
-
-    // The endpoint may not exist on the mentee side; check for a 2xx or fall back to
-    // a direct DB read to confirm the level was saved via the enroll route.
-    if (res.status >= 400) {
-      // Accept that level selection is handled server-side automatically or by admin;
-      // test passes if enrollment was created with the expected program
-      expect(enrollRes.body.data.enrollment.programId).toBe(program.id);
-    } else {
-      expect(res.status).toBeLessThan(300);
-    }
-  });
 });

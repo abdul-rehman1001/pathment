@@ -110,6 +110,17 @@ export function zoneLabel(tz?: string): string {
   } catch { return zone; }
 }
 
+/** Split a stored UTC instant into local date + time (HH:MM) for date/time inputs. */
+export function splitLocal(iso?: string | number | Date | null): { date: string; time: string } {
+  const d = toDate(iso);
+  if (!d) return { date: '', time: '' };
+  const p = (n: number) => String(n).padStart(2, '0');
+  return {
+    date: `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`,
+    time: `${p(d.getHours())}:${p(d.getMinutes())}`,
+  };
+}
+
 /** Short zone label for the viewer, e.g. "PKT" / "GMT+5". */
 export function viewerZoneLabel(): string {
   return zoneLabel(getViewerTimeZone());

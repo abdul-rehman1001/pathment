@@ -18,6 +18,7 @@ import {
   ChevronDown,
   Pencil,
 } from 'lucide-react';
+import { ResourceError } from '@/components/shared/ResourceError';
 import { useProgramDetail } from '@/lib/hooks/admin';
 import { MenuPanel } from '@/components/shared/MenuPanel';
 import { useConfirm } from '@/lib/context/ConfirmContext';
@@ -122,6 +123,7 @@ export default function ProgramDetails() {
     handleApproveEnrollment, handleRejectEnrollment,
     handleStatusUpdate, handleVisibilityUpdate, updatingStatus,
     fetchEnrollments, refetch,
+    errorStatus,
   } = useProgramDetail();
 
   const [activeTab, setActiveTab] = useState<'overview' | 'enrollments'>('overview');
@@ -143,15 +145,13 @@ export default function ProgramDetails() {
 
   if (!program) {
     return (
-      <div className="bg-card rounded-2xl border border-slate-200 p-12 text-center">
-        <p className="text-slate-600 mb-4">Program not found</p>
-        <Link
-          href="/admin/programs/list"
-          className="inline-flex items-center gap-2 text-brand-600 hover:text-brand-700"
-        >
-          <ArrowLeft className="w-5 h-5" />
-          Back to Programs
-        </Link>
+      <div className="bg-card rounded-2xl border border-slate-200 p-12">
+        <ResourceError
+          status={errorStatus ?? 404}
+          resource="program"
+          backHref="/admin/programs/list"
+          backLabel="Back to Programs"
+        />
       </div>
     );
   }

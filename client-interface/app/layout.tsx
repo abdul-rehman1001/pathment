@@ -1,6 +1,7 @@
 ﻿import type { Metadata, Viewport } from 'next';
 import { Plus_Jakarta_Sans, JetBrains_Mono } from 'next/font/google';
 import '../styles/globals.css';
+import { QueryProvider } from '@/lib/query';
 import { AuthProvider } from '@/lib/context/AuthContext';
 import { ThemeProvider } from '@/lib/context/ThemeContext';
 import { ClanProvider } from '@/lib/context/ClanContext';
@@ -38,19 +39,21 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${jakarta.variable} ${jetbrains.variable}`} suppressHydrationWarning>
       <body suppressHydrationWarning>
-        <ThemeProvider>
-          <AuthProvider>
-            <ClanProvider>
-              <ConfirmProvider>
-                {/* Above the router: a live review call must survive navigation. */}
-                <CallProvider>
-                  {children}
-                </CallProvider>
-                <Toaster />
-              </ConfirmProvider>
-            </ClanProvider>
-          </AuthProvider>
-        </ThemeProvider>
+        <QueryProvider>
+          <ThemeProvider>
+            <AuthProvider>
+              <ClanProvider>
+                <ConfirmProvider>
+                  {/* Above the router: a live review call must survive navigation. */}
+                  <CallProvider>
+                    {children}
+                  </CallProvider>
+                  <Toaster />
+                </ConfirmProvider>
+              </ClanProvider>
+            </AuthProvider>
+          </ThemeProvider>
+        </QueryProvider>
       </body>
     </html>
   );

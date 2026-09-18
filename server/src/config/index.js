@@ -49,10 +49,18 @@ module.exports = {
   },
 
   // Rate Limiting. This is the GLOBAL backstop on /api, not the per-route auth
-  // limits (see middlewares/rateLimiter.js). 100/15min was far below what a
-  // single normal session sends, so it is deliberately generous here.
+  // limits (see middlewares/rateLimiter.js). Deliberately generous: it exists to
+  // stop a runaway loop or a crawler, NOT to ration normal use.
+  //
+  // Sizing, so these numbers are not mysteries next time: a mentor dashboard
+  // fires roughly 20 reads before the user touches anything, several screens do
+  // 8-10 each, and background polling adds tens more per window. Reads are
+  // therefore budgeted in the thousands. Writes are user-initiated and orders of
+  // magnitude rarer, so they keep a much tighter cap — which is what actually
+  // protects the database.
   rateLimit: {
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-    maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 1000
+    maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 3000,
+    maxWriteRequests: parseInt(process.env.RATE_LIMIT_MAX_WRITE_REQUESTS) || 600
   }
 };

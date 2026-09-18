@@ -1,10 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { taskApi } from '@/lib/services/task-api';
 import { enrollmentApi } from '@/lib/services/enrollment-api';
 import { toast } from 'sonner';
+import { qk, useApiQuery } from '@/lib/query';
 import { useAuth } from '@/lib/context/AuthContext';
 
 export type TaskView = 'active' | 'completed';
@@ -29,69 +30,62 @@ export interface UseMenteeTasksReturn {
   fetchTasks: () => Promise<void>;
 }
 
+const NO_TASKS: any[] = [];
+const NO_ENROLLMENTS: any[] = [];
+
 export function useMenteeTasks(): UseMenteeTasksReturn {
   const { user } = useAuth();
+  const menteeId = user?.id ?? '';
 
-  const [tasks, setTasks] = useState<any[]>([]);
-  const [stats, setStats] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [enrollments, setEnrollments] = useState<any[]>([]);
-  const [selectedEnrollmentId, setSelectedEnrollmentId] = useState<string | null>(null);
-  const [enrollmentsReady, setEnrollmentsReady] = useState(false);
+  const [enrollmentOverride, setSelectedEnrollmentId] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [view, setView] = useState<TaskView>('active');
 
-  const fetchEnrollments = useCallback(async () => {
-    if (!user?.id) return;
-    try {
-      const res = await enrollmentApi.getAll({ menteeId: user.id });
-      const list: any[] = res?.data?.enrollments || [];
-      setEnrollments(list);
-      // Auto-select first active/in_progress enrollment
-      const active =
-        list.find((e: any) => ['active', 'matched'].includes(e.status)) || list[0];
-      if (active) {
-        setSelectedEnrollmentId(active.id);
-      }
-    } catch (err: any) {
-      console.error('Failed to fetch enrollments:', err);
-    } finally {
-      setEnrollmentsReady(true);
-    }
-  }, [user?.id]);
+  // Same key as useMenteeDashboard — one cached answer serves both screens.
+  const enrollmentsQuery = useApiQuery<any[]>({
+    queryKey: qk.me.enrollments(menteeId),
+    queryFn: async () => {
+      const res = await enrollmentApi.getAll({ menteeId });
+      return res?.data?.enrollments || [];
+    },
+    enabled: !!menteeId,
+  });
 
-  const fetchTasks = useCallback(async () => {
-    if (!user?.id) return;
-    try {
-      setLoading(true);
+  const enrollments = enrollmentsQuery.data ?? NO_ENROLLMENTS;
+  const enrollmentsReady = !enrollmentsQuery.loading;
 
-      const statsRes = await taskApi.getMenteeTaskStats(user.id, selectedEnrollmentId ?? undefined);
-      setStats(statsRes?.data?.stats);
+  // Default to the first active enrollment; an explicit pick wins. Derived
+  // rather than synced into state, so there is no effect to fall out of step.
+  const defaultEnrollmentId = useMemo(() => {
+    const active = enrollments.find((e: any) => ['active', 'matched'].includes(e.status)) || enrollments[0];
+    return active?.id ?? null;
+  }, [enrollments]);
+  const selectedEnrollmentId = enrollmentOverride ?? defaultEnrollmentId;
 
+  const statsQuery = useApiQuery<any>({
+    queryKey: qk.me.taskStats(selectedEnrollmentId),
+    queryFn: async () => (await taskApi.getMenteeTaskStats(menteeId, selectedEnrollmentId ?? undefined))?.data?.stats,
+    enabled: !!menteeId && enrollmentsReady,
+  });
+
+  const tasksQuery = useApiQuery<any[]>({
+    queryKey: qk.me.tasks({ menteeId, filterStatus, enrollmentId: selectedEnrollmentId }),
+    queryFn: async () => {
       const params: any = {};
       if (filterStatus !== 'all') params.status = filterStatus;
       if (selectedEnrollmentId) params.enrollmentId = selectedEnrollmentId;
+      const tasksRes = await taskApi.getMenteeTasks(menteeId, params);
+      return tasksRes.data.tasks || [];
+    },
+    enabled: !!menteeId && enrollmentsReady,
+    errorMessage: 'Failed to load tasks',
+  });
 
-      const tasksRes = await taskApi.getMenteeTasks(user.id, params);
-      setTasks(tasksRes.data.tasks || []);
-    } catch (err: any) {
-      console.error('Failed to fetch tasks:', err);
-      toast.error('Failed to load tasks');
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.id, filterStatus, selectedEnrollmentId]);
-
-  // Load enrollments once on mount
-  useEffect(() => {
-    if (user?.id) fetchEnrollments();
-  }, [user?.id, fetchEnrollments]);
-
-  // Re-fetch tasks when filter or program selection changes - only after enrollments are loaded
-  useEffect(() => {
-    if (user?.id && enrollmentsReady) fetchTasks();
-  }, [user?.id, filterStatus, selectedEnrollmentId, fetchTasks, enrollmentsReady]);
+  const tasks = tasksQuery.data ?? NO_TASKS;
+  const stats = statsQuery.data ?? null;
+  const loading = tasksQuery.loading;
+  const fetchTasks = tasksQuery.refetch;
 
   const handleStartTask = useCallback(async (taskId: string) => {
     try {

@@ -27,9 +27,15 @@ EXTENSION_HANDLED: 'extension_handled',
   MEETING_BOOKED: 'meeting_booked',
   CROSS_CLAN_ASSIGNED: 'cross_clan_assigned',
   NEW_MENTEE_IN_CLAN: 'new_mentee_in_clan',
+  CLAN_JOIN_REQUEST_RECEIVED: 'clan_join_request_received',
+  CLAN_JOIN_REQUEST_DECIDED: 'clan_join_request_decided',
   MENTEE_TRANSFER_REQUESTED: 'mentee_transfer_requested',
   MENTEE_TRANSFER_DECIDED: 'mentee_transfer_decided',
   PROMOTION_NOMINATED: 'promotion_nominated',
+  // A mentor put somebody forward as a top performer; the admin decides.
+  TOP_PERFORMER_NOMINATED: 'top_performer_nominated',
+  // The admin decided — the nominating mentor, and a winner, both hear.
+  TOP_PERFORMER_DECIDED: 'top_performer_decided',
   REVIEW_UNLOCK_REQUESTED: 'review_unlock_requested',
   REVIEW_UNLOCK_HANDLED: 'review_unlock_handled',
   MENTEE_PAUSE_SUGGESTED: 'mentee_pause_suggested',
@@ -46,7 +52,14 @@ EXTENSION_HANDLED: 'extension_handled',
   REVIEW_SCHEDULED: 'review_scheduled',
   REVIEW_REMINDER: 'review_reminder',
   ADMIN_MEETING_INVITE: 'admin_meeting_invite',
-  ADMIN_MEETING_REMINDER: 'admin_meeting_reminder'
+  ADMIN_MEETING_REMINDER: 'admin_meeting_reminder',
+  CERTIFICATE_AWARDED: 'certificate_awarded',
+  // Certificates are graded by AI and then signed off by the mentor who
+  // actually knows the person. These two carry that round.
+  CERTIFICATE_VERIFICATION_REQUESTED: 'certificate_verification_requested',
+  CERTIFICATE_VERIFICATION_COMPLETED: 'certificate_verification_completed',
+  // The admin has released a clan: its mentors may now send.
+  CERTIFICATE_CLAN_APPROVED: 'certificate_clan_approved'
 };
 
 // Which role's "hat" a notification concerns, so the bell + list can scope to the
@@ -175,17 +188,17 @@ const NOTIFICATION_MATRIX = {
     channels: { inApp: false, email: true, chat: false }
   },
   [NOTIFICATION_EVENTS.EXTENSION_REQUESTED]: {
-  type: 'task',
-  audience: 'mentor',
-  preferenceKey: 'extension_requested',
-  channels: { inApp: true, email: true, chat: false }
-},
-[NOTIFICATION_EVENTS.EXTENSION_HANDLED]: {
-  type: 'task',
-  audience: 'mentee',
-  preferenceKey: 'extension_handled',
-  channels: { inApp: true, email: true, chat: false }
-},
+    type: 'task',
+    audience: 'mentor',
+    preferenceKey: 'extension_requested',
+    channels: { inApp: true, email: true, chat: false }
+  },
+  [NOTIFICATION_EVENTS.EXTENSION_HANDLED]: {
+    type: 'task',
+    audience: 'mentee',
+    preferenceKey: 'extension_handled',
+    channels: { inApp: true, email: true, chat: false }
+  },
   [NOTIFICATION_EVENTS.MENTOR_NUDGE]: {
     type: 'system',
     audience: 'mentee',
@@ -228,6 +241,36 @@ const NOTIFICATION_MATRIX = {
     preferenceKey: 'program_completed',
     channels: { inApp: true, email: true, chat: false }
   },
+  [NOTIFICATION_EVENTS.CERTIFICATE_AWARDED]: {
+    type: 'milestone',
+    audience: 'mentee',
+    preferenceKey: 'certificate_awarded',
+    channels: { inApp: true, email: true, chat: false }
+  },
+  // "Your mentees have been graded — check the grades before they go out."
+  // Emailed as well as belled: it carries a deadline and the mentor may not
+  // open Pathment that day.
+  [NOTIFICATION_EVENTS.CERTIFICATE_VERIFICATION_REQUESTED]: {
+    type: 'milestone',
+    audience: 'mentor',
+    preferenceKey: 'certificate_verification_requested',
+    channels: { inApp: true, email: true, chat: false }
+  },
+  // "You may send now." The mentor cannot act before this arrives, so it is
+  // emailed as well as belled.
+  [NOTIFICATION_EVENTS.CERTIFICATE_CLAN_APPROVED]: {
+    type: 'milestone',
+    audience: 'mentor',
+    preferenceKey: 'certificate_clan_approved',
+    channels: { inApp: true, email: true, chat: false }
+  },
+  // "That clan has signed off." Tells the admin a clan is clear to issue.
+  [NOTIFICATION_EVENTS.CERTIFICATE_VERIFICATION_COMPLETED]: {
+    type: 'milestone',
+    audience: 'admin',
+    preferenceKey: 'certificate_verification_completed',
+    channels: { inApp: true, email: false, chat: false }
+  },
   [NOTIFICATION_EVENTS.MENTOR_FEEDBACK_REQUESTED]: {
     type: 'feedback',
     audience: 'mentee',
@@ -258,6 +301,18 @@ const NOTIFICATION_MATRIX = {
     preferenceKey: 'new_mentee_in_clan',
     channels: { inApp: true, email: true, chat: false }
   },
+  [NOTIFICATION_EVENTS.CLAN_JOIN_REQUEST_RECEIVED]: {
+    type: 'system',
+    audience: 'mentor',
+    preferenceKey: 'clan_join_request_received',
+    channels: { inApp: true, email: true, chat: false }
+  },
+  [NOTIFICATION_EVENTS.CLAN_JOIN_REQUEST_DECIDED]: {
+    type: 'system',
+    audience: 'mentee',
+    preferenceKey: 'clan_join_request_decided',
+    channels: { inApp: true, email: true, chat: false }
+  },
   // Another mentor asks THIS clan to take one of their mentees. Always in-app;
   // the email is dispatched with emailOnlyIfOffline so someone who is already in
   // the app just gets the bell (see notificationOrchestrator.dispatch).
@@ -274,6 +329,20 @@ const NOTIFICATION_MATRIX = {
     // mentee, so the per-notification actionUrl resolves the audience.
     audience: 'any',
     preferenceKey: 'mentee_transfer_decided',
+    channels: { inApp: true, email: true, chat: false }
+  },
+  [NOTIFICATION_EVENTS.TOP_PERFORMER_NOMINATED]: {
+    type: 'system',
+    audience: 'admin',
+    preferenceKey: 'top_performer_nominated',
+    channels: { inApp: true, email: false, chat: false }
+  },
+  [NOTIFICATION_EVENTS.TOP_PERFORMER_DECIDED]: {
+    type: 'system',
+    // Dual-use: the nominating mentor hears either way; a mentee only hears
+    // when they have won, so a decline never reaches the person it is about.
+    audience: 'any',
+    preferenceKey: 'top_performer_decided',
     channels: { inApp: true, email: true, chat: false }
   },
   [NOTIFICATION_EVENTS.PROMOTION_NOMINATED]: {
@@ -408,6 +477,7 @@ const EMAIL_PREFERENCE_CATEGORIES = [
   { group: 'Program', key: 'promotion_nominated', label: 'A mentee is nominated for promotion (admins)' },
   { group: 'Milestones', key: 'completion_ready_for_signoff', label: 'Completion is ready for sign-off' },
   { group: 'Milestones', key: 'program_completed', label: 'A program is completed' },
+  { group: 'Milestones', key: 'certificate_awarded', label: 'A certificate is awarded to me' },
   { group: 'Digests', key: 'weekly_progress_report', label: 'Weekly progress report' },
   { group: 'Program', key: 'mentee_returned', label: 'A paused mentee returns to my clan' },
   { group: 'Program', key: 'mentee_reengage', label: 'Reminders to come back when I\'m paused' },

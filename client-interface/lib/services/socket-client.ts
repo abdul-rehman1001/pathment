@@ -51,6 +51,28 @@ export function getSocket(): Socket | null {
   return socket;
 }
 
+/**
+ * The shared socket, connecting it if nobody has yet.
+ *
+ * `getSocket` only ever returned an EXISTING connection, so anything outside the
+ * messages page (which is the only caller of `connectSocket`) got null and went
+ * off and called `io()` for itself — the notification bell did this twice over,
+ * and those ad-hoc connections omitted `transports`, so they began on HTTP
+ * long-polling and stayed there for good if the WebSocket upgrade failed.
+ *
+ * Callers get the one properly-configured connection instead. It is deliberately
+ * NOT disconnected when an individual consumer unmounts: it is a session-lived
+ * singleton shared with the messages page, so tearing it down on one component's
+ * unmount would sever everyone else's realtime. `disconnectSocket()` on sign-out
+ * remains the way it ends.
+ */
+export function acquireSocket(): Socket | null {
+  if (socket) return socket;
+  const token = tokenStore.getToken();
+  if (!token) return null;
+  return connectSocket(token);
+}
+
 export function disconnectSocket(): void {
   unsubscribeRefresh?.();
   unsubscribeRefresh = null;

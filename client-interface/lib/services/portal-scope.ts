@@ -1,0 +1,53 @@
+import { roleFromPathname, type NotificationRole } from '@/lib/utils/notification-audience';
+
+/**
+ * Which portal the user currently has open, sent with every request.
+ *
+ * A person can hold several roles at once — lead mentor of one clan, co-mentor
+ * of another, learner in a third — and until now only the browser knew which
+ * portal was open. The server answered every "my stuff" question with the union
+ * of all of them, so the mentee Roadblocks page listed the user's MENTEES'
+ * roadblocks and the mentee inbox listed the threads they hold as a mentor.
+ *
+ * The portal is read from the URL rather than from React state so that any
+ * caller gets it — including the axios interceptors, which sit outside the
+ * component tree. `/mentee/blockers` is unambiguous about which hat is on, and
+ * it is the same rule the notification bell already uses to decide which
+ * notifications belong to the current portal (`roleFromPathname`).
+ *
+ * These headers can only ever NARROW what comes back: the server re-derives the
+ * user's real roles and a portal they do not hold resolves to nothing extra.
+ */
+
+/** Must match ClanContext's STORAGE_KEY / ALL_CLANS — the mentor clan selector. */
+const CLAN_STORAGE_KEY = 'pathment-active-clan';
+const ALL_CLANS = 'all';
+
+export const PORTAL_ROLE_HEADER = 'X-Portal-Role';
+export const ACTIVE_CLAN_HEADER = 'X-Active-Clan';
+
+function currentPortalRole(): NotificationRole | null {
+  if (typeof window === 'undefined') return null;
+  return roleFromPathname(window.location.pathname);
+}
+
+function currentClanId(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const saved = window.localStorage.getItem(CLAN_STORAGE_KEY);
+    return saved && saved !== ALL_CLANS ? saved : null;
+  } catch {
+    // Private mode / blocked storage: no clan filter is a fine answer.
+    return null;
+  }
+}
+
+/** Headers describing the current portal. Empty on the server or a neutral page. */
+export function portalScopeHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  const role = currentPortalRole();
+  if (role) headers[PORTAL_ROLE_HEADER] = role;
+  const clanId = currentClanId();
+  if (clanId) headers[ACTIVE_CLAN_HEADER] = clanId;
+  return headers;
+}

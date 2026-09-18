@@ -2,12 +2,13 @@
 
 import Link from 'next/link';
 import {
-  ArrowLeft, Mail, GraduationCap, Briefcase, Star,
+  Mail, GraduationCap, Briefcase, Star,
   CheckCircle2, TrendingUp, Award, Trophy, Flame,
-  AlertCircle, Loader2, UserCheck, BookOpen, Users2,
+  Loader2, UserCheck, BookOpen, Users2,
   Target, ListChecks, Clock,
   Layers,
 } from 'lucide-react';
+import { ResourceError } from '@/components/shared/ResourceError';
 import { useMenteeProfile } from '@/lib/hooks/admin';
 import { StatsCard, PageHeader } from '@/components/admin/ui';
 import { Avatar } from '@/components/shared/Avatar';
@@ -60,6 +61,7 @@ export default function AdminMenteeProfilePage() {
   const {
     mentee, admission, assignedMentor, coMentors, currentClan,
     enrollments, recentTasks, stats, isLoading, error,
+    errorStatus,
   } = useMenteeProfile();
 
   if (isLoading) {
@@ -72,16 +74,14 @@ export default function AdminMenteeProfilePage() {
 
   if (error || !mentee) {
     return (
-      <div className="max-w-md mx-auto mt-20 text-center">
-        <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
-          <AlertCircle className="w-8 h-8 text-red-500" />
-        </div>
-        <h2 className="text-lg font-semibold text-slate-900 mb-2">Mentee not found</h2>
-        <p className="text-slate-500 text-sm mb-6">{error ?? 'This mentee profile does not exist.'}</p>
-        <Link href="/admin/users/mentees" className="inline-flex items-center gap-2 text-brand-600 hover:text-brand-700 text-sm font-medium">
-          <ArrowLeft className="w-4 h-4" />
-          Back to Mentees
-        </Link>
+      <div className="max-w-md mx-auto mt-20">
+        <ResourceError
+          status={errorStatus ?? (mentee ? null : 404)}
+          resource="mentee"
+          message={error}
+          backHref="/admin/users/mentees"
+          backLabel="Back to Mentees"
+        />
       </div>
     );
   }

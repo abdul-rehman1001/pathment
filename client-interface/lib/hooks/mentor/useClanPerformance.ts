@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+'use client';
+
+import { useCallback } from 'react';
 import { performanceApi, type ClanPerformance } from '@/lib/services/performance-api';
+import { qk, useApiQuery } from '@/lib/query';
 
 /**
  * The clan's scores, as the server computed them.
@@ -10,41 +13,18 @@ import { performanceApi, type ClanPerformance } from '@/lib/services/performance
  * person came to exist across two pages and the mobile app.
  */
 export function useClanPerformance(clanId: string | null) {
-  const [performance, setPerformance] = useState<ClanPerformance | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, loading, error, refetch } = useApiQuery<ClanPerformance>({
+    queryKey: qk.mentor.clanPerformance(clanId ?? ''),
+    queryFn: () => performanceApi.clan(clanId!),
+    enabled: !!clanId,
+    errorMessage: 'Could not load the clan scores',
+  });
 
-  const fetchPerformance = useCallback(async () => {
-    if (!clanId) {
-      setPerformance(null);
-      setLoading(false);
-      return;
-    }
+  const setDisabled = useCallback(async (disabled: string[]) => {
+    if (!clanId) return;
+    await performanceApi.setClanDisabled(clanId, disabled);
+    await refetch();
+  }, [clanId, refetch]);
 
-    try {
-      setLoading(true);
-      setError(null);
-      setPerformance(await performanceApi.clan(clanId));
-    } catch (e: unknown) {
-      const message = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      setError(message || 'Could not load the clan scores');
-    } finally {
-      setLoading(false);
-    }
-  }, [clanId]);
-
-  useEffect(() => {
-    fetchPerformance();
-  }, [fetchPerformance]);
-
-  const setDisabled = useCallback(
-    async (disabled: string[]) => {
-      if (!clanId) return;
-      await performanceApi.setClanDisabled(clanId, disabled);
-      await fetchPerformance();
-    },
-    [clanId, fetchPerformance]
-  );
-
-  return { performance, loading, error, refetch: fetchPerformance, setDisabled };
+  return { performance: data ?? null, loading, error, refetch, setDisabled };
 }

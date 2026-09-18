@@ -3,7 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { PackageOpen, X } from 'lucide-react';
-import { changelogApi, type ChangelogEntry } from '@/lib/services/changelog-api';
+import { type ChangelogEntry } from '@/lib/services/changelog-api';
+import { useChangelogFeed } from '@/lib/hooks/shared/useChangelogFeed';
 
 interface ChangelogMountProps {
   role: string;
@@ -15,8 +16,12 @@ interface ChangelogMountProps {
  * feed seen (so the sidebar badge clears too, via the shared event).
  */
 export default function ChangelogMount({ role }: ChangelogMountProps) {
+  const { feed, markSeen } = useChangelogFeed(role);
+  // Snapshot on open: marking seen empties majorUnseen, and the modal must stay
+  // rendered through its exit animation.
   const [entries, setEntries] = useState<ChangelogEntry[]>([]);
   const [open, setOpen] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
   const [shown, setShown] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -30,16 +35,10 @@ export default function ChangelogMount({ role }: ChangelogMountProps) {
   }, [open]);
 
   useEffect(() => {
-    let cancelled = false;
-    changelogApi.feed(role)
-      .then((d) => {
-        if (cancelled || !d.majorUnseen?.length) return;
-        setEntries(d.majorUnseen);
-        setOpen(true);
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [role]);
+    if (dismissed || open || !feed.majorUnseen?.length) return;
+    setEntries(feed.majorUnseen);
+    setOpen(true);
+  }, [feed.majorUnseen, dismissed, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -53,8 +52,8 @@ export default function ChangelogMount({ role }: ChangelogMountProps) {
 
   const dismiss = () => {
     setShown(false);
-    changelogApi.markSeen().catch(() => {});
-    window.dispatchEvent(new CustomEvent('pathment:changelog-seen'));
+    setDismissed(true);
+    markSeen();
     setTimeout(() => setOpen(false), 200);
   };
 

@@ -60,17 +60,24 @@ exports.getUserPointsHistory = catchAsync(async (req, res) => {
 
 /**
  * Get leaderboard
- * GET /api/gamification/leaderboard?programId=xxx&periodType=all_time&limit=50
- * periodType: daily, weekly, monthly, all_time
+ * GET /api/gamification/leaderboard?programId=xxx&limit=50
+ *
+ * Ranked by the PROGRESS SCORE — the same number the mentor portal shows under
+ * Teaching. There is no period: the score is a current standing, not points
+ * accumulated over a window, so "this week's score" would be the same number
+ * wearing a different label.
  */
 exports.getLeaderboard = catchAsync(async (req, res) => {
-  const { programId, periodType = 'all_time', limit = 50 } = req.query;
+  const { programId, limit = 50 } = req.query;
 
-  const leaderboard = await gamificationService.getLeaderboard(
-    programId || null,
-    periodType,
-    parseInt(limit)
-  );
+  // The peer group comes from the asker when no programme is named: two of the
+  // score's dimensions are percentiles, so who you are compared against is part
+  // of the answer rather than a filter on top of it.
+  const leaderboard = await gamificationService.getLeaderboard({
+    user: req.user,
+    programId: programId || null,
+    limit: parseInt(limit, 10) || 50
+  });
 
   res.status(200).json(
     successResponse('Leaderboard retrieved', { leaderboard })

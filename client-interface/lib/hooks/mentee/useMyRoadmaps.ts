@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
 import { menteeRoadmapApi, type MenteeRoadmap } from '@/lib/services/roadmap-api';
+import { qk, useApiQuery, STALE } from '@/lib/query';
 
 export interface UseMyRoadmapsReturn {
   roadmaps: MenteeRoadmap[];
@@ -9,24 +9,15 @@ export interface UseMyRoadmapsReturn {
   refetch: () => Promise<void>;
 }
 
+const EMPTY: MenteeRoadmap[] = [];
+
 /** The logged-in mentee's roadmap progress (step X/N). */
 export function useMyRoadmaps(): UseMyRoadmapsReturn {
-  const [roadmaps, setRoadmaps] = useState<MenteeRoadmap[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data, loading, refetch } = useApiQuery<MenteeRoadmap[]>({
+    queryKey: qk.me.roadmaps,
+    queryFn: async () => (await menteeRoadmapApi.mine())?.data?.roadmaps ?? [],
+    staleTime: STALE.long,
+  });
 
-  const fetchRoadmaps = useCallback(async () => {
-    try {
-      setLoading(true);
-      const res = await menteeRoadmapApi.mine();
-      setRoadmaps(res?.data?.roadmaps ?? []);
-    } catch {
-      setRoadmaps([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { fetchRoadmaps(); }, [fetchRoadmaps]);
-
-  return { roadmaps, loading, refetch: fetchRoadmaps };
+  return { roadmaps: data ?? EMPTY, loading, refetch };
 }

@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Video, VideoOff, Loader2, Check, Circle, Trophy, RotateCw, Users, Radio } from 'lucide-react';
 import { mentorApi } from '@/lib/services/mentor-api';
+import { usePolling } from '@/lib/hooks/shared/usePolling';
+import { getRateLimit } from '@/lib/utils/api-error';
 import { ComingSoon } from '@/components/shared/ComingSoon';
 import { useCall } from '@/lib/context/CallContext';
 
@@ -76,7 +78,11 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
       setLive(!!res?.data?.live);
       setAttendanceTracking(!!res?.data?.attendanceTracking);
       setPolls(!!res?.data?.meeting?.pollsEnabled);
-    } catch { /* keep last */ }
+    } catch (error) {
+      // Keep the last roster on a transient failure, but let a 429 through so the
+      // poll loop backs off instead of hammering the limit it just hit.
+      if (getRateLimit(error).limited) throw error;
+    }
     finally { setLoading(false); }
   }, [liveSessionId]);
 
@@ -98,17 +104,16 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
         }
       } catch { /* fall through to the session-based path */ }
       if (cancelled) return;
-      if (liveSessionId) refresh(); else setLoading(false);
+      if (liveSessionId) refresh().catch(() => {}); else setLoading(false);
     })();
     return () => { cancelled = true; };
   }, [refresh, liveSessionId]);
   // While live, refresh the roster often so a mentee who joins is auto-marked
   // present within a few seconds (their client self-reports on join).
-  useEffect(() => {
-    if (!live) return;
-    const t = setInterval(refresh, 8_000);
-    return () => clearInterval(t);
-  }, [live, refresh]);
+  // Only while live, and only via usePolling — at 8s this is the app's fastest
+  // loop, so it is also the one most able to hold a rate limit open if it ignored
+  // a 429. `intervalMs: null` stops it outright when the review is not live.
+  usePolling(refresh, { intervalMs: live ? 8_000 : null, immediate: false });
   // Mirror the roster's attendance (server truth, incl. live auto-present) up to
   // the review page, so its strip + present/absent/excused counts stay in sync
   // instead of showing the stale once-loaded session. Only rows with a mark set
@@ -143,7 +148,7 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
     if (endedNonce === endedSeen.current) return;
     endedSeen.current = endedNonce;
     setScored(true);
-    refresh();
+    refresh().catch(() => {});
     onEnded?.();
   }, [endedNonce, refresh, onEnded]);
 
@@ -237,7 +242,7 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
   const togglePresent = async (r: RosterRow) => {
     const present = r.attendance !== 'present';
     setRoster((prev) => prev.map((x) => (x.menteeId === r.menteeId ? { ...x, attendance: present ? 'present' : 'absent' } : x)));
-    try { await mentorApi.markReviewPresent(liveSessionId, r.menteeId, present); } catch { toast.error('Could not update attendance'); refresh(); }
+    try { await mentorApi.markReviewPresent(liveSessionId, r.menteeId, present); } catch { toast.error('Could not update attendance'); refresh().catch(() => {}); }
   };
 
   // Feature flag off. In production we tease it ("Coming soon"); everywhere else

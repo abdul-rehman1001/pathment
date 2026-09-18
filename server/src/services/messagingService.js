@@ -6,7 +6,13 @@ const {
   ValidationError
 } = require('../utils/errors/errorTypes');
 const schedulingService = require('./schedulingService');
+const { VISIBLE_MEMBERSHIP_STATUSES } = require('../config/membership');
 const logger = require('../utils/logger');
+
+// Clan roles that mean "I mentor the people in this clan". Mirrors
+// authzService.mentoredClanIds — kept local because this file only needs the
+// membership shape, not the whole permission engine.
+const MENTOR_CLAN_ROLES = ['lead_mentor', 'co_mentor', 'core_team'];
 
 class MessagingService {
   /**
@@ -25,7 +31,12 @@ class MessagingService {
     const mentorIds = await schedulingService.getMenteeMentorIds(userId); // matches + clan lead/co mentors
     mentorIds.forEach((id) => allowed.add(id));
 
-    const myClans = await models.ClanMembership.findAll({ where: { userId, status: 'active' }, attributes: ['clanId'] });
+    // Paused counts: a paused mentee is still in their clan, so they keep access
+    // to their clan-mates as well as their mentors.
+    const myClans = await models.ClanMembership.findAll({
+      where: { userId, status: { [Op.in]: VISIBLE_MEMBERSHIP_STATUSES } },
+      attributes: ['clanId']
+    });
     const clanIds = myClans.map((c) => c.clanId);
     if (clanIds.length) {
       const members = await models.ClanMembership.findAll({
@@ -36,6 +47,81 @@ class MessagingService {
     allowed.delete(userId);
     return [...allowed];
   }
+  /**
+   * Contacts that belong to the OTHER hat, and only the other hat — the people
+   * whose direct threads should not appear in this portal's inbox.
+   *
+   * Two hats, as id sets:
+   *   menteeHat  people met AS A LEARNER — every member of a clan where this
+   *              person is a mentee, plus their 1:1 mentors.
+   *   mentorHat  people met AS A MENTOR — every member of a clan where they
+   *              mentor, plus their 1:1 mentees.
+   *
+   * Stated as an exclusion (hide minus keep) rather than as an inclusion on
+   * purpose. An inclusion list silently loses every contact the relationship
+   * model cannot classify — an admin, somebody from a clan you left — and an
+   * inbox that quietly drops threads is worse than one showing a few extra.
+   * Somebody in BOTH hats (a clan where you co-mentor and also learn) is in
+   * neither exclusion, so their thread stays in both portals, which is true.
+   *
+   * Returns [] when nothing should be hidden — including, after three indexed
+   * lookups and no further work, for the single-role majority who have no
+   * other hat for anyone to fall under.
+   */
+  async #hiddenContactIds(userId, portal) {
+    const role = portal && portal.role;
+    if (role !== 'mentee' && role !== 'mentor') return [];
+
+    const [myMemberships, matchesAsMentee, matchesAsMentor] = await Promise.all([
+      models.ClanMembership.findAll({
+        where: { userId, status: { [Op.in]: VISIBLE_MEMBERSHIP_STATUSES } },
+        attributes: ['clanId', 'role']
+      }),
+      models.MentorMenteeMatch.findAll({ where: { menteeId: userId, status: 'active' }, attributes: ['mentorId'] }),
+      models.MentorMenteeMatch.findAll({ where: { mentorId: userId, status: 'active' }, attributes: ['menteeId'] })
+    ]);
+
+    const clansWhereILearn = myMemberships.filter((m) => m.role === 'mentee').map((m) => m.clanId);
+    const clansWhereIMentor = myMemberships
+      .filter((m) => MENTOR_CLAN_ROLES.includes(m.role))
+      .map((m) => m.clanId);
+
+    // The hat being hidden, and the hat being kept.
+    const [hideClanIds, hideMatches, keepClanIds, keepMatches] = role === 'mentee'
+      ? [clansWhereIMentor, matchesAsMentor.map((m) => m.menteeId),
+         clansWhereILearn, matchesAsMentee.map((m) => m.mentorId)]
+      : [clansWhereILearn, matchesAsMentee.map((m) => m.mentorId),
+         clansWhereIMentor, matchesAsMentor.map((m) => m.menteeId)];
+
+    // Nothing under the other hat, so nothing to hide: the single-role case.
+    // Stopping here keeps their inbox exactly as cheap as it was before.
+    if (!hideClanIds.length && !hideMatches.length) return [];
+
+    const clanIds = [...new Set([...hideClanIds, ...keepClanIds])];
+    const membersByClan = new Map();
+    if (clanIds.length) {
+      const rows = await models.ClanMembership.findAll({
+        where: { clanId: { [Op.in]: clanIds }, status: { [Op.in]: VISIBLE_MEMBERSHIP_STATUSES } },
+        attributes: ['clanId', 'userId']
+      });
+      for (const row of rows) {
+        if (!membersByClan.has(row.clanId)) membersByClan.set(row.clanId, []);
+        membersByClan.get(row.clanId).push(row.userId);
+      }
+    }
+    const contacts = (clanIdList, matchIds) => {
+      const set = new Set();
+      for (const clanId of clanIdList) {
+        for (const id of (membersByClan.get(clanId) || [])) if (id !== userId) set.add(id);
+      }
+      for (const id of matchIds) if (id && id !== userId) set.add(id);
+      return set;
+    };
+
+    const keep = contacts(keepClanIds, keepMatches);
+    return [...contacts(hideClanIds, hideMatches)].filter((id) => !keep.has(id));
+  }
+
   async findDirectConversationsByKey(directKey, transaction = null) {
     return models.Conversation.findAll({
       where: {
@@ -183,13 +269,35 @@ class MessagingService {
     const limit = Math.min(Math.max(Number(options.limit || 25), 1), 100);
     const isArchived = options.archived === 'true' || options.archived === true;
 
+    // Which hat is this inbox for? A person who leads one clan and learns in
+    // another had both sets of threads in one list, in both portals. The split
+    // happens HERE rather than after the fetch because the list is paged: a
+    // filter applied to an already-limited page would return short pages and
+    // hide older threads entirely.
+    const hiddenContactIds = await this.#hiddenContactIds(userId, options.portal);
+    const portalFilter = hiddenContactIds.length
+      ? {
+        conversationId: {
+          // Only DIRECT threads are ever hidden — a group/system conversation
+          // has no single counterpart to attribute to one hat, so it stays.
+          [Op.notIn]: sequelize.literal(
+            '(SELECT cp.conversation_id FROM conversation_participants cp ' +
+            'JOIN conversations c ON c.id = cp.conversation_id ' +
+            'WHERE cp.user_id IN (:portalHiddenIds) AND cp.left_at IS NULL AND c.type = \'direct\')'
+          )
+        }
+      }
+      : {};
+
     // Step 1: fetch conversation IDs in stable order using a lightweight join.
     const membershipRows = await models.ConversationParticipant.findAll({
       attributes: ['conversationId', 'joinedAt'],
+      ...(hiddenContactIds.length ? { replacements: { portalHiddenIds: hiddenContactIds } } : {}),
       where: {
         userId,
         leftAt: null,
-        isArchived
+        isArchived,
+        ...portalFilter
       },
       include: [
         {

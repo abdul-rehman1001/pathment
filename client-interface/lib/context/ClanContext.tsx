@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { useAuth } from './AuthContext';
+import { qk, useApiQuery, STALE } from '@/lib/query';
 import { clanApi } from '@/lib/services/clan-api';
 
 // Clan roles that mean "I mentor this clan" (so it belongs in the scope picker).
@@ -22,38 +23,34 @@ interface ClanContextValue {
 
 const ClanContext = createContext<ClanContextValue | undefined>(undefined);
 
+const EMPTY_CLANS: ClanLite[] = [];
+
 export function ClanProvider({ children }: { children: ReactNode }) {
   const { user, availableRoles } = useAuth();
-  const [clans, setClans] = useState<ClanLite[]>([]);
   const [activeClanId, setActiveClanIdState] = useState<string>(ALL_CLANS);
-  const [loading, setLoading] = useState(false);
 
   const isMentor = !!availableRoles?.includes('mentor');
 
-  // Load the clans this user mentors (membership-based; covers lead/co/core).
-  useEffect(() => {
-    if (!user || !isMentor) { setClans([]); return; }
-    let cancelled = false;
-    setLoading(true);
-    clanApi.myMemberships()
-      .then((r: any) => {
-        if (cancelled) return;
-        const memberships = r?.data?.memberships ?? r?.memberships ?? [];
-        const seen = new Set<string>();
-        const list: ClanLite[] = [];
-        for (const m of memberships) {
-          if (!MENTOR_CLAN_ROLES.includes(m.role)) continue;
-          const c = m.clan;
-          if (!c || seen.has(c.id)) continue;
-          seen.add(c.id);
-          list.push({ id: c.id, name: c.name });
-        }
-        setClans(list);
-      })
-      .catch(() => { if (!cancelled) setClans([]); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [user?.id, isMentor]);
+  // Clans this user mentors (membership-based; covers lead/co/core).
+  const { data: clans = EMPTY_CLANS, loading } = useApiQuery<ClanLite[]>({
+    queryKey: qk.clan.memberships,
+    queryFn: async () => {
+      const r = await clanApi.myMemberships() as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+      const memberships = r?.data?.memberships ?? r?.memberships ?? [];
+      const seen = new Set<string>();
+      const list: ClanLite[] = [];
+      for (const m of memberships) {
+        if (!MENTOR_CLAN_ROLES.includes(m.role)) continue;
+        const c = m.clan;
+        if (!c || seen.has(c.id)) continue;
+        seen.add(c.id);
+        list.push({ id: c.id, name: c.name });
+      }
+      return list;
+    },
+    enabled: !!user && isMentor,
+    staleTime: STALE.long,
+  });
 
   // Restore the saved choice once clans are known; drop it if it's stale.
   useEffect(() => {

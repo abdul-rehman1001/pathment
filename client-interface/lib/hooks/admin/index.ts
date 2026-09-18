@@ -1,8 +1,13 @@
 export { useEnrollmentList } from './useEnrollmentList';
 export type { Enrollment, EnrollmentStatus } from './useEnrollmentList';
 
-export { useAdminClans } from './useAdminClans';
-export type { UseAdminClansReturn, Clan, ClanMembershipRow } from './useAdminClans';
+export { useAdminClans, useAdminClanPublicJoin } from './useAdminClans';
+export type {
+  UseAdminClansReturn,
+  UseAdminClanPublicJoinReturn,
+  Clan,
+  ClanMembershipRow,
+} from './useAdminClans';
 
 export { useCohorts } from './useCohorts';
 export type { UseCohortsReturn, Cohort, CohortStatus } from './useCohorts';

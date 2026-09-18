@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { qk, useApiQuery, STALE } from '@/lib/query';
 import { apiClient } from '@/lib/services/api-client';
 import { apiConfig } from '@/lib/config/api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
@@ -94,14 +95,23 @@ export const CSV_TEMPLATE = 'email,role,program,clan\n' +
   'mentee@example.com,mentee,Data Engineering,Clan A\n' +
   'mentor@example.com,mentor,,Clan A\n';
 
+interface PlacementOptions {
+  programs: PlacementOption[];
+  clans: ClanOption[];
+}
+interface InvitePage {
+  invites: InviteRecord[];
+  total?: number;
+}
+
+const NO_PLACEMENT: PlacementOptions = { programs: [], clans: [] };
+const NO_INVITES: InviteRecord[] = [];
+
 export function useInvites() {
-  const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   /** Id of the invite currently being resent (drives the per-row spinner). */
   const [resendingId, setResendingId] = useState<string | null>(null);
   const [status, setStatus] = useState<InviteStatusFilter>('active');
-  const [invites, setInvites] = useState<InviteRecord[]>([]);
   // Server-side filters + pagination (true totals come from the API, not the page).
   const pagination = usePagination({ initialPage: 1, initialLimit: 20 });
   const [search, setSearch] = useState('');
@@ -119,25 +129,27 @@ export function useInvites() {
     clanId: '',
   });
 
-  const [programs, setPrograms] = useState<PlacementOption[]>([]);
-  const [clans, setClans] = useState<ClanOption[]>([]);
+  const { data: placement } = useApiQuery<PlacementOptions>({
+    queryKey: qk.admin.placementOptions,
+    queryFn: async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const [pRes, cRes]: any[] = await Promise.all([
+        programsApi.getAll().catch(() => null),
+        clanApi.list().catch(() => null),
+      ]);
+      const pList = Array.isArray(pRes?.data) ? pRes.data : (pRes?.data?.programs ?? []);
+      const cList = cRes?.data?.clans ?? [];
+      return {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        programs: pList.map((p: any) => ({ id: p.id, name: p.name })),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        clans: cList.map((c: any) => ({ id: c.id, name: c.name, programId: c.programId })),
+      };
+    },
+    staleTime: STALE.long,
+  });
 
-  useEffect(() => {
-    programsApi
-      .getAll()
-      .then((r: any) => {
-        const list = Array.isArray(r?.data) ? r.data : (r?.data?.programs ?? []);
-        setPrograms(list.map((p: any) => ({ id: p.id, name: p.name })));
-      })
-      .catch(() => {});
-    clanApi
-      .list()
-      .then((r: any) => {
-        const list = r?.data?.clans ?? [];
-        setClans(list.map((c: any) => ({ id: c.id, name: c.name, programId: c.programId })));
-      })
-      .catch(() => {});
-  }, []);
+  const { programs, clans } = placement ?? NO_PLACEMENT;
 
   const [csvRows, setCsvRows] = useState<CsvRow[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -146,14 +158,13 @@ export function useInvites() {
   const [csvFilter, setCsvFilter] = useState<'valid' | 'invalid' | 'all'>('valid');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const fetchInvites = useCallback(async (isManualRefresh = false) => {
-    try {
-      if (isManualRefresh) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
-
+  const { data: invitePage, loading, fetching, refetch } = useApiQuery<InvitePage>({
+    queryKey: qk.admin.invites({
+      status, limit: pagination.limit, offset: pagination.offset,
+      search: debouncedSearch.trim(), programId: programFilter, clanId: clanFilter,
+    }),
+    queryFn: async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await apiClient.get<any>(apiConfig.endpoints.adminInvites, {
         params: {
           status,
@@ -164,22 +175,26 @@ export function useInvites() {
           ...(clanFilter && { clanId: clanFilter }),
         },
       });
-      const rows = response?.data?.invites || response?.invites || [];
-      setInvites(rows);
-      const total = response?.data?.total;
-      if (typeof total === 'number') pagination.setTotal(total);
-    } catch (error: any) {
-      toast.error(extractApiErrorMessage(error, 'Failed to load invites'));
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, pagination.limit, pagination.offset, debouncedSearch, programFilter, clanFilter]);
+      return {
+        invites: response?.data?.invites || response?.invites || [],
+        total: response?.data?.total,
+      };
+    },
+    errorMessage: 'Failed to load invites',
+  });
 
+  const invites = invitePage?.invites ?? NO_INVITES;
+  // `fetching` covers background refreshes, which is exactly what the manual
+  // refresh button used to track with its own flag.
+  const refreshing = fetching && !loading;
+  const fetchInvites = refetch;
+
+  // The page total belongs to the pagination helper, not the query.
+  const total = invitePage?.total;
   useEffect(() => {
-    fetchInvites();
-  }, [fetchInvites]);
+    if (typeof total === 'number') pagination.setTotal(total);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [total]);
 
   // Any filter change returns to page 1 (offset 0) so results aren't off-page.
   useEffect(() => {
@@ -222,7 +237,7 @@ export function useInvites() {
       setCreatedInviteUrl(invite.inviteUrl);
       toast.success('Invite created successfully');
       setForm((prev) => ({ ...prev, email: '', programId: '', clanId: '' }));
-      await fetchInvites(true);
+      await fetchInvites();
     } catch (error: any) {
       toast.error(extractApiErrorMessage(error, 'Failed to create invite'));
     } finally {
@@ -243,7 +258,7 @@ export function useInvites() {
     try {
       await apiClient.post(apiConfig.endpoints.revokeAdminInvite(id));
       toast.success('Invite revoked');
-      await fetchInvites(true);
+      await fetchInvites();
     } catch (error: any) {
       toast.error(extractApiErrorMessage(error, 'Failed to revoke invite'));
     }
@@ -276,7 +291,7 @@ export function useInvites() {
       if (status !== 'active' && status !== 'all') {
         setStatus('active');
       } else {
-        await fetchInvites(true);
+        await fetchInvites();
       }
     } catch (error: unknown) {
       toast.error(extractApiErrorMessage(error, 'Failed to resend invite'));
@@ -386,7 +401,7 @@ export function useInvites() {
       setBulkReport(report);
       setCsvRows([]);
       toast.success(`${report.successCount} invites sent successfully`);
-      await fetchInvites(true);
+      await fetchInvites();
     } catch (error: any) {
       toast.error(extractApiErrorMessage(error, 'Bulk invite failed'));
     } finally {

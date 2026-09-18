@@ -3,6 +3,7 @@ import { apiConfig } from '../config/api';
 import { normalizeAxiosError } from '../utils/api-error';
 import { tokenStore } from './token-store';
 import { refreshAccessToken, handleSessionExpired, SessionExpiredError } from './auth-session';
+import { portalScopeHeaders } from './portal-scope';
 
 class ApiClient {
   private client: AxiosInstance;
@@ -34,6 +35,15 @@ class ApiClient {
         const token = this.getToken();
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
+        }
+        // Which portal the user has open (and, for a mentor, which clan). Lets
+        // the server answer "my roadblocks" / "my inbox" for ONE hat instead of
+        // the union of every role a multi-role user holds. Narrowing only —
+        // see lib/services/portal-scope.ts.
+        if (config.headers) {
+          Object.entries(portalScopeHeaders()).forEach(([key, value]) => {
+            config.headers[key] = value;
+          });
         }
         // For multipart uploads, DROP the default 'application/json' content-type
         // so axios sets 'multipart/form-data; boundary=…' itself. Forcing JSON

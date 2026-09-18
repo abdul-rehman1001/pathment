@@ -2,6 +2,7 @@ import axios, { AxiosInstance } from 'axios';
 import { normalizeAxiosError } from '../utils/api-error';
 import { tokenStore } from './token-store';
 import { refreshAccessToken, handleSessionExpired, SessionExpiredError } from './auth-session';
+import { portalScopeHeaders } from './portal-scope';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
@@ -17,6 +18,10 @@ axiosInstance.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    // Same portal scoping as api-client: the hat the user currently has on.
+    Object.entries(portalScopeHeaders()).forEach(([key, value]) => {
+      config.headers[key] = value;
+    });
     return config;
   },
   (error) => Promise.reject(error)

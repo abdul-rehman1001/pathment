@@ -168,10 +168,8 @@ router.use('/admin/emails', require('./emailAdmin'));
 // In-app feedback / bug reports: anyone submits, admins triage
 router.use('/feedback', require('./feedback'));
 
-
-
-// TODO: Add more route modules here
-// router.use('/users', userRoutes);
-// router.use('/notifications', notificationRoutes);
+// Custom Certificate Management System
+router.use('/certificates', require('./certificates'));
+router.use('/top-performers', require('./topPerformers'));
 
 module.exports = router;

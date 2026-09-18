@@ -12,7 +12,8 @@ const {
   shiftDayKey,
   currentStreak,
   longestStreak,
-  milestonesCrossed,
+  milestonesReached,
+  milestoneFromReason,
 } = require('../../src/services/streak');
 
 describe('shiftDayKey', () => {
@@ -106,28 +107,53 @@ describe('longestStreak', () => {
   });
 });
 
-describe('milestonesCrossed', () => {
-  it('pays once for the milestone just reached', () => {
-    expect(milestonesCrossed(6, 7)).toEqual([7]);
+describe('milestonesReached', () => {
+  /**
+   * The old rule took (previous, current) and paid everything in between, so it
+   * depended on a stored counter. That counter drops to zero whenever a streak
+   * breaks — or whenever a recount runs before the day's first log — and the
+   * next call re-paid every milestone under the streak.
+   *
+   * It was not theoretical. In production eleven mentees collected 8,250 points
+   * that way; one was paid the seven-day bonus eight times, another took the
+   * whole 7/14/30/60 set four times and sat top of the leaderboard on 3,276
+   * points having earned 1,326.
+   *
+   * The test below that asserted "pays again for a milestone reached again
+   * after a break" is gone: it described the overpayment as intended. What has
+   * been paid is now a fact about the ledger, and this function only says what
+   * a run of a given length qualifies for.
+   */
+  it('lists every milestone at or below the run', () => {
+    expect(milestonesReached(7)).toEqual([7]);
+    expect(milestonesReached(30)).toEqual([7, 14, 30]);
+    expect(milestonesReached(100)).toEqual([7, 14, 30, 60, 100]);
   });
 
-  // Recounting is allowed to happen several times a day, so this is what stops
-  // the same seven days being paid for twice.
-  it('pays nothing for standing still', () => {
-    expect(milestonesCrossed(7, 7)).toEqual([]);
-    expect(milestonesCrossed(8, 8)).toEqual([]);
+  it('lists nothing below the first milestone', () => {
+    expect(milestonesReached(0)).toEqual([]);
+    expect(milestonesReached(6)).toEqual([]);
   });
 
-  it('pays for every milestone crossed at once, which backfilling can do', () => {
-    expect(milestonesCrossed(5, 30)).toEqual([7, 14, 30]);
+  it('does not care what the streak was before — that is the whole point', () => {
+    // Same answer whether the mentee just got here or has been here for weeks.
+    expect(milestonesReached(60)).toEqual(milestonesReached(60));
+    expect(milestonesReached(61)).toEqual([7, 14, 30, 60]);
+  });
+});
+
+describe('milestoneFromReason', () => {
+  // How an already-paid bonus is recognised in the ledger, including the rows
+  // written before any of this was fixed.
+  it('reads the milestone back out of a ledger reason', () => {
+    expect(milestoneFromReason('7 day streak bonus')).toBe(7);
+    expect(milestoneFromReason('100 day streak bonus')).toBe(100);
   });
 
-  it('pays nothing when a streak breaks', () => {
-    expect(milestonesCrossed(9, 1)).toEqual([]);
-    expect(milestonesCrossed(30, 0)).toEqual([]);
-  });
-
-  it('pays again for a milestone reached again after a break', () => {
-    expect(milestonesCrossed(6, 7)).toEqual([7]);
+  it('ignores anything that is not a milestone we pay for', () => {
+    expect(milestoneFromReason('9 day streak bonus')).toBeNull();
+    expect(milestoneFromReason('task completed')).toBeNull();
+    expect(milestoneFromReason(null)).toBeNull();
+    expect(milestoneFromReason('')).toBeNull();
   });
 });

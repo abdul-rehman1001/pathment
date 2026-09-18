@@ -1,27 +1,23 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, ArrowRight, CalendarDays, CheckCircle2, Clock, Loader2 } from 'lucide-react';
 
 import { publicApi, type PublicProgram } from '@/lib/services/public-api';
+import { qk, useApiQuery, STALE } from '@/lib/query';
+import { ResourceError } from '@/components/shared/ResourceError';
 
 export default function PublicProgramDetailPage() {
   const params = useParams();
   const id = String(params?.id || '');
-  const [program, setProgram] = useState<PublicProgram | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!id) return;
-    publicApi
-      .getProgram(id)
-      .then(setProgram)
-      .catch(() => setError('This program is not available.'))
-      .finally(() => setLoading(false));
-  }, [id]);
+  const { data: program, loading, error, errorStatus, refetch } = useApiQuery<PublicProgram>({
+    queryKey: qk.public.program(id),
+    queryFn: () => publicApi.getProgram(id),
+    enabled: !!id,
+    staleTime: STALE.long,
+    errorMessage: 'This program is not available.',
+  });
 
   if (loading) {
     return (
@@ -33,11 +29,15 @@ export default function PublicProgramDetailPage() {
 
   if (error || !program) {
     return (
-      <div className="max-w-2xl mx-auto px-4 py-20 text-center">
-        <p className="text-slate-600">{error || 'Program not found.'}</p>
-        <Link href="/programs" className="mt-4 inline-flex items-center gap-1 text-brand-700 font-medium">
-          <ArrowLeft className="w-4 h-4" /> Back to programs
-        </Link>
+      <div className="max-w-2xl mx-auto px-4 py-20">
+        <ResourceError
+          status={errorStatus ?? (program ? null : 404)}
+          resource="program"
+          message={error}
+          backHref="/programs"
+          backLabel="Back to programs"
+          onRetry={refetch}
+        />
       </div>
     );
   }

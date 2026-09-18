@@ -1,13 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback, type SetStateAction } from 'react';
 import { apiClient } from '@/lib/services/api-client';
 import { apiConfig } from '@/lib/config/api';
 import { preferencesApi } from '@/lib/services/preferences-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { validateProfileFields } from '@/lib/utils/validation';
 import { toast } from 'sonner';
+import { qk, useApiQuery, useInvalidate } from '@/lib/query';
 import { useAuth } from '@/lib/context/AuthContext';
 
 export interface ProfileData {
@@ -55,87 +56,92 @@ export interface UseMenteeSettingsReturn {
   handleLearningPreferencesUpdate: () => Promise<void>;
 }
 
+const DEFAULT_PROFILE: ProfileData = {
+  firstName: '', lastName: '', email: '', phone: '', bio: '',
+  city: '', country: '', languages: [], timezone: '',
+};
+
+const DEFAULT_MENTEE_PROFILE: MenteeProfileData = {
+  learningGoals: '', interests: [], priorExperience: '', currentEducation: '',
+  currentOccupation: '', linkedinUrl: '', githubUrl: '', portfolioUrl: '',
+};
+
+const DEFAULT_LEARNING: LearningPreferences = {
+  preferredLearningStyle: 'visual', timeCommitment: 10, preferredSchedule: 'flexible',
+};
+
+interface SettingsBundle {
+  profile: ProfileData;
+  menteeProfile: MenteeProfileData;
+  learning: LearningPreferences;
+}
+
+const EMPTY: SettingsBundle = {
+  profile: DEFAULT_PROFILE,
+  menteeProfile: DEFAULT_MENTEE_PROFILE,
+  learning: DEFAULT_LEARNING,
+};
+
 export function useMenteeSettings(): UseMenteeSettingsReturn {
   const { refreshUser } = useAuth();
-  const [loading, setLoading] = useState(true);
+  const invalidate = useInvalidate();
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('profile');
 
-  const [profileData, setProfileData] = useState<ProfileData>({
-    firstName: '',
-    lastName: '',
-    email: '',
-    phone: '',
-    bio: '',
-    city: '',
-    country: '',
-    languages: [],
-    timezone: '',
-  });
-
-  const [menteeProfile, setMenteeProfile] = useState<MenteeProfileData>({
-    learningGoals: '',
-    interests: [],
-    priorExperience: '',
-    currentEducation: '',
-    currentOccupation: '',
-    linkedinUrl: '',
-    githubUrl: '',
-    portfolioUrl: '',
-  });
-
-  const [learningPreferences, setLearningPreferences] = useState<LearningPreferences>({
-    preferredLearningStyle: 'visual',
-    timeCommitment: 10,
-    preferredSchedule: 'flexible',
-  });
-
-  const fetchSettings = useCallback(async () => {
-    try {
-      setLoading(true);
+  const { data, loading } = useApiQuery<SettingsBundle>({
+    queryKey: qk.profile.me,
+    queryFn: async () => {
       const response = await apiClient.get(apiConfig.endpoints.profile);
-      const data = response.data;
+      const d = response.data;
+      const prefs = d.settings?.preferences;
+      return {
+        profile: {
+          firstName: d.firstName || '',
+          lastName: d.lastName || '',
+          email: d.email || '',
+          phone: d.phone || '',
+          bio: d.bio || '',
+          city: d.city || '',
+          country: d.country || '',
+          languages: Array.isArray(d.languages) ? d.languages : [],
+          timezone: d.settings?.timezone || '',
+        },
+        menteeProfile: d.menteeProfile ? {
+          learningGoals: d.menteeProfile.learningGoals || '',
+          interests: d.menteeProfile.interests || [],
+          priorExperience: d.menteeProfile.priorExperience || '',
+          currentEducation: d.menteeProfile.currentEducation || '',
+          currentOccupation: d.menteeProfile.currentOccupation || '',
+          linkedinUrl: d.menteeProfile.linkedinUrl || '',
+          githubUrl: d.menteeProfile.githubUrl || '',
+          portfolioUrl: d.menteeProfile.portfolioUrl || '',
+        } : DEFAULT_MENTEE_PROFILE,
+        learning: { ...DEFAULT_LEARNING, ...(prefs?.learning && typeof prefs.learning === 'object' ? prefs.learning : {}) },
+      };
+    },
+    errorMessage: 'Failed to load settings',
+  });
 
-      setProfileData({
-        firstName: data.firstName || '',
-        lastName: data.lastName  || '',
-        email:     data.email    || '',
-        phone:     data.phone    || '',
-        bio:       data.bio      || '',
-        city:      data.city     || '',
-        country:   data.country  || '',
-        languages: Array.isArray(data.languages) ? data.languages : [],
-        timezone:  data.settings?.timezone || '',
-      });
+  const server = data ?? EMPTY;
 
-      if (data.menteeProfile) {
-        setMenteeProfile({
-          learningGoals:     data.menteeProfile.learningGoals     || '',
-          interests:         data.menteeProfile.interests         || [],
-          priorExperience:   data.menteeProfile.priorExperience   || '',
-          currentEducation:  data.menteeProfile.currentEducation  || '',
-          currentOccupation: data.menteeProfile.currentOccupation || '',
-          linkedinUrl:       data.menteeProfile.linkedinUrl       || '',
-          githubUrl:         data.menteeProfile.githubUrl         || '',
-          portfolioUrl:      data.menteeProfile.portfolioUrl      || '',
-        });
-      }
+  // The form owns its edits; the query owns the saved truth. See useAdminSettings.
+  const [profileDraft, setProfileDraft] = useState<ProfileData | null>(null);
+  const [menteeDraft, setMenteeDraft] = useState<MenteeProfileData | null>(null);
+  const [learningDraft, setLearningDraft] = useState<LearningPreferences | null>(null);
 
-      const prefs = data.settings?.preferences;
-      if (prefs?.learning && typeof prefs.learning === 'object') {
-        setLearningPreferences((prev) => ({ ...prev, ...prefs.learning }));
-      }
-    } catch (err: any) {
-      console.error('Failed to fetch settings:', err);
-      toast.error('Failed to load settings');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const profileData = profileDraft ?? server.profile;
+  const menteeProfile = menteeDraft ?? server.menteeProfile;
+  const learningPreferences = learningDraft ?? server.learning;
 
-  useEffect(() => {
-    fetchSettings();
-  }, [fetchSettings]);
+  const setProfileData = useCallback((v: SetStateAction<ProfileData>) => {
+    setProfileDraft((d) => (typeof v === 'function' ? (v as (p: ProfileData) => ProfileData)(d ?? server.profile) : v));
+  }, [server.profile]);
+  const setMenteeProfile = useCallback((v: SetStateAction<MenteeProfileData>) => {
+    setMenteeDraft((d) => (typeof v === 'function' ? (v as (p: MenteeProfileData) => MenteeProfileData)(d ?? server.menteeProfile) : v));
+  }, [server.menteeProfile]);
+  const setLearningPreferences = useCallback((v: SetStateAction<LearningPreferences>) => {
+    setLearningDraft((d) => (typeof v === 'function' ? (v as (p: LearningPreferences) => LearningPreferences)(d ?? server.learning) : v));
+  }, [server.learning]);
 
   const handleProfileUpdate = useCallback(async () => {
     const invalid = validateProfileFields(profileData);
@@ -144,38 +150,43 @@ export function useMenteeSettings(): UseMenteeSettingsReturn {
       setSaving(true);
       await apiClient.put(apiConfig.endpoints.profile, profileData);
       await refreshUser();
+      setProfileDraft(null);
+      await invalidate(qk.profile.me);
       toast.success('Profile updated successfully');
     } catch (err: any) {
       toast.error(extractApiErrorMessage(err, 'Failed to update profile'));
     } finally {
       setSaving(false);
     }
-  }, [profileData, refreshUser]);
+  }, [profileData, refreshUser, invalidate]);
 
   const handleMenteeProfileUpdate = useCallback(async () => {
     try {
       setSaving(true);
       await apiClient.post(`${apiConfig.endpoints.profile}/complete-mentee`, menteeProfile);
+      setMenteeDraft(null);
+      await invalidate(qk.profile.me);
       toast.success('Mentee profile updated successfully');
-      await fetchSettings();
     } catch (err: any) {
       toast.error(extractApiErrorMessage(err, 'Failed to update mentee profile'));
     } finally {
       setSaving(false);
     }
-  }, [menteeProfile, fetchSettings]);
+  }, [menteeProfile, invalidate]);
 
   const handleLearningPreferencesUpdate = useCallback(async () => {
     try {
       setSaving(true);
       await preferencesApi.update('learning', learningPreferences as unknown as Record<string, unknown>);
+      setLearningDraft(null);
+      await invalidate(qk.profile.me);
       toast.success('Learning preferences saved');
     } catch (err) {
       toast.error(extractApiErrorMessage(err, 'Failed to save learning preferences'));
     } finally {
       setSaving(false);
     }
-  }, [learningPreferences]);
+  }, [learningPreferences, invalidate]);
 
   return {
     loading,

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
+import { qk, useApiQuery } from '@/lib/query';
 import { programsApi } from '@/lib/services/program-api';
 import { usePagination } from '@/lib/hooks/shared/usePagination';
 import { useDebounce } from '@/lib/hooks/shared/useDebounce';
@@ -36,10 +37,11 @@ export interface UseProgramListReturn {
   handleDelete: (id: string) => Promise<void>;
 }
 
+interface ProgramPage { programs: Program[]; total: number }
+
+const NO_PROGRAMS: Program[] = [];
+
 export function useProgramList(): UseProgramListReturn {
-  const [programs, setPrograms] = useState<Program[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   const [search, setSearchRaw] = useState('');
   const [status, setStatusRaw] = useState<ProgramStatus>('all');
@@ -66,36 +68,40 @@ export function useProgramList(): UseProgramListReturn {
     pagination.reset();
   }, [pagination]);
 
-  const fetchPrograms = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-
+  const { data, loading, error, refetch } = useApiQuery<ProgramPage>({
+    queryKey: qk.admin.programList({
+      search: debouncedSearch.trim(), status, type, sortBy, sortOrder,
+      page: pagination.page, limit: pagination.limit,
+    }),
+    queryFn: async () => {
       const response = await programsApi.getAll({
-        ...(debouncedSearch.trim()          && { search: debouncedSearch.trim().slice(0, 100) }),
-        ...(status !== 'all'               && { status }),
-        ...(type !== 'all'                 && { type }),
+        ...(debouncedSearch.trim() && { search: debouncedSearch.trim().slice(0, 100) }),
+        ...(status !== 'all' && { status }),
+        ...(type !== 'all' && { type }),
         sortBy,
         sortOrder,
-        page:  pagination.page,
+        page: pagination.page,
         limit: pagination.limit,
       });
+      const total = response?.pagination?.totalItems
+        ?? response?.pagination?.total
+        ?? (response?.pagination?.totalPages ? response.pagination.totalPages * pagination.limit : 0);
+      return { programs: Array.isArray(response?.data) ? response.data : [], total };
+    },
+    errorMessage: 'Failed to load programs',
+  });
 
-      setPrograms(Array.isArray(response?.data) ? response.data : []);
-      const total = response?.pagination?.totalItems ?? response?.pagination?.total ?? (response?.pagination?.totalPages ? response.pagination.totalPages * pagination.limit : 0);
-      pagination.setTotal(total);
-    } catch (err: any) {
-      const msg = extractApiErrorMessage(err, 'Failed to load programs');
-      setError(msg);
-      toast.error(msg);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [debouncedSearch, status, type, sortBy, sortOrder, pagination.page, pagination.limit]);
+  const programs = data?.programs ?? NO_PROGRAMS;
+  const isLoading = loading;
+  const fetchPrograms = refetch;
 
+  // The page total belongs to the pagination helper, not the query.
+  const total = data?.total;
   useEffect(() => {
-    fetchPrograms();
-  }, [fetchPrograms]);
+    if (typeof total === 'number') pagination.setTotal(total);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [total]);
+
 
   const handleDelete = useCallback(async (id: string) => {
     try {

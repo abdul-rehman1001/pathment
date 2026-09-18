@@ -1,11 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
+import { qk, useApiQuery } from '@/lib/query';
 import { mentorApi } from '@/lib/services/enrollment-api';
 import { usePagination } from '@/lib/hooks/shared/usePagination';
 import { useDebounce } from '@/lib/hooks/shared/useDebounce';
-import { extractApiErrorMessage } from '@/lib/utils/api-error';
-import { toast } from 'sonner';
 
 export interface MentorListItem {
   id: string;
@@ -46,20 +45,19 @@ interface UseMentorsListReturn {
   refetch: () => Promise<void>;
 }
 
+interface MentorPage { mentors: MentorListItem[]; total?: number }
+
+const NO_MENTORS: MentorListItem[] = [];
+
 export function useMentorsList(): UseMentorsListReturn {
   const pagination = usePagination({ initialPage: 1, initialLimit: 20 });
   const [search, setSearchInput] = useState('');
   const [acceptingFilter, setAcceptingFilter] = useState<AcceptingFilter>('all');
   const debouncedSearch = useDebounce(search, 400);
 
-  const [mentors, setMentors] = useState<MentorListItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchMentors = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
+  const { data, loading, error, refetch } = useApiQuery<MentorPage>({
+    queryKey: [...qk.admin.mentorList(pagination.page, pagination.limit, debouncedSearch.trim()), acceptingFilter],
+    queryFn: async () => {
       const response = await mentorApi.getAll({
         ...(debouncedSearch.trim() && { search: debouncedSearch.trim() }),
         page: pagination.page,
@@ -68,27 +66,19 @@ export function useMentorsList(): UseMentorsListReturn {
           accepting: acceptingFilter === 'accepting' ? 'true' : 'false',
         }),
       });
+      return { mentors: response?.data?.mentors ?? [], total: response?.pagination?.totalItems };
+    },
+    errorMessage: 'Failed to load mentors',
+  });
 
-      const list: MentorListItem[] = response?.data?.mentors ?? [];
-      const meta = response?.pagination;
+  const mentors = data?.mentors ?? NO_MENTORS;
+  const isLoading = loading;
 
-      setMentors(list);
-      if (meta?.totalItems !== undefined) {
-        pagination.setTotal(meta.totalItems);
-      }
-    } catch (err: unknown) {
-      const msg = extractApiErrorMessage(err, 'Failed to load mentors');
-      setError(msg);
-      toast.error(msg);
-    } finally {
-      setIsLoading(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pagination.page, pagination.limit, debouncedSearch, acceptingFilter]);
-
+  const total = data?.total;
   useEffect(() => {
-    fetchMentors();
-  }, [fetchMentors]);
+    if (total !== undefined) pagination.setTotal(total);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [total]);
 
   // Reset to page 1 on filter/search change
   useEffect(() => {
@@ -105,6 +95,6 @@ export function useMentorsList(): UseMentorsListReturn {
     setSearch: setSearchInput,
     acceptingFilter,
     setAcceptingFilter,
-    refetch: fetchMentors,
+    refetch,
   };
 }

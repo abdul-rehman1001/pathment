@@ -43,7 +43,12 @@ export interface LeaderboardEntry {
   id: string;
   userId: string;
   rank: number;
-  points: number;
+  /** The progress score — the same number the mentor portal shows. */
+  score: number;
+  /** Its band: Exceptional, Excellent, Strong, Developing, Needs attention. */
+  band?: string;
+  tasksCompleted?: number;
+  onTimeRate?: number | null;
   user?: {
     id: string;
     firstName?: string;
@@ -96,10 +101,10 @@ export const gamificationApi = {
     return response.data.history;
   },
 
-  async getLeaderboard(periodType: 'daily' | 'weekly' | 'monthly' | 'all_time' = 'all_time', limit = 10): Promise<LeaderboardEntry[]> {
+  async getLeaderboard(limit = 10): Promise<LeaderboardEntry[]> {
     const response = await apiClient.get<ApiResponse<{ leaderboard: LeaderboardEntry[] }>>(
       '/gamification/leaderboard',
-      { params: { periodType, limit } }
+      { params: { limit } }
     );
     return response.data.leaderboard;
   }

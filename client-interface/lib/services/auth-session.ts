@@ -2,6 +2,7 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import { apiConfig } from '../config/api';
 import { tokenStore } from './token-store';
+import { getRateLimit } from '../utils/api-error';
 
 /**
  * auth-session — the ONE place that renews the access token.
@@ -87,6 +88,9 @@ function isTransient(error: unknown): boolean {
 let refreshPromise: Promise<string> | null = null;
 let consecutiveFailures = 0;
 let blockedUntil = 0;
+// A 429 is the server explicitly telling us to wait. Unlike a flaky network, it
+// is not resolved by trying again sooner — so `wake()` must not clear the window.
+let blockedByRateLimit = false;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let proactiveTimer: ReturnType<typeof setTimeout> | null = null;
 let expiredHandled = false;
@@ -128,6 +132,7 @@ export function refreshAccessToken(): Promise<string> {
       if (!token) throw new SessionExpiredError();
       consecutiveFailures = 0;
       blockedUntil = 0;
+      blockedByRateLimit = false;
       // The server ROTATES refresh tokens: the one we just sent is spent, and
       // the response carries its successor. Persist it before the access token,
       // because replaying a spent token is read as theft and ends every session.
@@ -143,7 +148,12 @@ export function refreshAccessToken(): Promise<string> {
       if (error instanceof SessionExpiredError) throw error;
       if (!isTransient(error)) throw new SessionExpiredError();
       // Transient: hold the session, back off, and self-heal in the background.
-      const wait = BACKOFF_MS[Math.min(consecutiveFailures, BACKOFF_MS.length - 1)];
+      const { limited, retryAfterSec } = getRateLimit(error);
+      blockedByRateLimit = limited;
+      // Honour the server's own retry-after rather than our generic curve.
+      const wait = limited
+        ? Math.max(retryAfterSec * 1000, BACKOFF_MS[0])
+        : BACKOFF_MS[Math.min(consecutiveFailures, BACKOFF_MS.length - 1)];
       consecutiveFailures += 1;
       blockedUntil = Date.now() + wait;
       scheduleRetry(wait);
@@ -195,7 +205,15 @@ export function startAuthSession(): () => void {
 
   const wake = () => {
     if (!tokenStore.getRefreshToken()) return;
-    blockedUntil = 0; // a fresh network / fresh attention deserves an immediate try
+    // A fresh network or fresh attention deserves an immediate try — but NOT when
+    // the server rate-limited us. Clearing the window unconditionally meant every
+    // tab focus and every `online` event fired another /auth/refresh straight into
+    // the limit that had just rejected us, across every open tab.
+    if (blockedByRateLimit && Date.now() < blockedUntil) {
+      scheduleRetry(blockedUntil - Date.now());
+      return;
+    }
+    blockedUntil = 0;
     if (needsRefresh()) refreshAccessToken().catch(() => { /* request path handles it */ });
     else scheduleProactiveRefresh();
   };
@@ -237,5 +255,6 @@ export function resetAuthSession(): void {
   expiredHandled = false;
   consecutiveFailures = 0;
   blockedUntil = 0;
+  blockedByRateLimit = false;
   scheduleProactiveRefresh();
 }

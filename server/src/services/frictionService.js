@@ -32,17 +32,33 @@ class FrictionService {
   /**
    * The mentee ids a LIST narrows to when the caller named none.
    *   undefined → no filter (admin tier: they see everything)
-   *   [ids]     → their own record, if they're a learner, plus every mentee they
-   *               mentor in a clan where `mentee.view` is actually in force
+   *   [ids]     → whoever the caller's current PORTAL is about
    * Derived from capabilities, never the base `role` column: a mentee-based
    * co-mentor really does mentor a clan, and an admin sub-role (core_team,
    * program_admin) doesn't read 'admin' there.
+   *
+   * `portal` is the hat the caller is wearing (middlewares/portalScope.js). It
+   * is what stopped the mentee Roadblocks page listing the caller's MENTEES'
+   * roadblocks: somebody who both leads a clan and learns in another is, to the
+   * union below, entitled to all of it — which is true, and completely wrong as
+   * an answer to "what is slowing ME down". The portal asks the narrower
+   * question. Without one (an older client, a script) the union stands, so this
+   * is additive.
    */
-  async #visibleMenteeIds(user) {
+  async #visibleMenteeIds(user, portal) {
     if (!user) throw new ForbiddenError('Authentication required');
     // Resolved once and threaded through — each of these would otherwise rebuild
     // the user's whole role set (memberships + cover + grants) from scratch.
     const assignments = await authzService.getAssignments(user);
+
+    const scoped = await authzService.menteeIdsForPortal(user, portal, {
+      permission: P.MENTEE_VIEW,
+      assignments
+    });
+    // An admin browsing the admin portal still sees everything; a mentee/mentor
+    // portal narrows even for them, because that is the portal they opened.
+    if (scoped) return scoped;
+
     if (await authzService.hasAdminAccess(user, { assignments })) return undefined;
     const [mentored, capabilities] = await Promise.all([
       authzService.resolveMenteeIds(user, { permission: P.MENTEE_VIEW, assignments }),
@@ -54,9 +70,9 @@ class FrictionService {
   }
 
   /** List scoping: `undefined` = unfiltered, `[]` = nothing this user can see. */
-  async #menteeScope(menteeId, user) {
+  async #menteeScope(menteeId, user, portal) {
     if (menteeId) return this.#assertCanAccessMentee(user, menteeId);
-    return this.#visibleMenteeIds(user);
+    return this.#visibleMenteeIds(user, portal);
   }
 
   /**
@@ -72,8 +88,8 @@ class FrictionService {
   }
 
   // ── Blockers ──────────────────────────────────────────────────────────────
-  async listBlockers({ menteeId, status, user }) {
-    const scope = await this.#menteeScope(menteeId, user);
+  async listBlockers({ menteeId, status, user, portal }) {
+    const scope = await this.#menteeScope(menteeId, user, portal);
     if (Array.isArray(scope) && scope.length === 0) return [];
     const where = {};
     if (scope !== undefined) where.menteeId = scope;
@@ -150,8 +166,8 @@ class FrictionService {
   }
 
   // ── Delays ──────────────────────────────────────────────────────────────
-  async listDelays({ menteeId, user }) {
-    const scope = await this.#menteeScope(menteeId, user);
+  async listDelays({ menteeId, user, portal }) {
+    const scope = await this.#menteeScope(menteeId, user, portal);
     if (Array.isArray(scope) && scope.length === 0) return [];
     const where = {};
     if (scope !== undefined) where.menteeId = scope;

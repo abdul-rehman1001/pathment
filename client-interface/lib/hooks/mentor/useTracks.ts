@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+'use client';
+
+import { useCallback } from 'react';
 import { tracksApi, type Track } from '@/lib/services/tracks-api';
+import { qk, useApiQuery } from '@/lib/query';
 
 export interface UseTracksReturn {
   tracks: Track[];
@@ -13,55 +16,31 @@ export interface UseTracksReturn {
   addTask: (id: string, title: string) => Promise<void>;
 }
 
+const EMPTY: Track[] = [];
+
 /** Mentor-facing tracks for one mentee (personal lanes + their tasks). */
 export function useTracks(menteeId: string | null): UseTracksReturn {
-  const [tracks, setTracks] = useState<Track[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, loading, error, refetch } = useApiQuery<Track[]>({
+    queryKey: qk.mentor.tracks(menteeId ?? ''),
+    queryFn: async () => (await tracksApi.listForMentee(menteeId!))?.data?.tracks ?? [],
+    enabled: !!menteeId,
+    errorMessage: 'Failed to load tracks',
+  });
 
-  const fetchTracks = useCallback(async () => {
-    if (!menteeId) { setTracks([]); setLoading(false); return; }
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await tracksApi.listForMentee(menteeId);
-      setTracks(res?.data?.tracks ?? []);
-    } catch {
-      setError('Failed to load tracks');
-    } finally {
-      setLoading(false);
-    }
-  }, [menteeId]);
+  const after = useCallback(async (call: Promise<unknown>) => {
+    await call;
+    await refetch();
+  }, [refetch]);
 
-  const create = useCallback(async (name: string) => {
-    if (!menteeId) return;
-    await tracksApi.create(menteeId, { name });
-    await fetchTracks();
-  }, [menteeId, fetchTracks]);
-
-  const rename = useCallback(async (id: string, name: string) => {
-    await tracksApi.rename(id, name);
-    await fetchTracks();
-  }, [fetchTracks]);
-
-  const archive = useCallback(async (id: string) => {
-    await tracksApi.setArchived(id, true);
-    await fetchTracks();
-  }, [fetchTracks]);
-
-  const remove = useCallback(async (id: string) => {
-    await tracksApi.remove(id);
-    await fetchTracks();
-  }, [fetchTracks]);
-
-  const addTask = useCallback(async (id: string, title: string) => {
-    await tracksApi.addTask(id, { title });
-    await fetchTracks();
-  }, [fetchTracks]);
-
-  useEffect(() => {
-    fetchTracks();
-  }, [fetchTracks]);
-
-  return { tracks, loading, error, refetch: fetchTracks, create, rename, archive, remove, addTask };
+  return {
+    tracks: data ?? EMPTY,
+    loading,
+    error,
+    refetch,
+    create: useCallback((name: string) => after(tracksApi.create(menteeId!, { name })), [after, menteeId]),
+    rename: useCallback((id: string, name: string) => after(tracksApi.rename(id, name)), [after]),
+    archive: useCallback((id: string) => after(tracksApi.setArchived(id, true)), [after]),
+    remove: useCallback((id: string) => after(tracksApi.remove(id)), [after]),
+    addTask: useCallback((id: string, title: string) => after(tracksApi.addTask(id, { title })), [after]),
+  };
 }

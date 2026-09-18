@@ -22,7 +22,6 @@ import {
 } from '@/lib/services/gamification-api';
 import { communityApi } from '@/lib/services/community-api';
 
-type LeaderboardPeriod = 'daily' | 'weekly' | 'monthly' | 'all_time';
 interface CommunityStanding { rank: number | null; points: number; tier: string }
 
 export default function MenteeGamificationPage() {
@@ -33,7 +32,6 @@ export default function MenteeGamificationPage() {
   const [history, setHistory] = useState<PointsHistoryEntry[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [community, setCommunity] = useState<CommunityStanding | null>(null);
-  const [period, setPeriod] = useState<LeaderboardPeriod>('all_time');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,7 +49,7 @@ export default function MenteeGamificationPage() {
           gamificationApi.getUserStats(user.id),
           gamificationApi.getUserBadges(user.id),
           gamificationApi.getUserPointsHistory(user.id, 12),
-          gamificationApi.getLeaderboard(period, 10),
+          gamificationApi.getLeaderboard(10),
           communityApi.leaderboard('global', null, 'all').catch(() => null)
         ]);
 
@@ -75,7 +73,7 @@ export default function MenteeGamificationPage() {
     return () => {
       mounted = false;
     };
-  }, [user?.id, period]);
+  }, [user?.id]);
 
   const levelProgress = useMemo(() => {
     const points = stats?.totalPoints || 0;
@@ -165,21 +163,15 @@ export default function MenteeGamificationPage() {
 
       <div className="grid gap-6 xl:grid-cols-3">
         <section className="xl:col-span-2 rounded-2xl border border-slate-200 bg-card p-5">
-          <div className="flex items-center justify-between mb-4">
+          {/* No period tabs: the progress score is a current standing, not points
+              banked over a window, so "this week's score" would be the same
+              number wearing a different label. */}
+          <div className="mb-4">
             <h2 className="text-slate-900">Top Leaderboard</h2>
-            <div className="inline-flex rounded-lg border border-slate-200 p-1 bg-slate-50">
-              {(['daily', 'weekly', 'monthly', 'all_time'] as LeaderboardPeriod[]).map((option) => (
-                <button
-                  key={option}
-                  onClick={() => setPeriod(option)}
-                  className={`px-3 py-1.5 rounded-md text-sm transition-colors ${
-                    period === option ? 'bg-brand-600 text-white' : 'text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  {option === 'all_time' ? 'All Time' : option[0].toUpperCase() + option.slice(1)}
-                </button>
-              ))}
-            </div>
+            <p className="text-slate-500 text-xs mt-0.5">
+              Ranked by progress score — the same measure your mentor sees under Teaching.
+              Badges and streaks are earned separately.
+            </p>
           </div>
 
           <div className="space-y-2">
@@ -208,7 +200,21 @@ export default function MenteeGamificationPage() {
                       {isCurrentUser && <p className="text-brand-700 text-xs">You</p>}
                     </div>
                   </div>
-                  <div className="text-slate-700 font-medium">{entry.points} pts</div>
+                  {/* The task count makes the score checkable: "462 pts from 52
+                      tasks" is a sentence somebody can verify against their own
+                      work, where a bare number is one they can only accept. */}
+                  <div className="text-right shrink-0">
+                    <div className="text-slate-700 font-medium">
+                      {entry.score}
+                      {entry.band && <span className="text-slate-500 text-xs font-normal"> · {entry.band}</span>}
+                    </div>
+                    {entry.tasksCompleted !== undefined && (
+                      <div className="text-slate-500 text-xs">
+                        {entry.tasksCompleted} task{entry.tasksCompleted === 1 ? '' : 's'}
+                        {entry.onTimeRate != null && ` · ${entry.onTimeRate}% on time`}
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             })}

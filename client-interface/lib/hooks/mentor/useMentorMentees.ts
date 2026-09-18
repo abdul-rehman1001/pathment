@@ -1,10 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { matchingApi } from '@/lib/services/enrollment-api';
 import { useAuth } from '@/lib/context/AuthContext';
-import { toast } from 'sonner';
+import { qk, useApiQuery } from '@/lib/query';
 
 export interface UseMentorMenteesReturn {
   matches: any[];
@@ -18,33 +18,24 @@ export interface UseMentorMenteesReturn {
   fetchMyMatches: () => Promise<void>;
 }
 
+const EMPTY_MATCHES: any[] = [];
+
 export function useMentorMentees(): UseMentorMenteesReturn {
   const { user } = useAuth();
-  const [matches, setMatches] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterProgram, setFilterProgram] = useState('all');
 
-  const fetchMyMatches = useCallback(async () => {
-    if (!user?.id) return;
-    try {
-      setLoading(true);
-      const response = await matchingApi.getMatches({ mentorId: user.id, status: 'active' });
-      const matchesList = response?.data?.matches || response?.matches || [];
-      setMatches(matchesList);
-    } catch (error: any) {
-      console.error('Failed to fetch matches:', error);
-      toast.error('Failed to load your mentees');
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.id]);
+  const { data, loading, refetch } = useApiQuery<any[]>({
+    queryKey: [...qk.mentor.mentees, user?.id ?? ''],
+    queryFn: async () => {
+      const response = await matchingApi.getMatches({ mentorId: user!.id, status: 'active' });
+      return response?.data?.matches || response?.matches || [];
+    },
+    enabled: !!user?.id,
+    errorMessage: 'Failed to load your mentees',
+  });
 
-  useEffect(() => {
-    if (user?.id) {
-      fetchMyMatches();
-    }
-  }, [user?.id, fetchMyMatches]);
+  const matches = data ?? EMPTY_MATCHES;
 
   const programs = useMemo(
     () => [...new Set(matches.map((m) => m.enrollment?.program?.name))].filter(Boolean) as string[],
@@ -74,6 +65,6 @@ export function useMentorMentees(): UseMentorMenteesReturn {
     filterProgram,
     setSearchTerm,
     setFilterProgram,
-    fetchMyMatches,
+    fetchMyMatches: refetch,
   };
 }

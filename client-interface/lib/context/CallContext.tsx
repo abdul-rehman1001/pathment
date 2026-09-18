@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { toast } from 'sonner';
 import { mentorApi } from '@/lib/services/mentor-api';
 import { menteeApi } from '@/lib/services/mentee-api';
+import { usePolling } from '@/lib/hooks/shared/usePolling';
 import { PersistentCall } from '@/components/shared/PersistentCall';
 import { ContributionModal, type ScoreRow } from '@/components/mentor/ContributionModal';
 
@@ -146,11 +147,9 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   }, [menteeIdForName]);
 
   // Periodic flush while a host call is up — on ANY screen, which is the point.
-  useEffect(() => {
-    if (!call || call.role !== 'host') return;
-    const t = setInterval(flushTalk, 20_000);
-    return () => clearInterval(t);
-  }, [call, flushTalk]);
+  // Through usePolling so a rate limit pauses it instead of being ignored.
+  const isHostCall = !!call && call.role === 'host';
+  usePolling(flushTalk, { intervalMs: isHostCall ? 20_000 : null, immediate: false });
 
   // Reads refs only, so it is stable — which matters, because the heartbeat and
   // the leave path both depend on it.
@@ -162,11 +161,12 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   // Guest presence heartbeat: keeps the mentor's "who is in the room right now"
   // fresh. Also survives navigation now, so browsing tasks mid-review no longer
   // makes a mentee look like they left.
-  useEffect(() => {
-    if (!call || call.role !== 'guest') return;
-    const hb = setInterval(() => { menteeApi.joinReview(call.sessionId, guestTalk()).catch(() => {}); }, 15_000);
-    return () => clearInterval(hb);
-  }, [call, guestTalk]);
+  const guestSessionId = call && call.role === 'guest' ? call.sessionId : null;
+  const guestHeartbeat = useCallback(
+    () => (guestSessionId ? menteeApi.joinReview(guestSessionId, guestTalk()) : Promise.resolve()),
+    [guestSessionId, guestTalk]
+  );
+  usePolling(guestHeartbeat, { intervalMs: guestSessionId ? 15_000 : null, immediate: false });
 
   const startCall = useCallback((spec: CallSpec) => {
     // Fresh call — reset every accumulator, and allow ending again.

@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import {
   BookOpen, Calendar, CalendarCheck, CheckCircle2, Clock, Mail, Phone, MessageSquare, Plus, PauseCircle, PlayCircle,
   Target, TrendingUp, TrendingDown, Minus, Flag, Check, User, Loader2,
-  Star, ThumbsUp, ThumbsDown, AlertCircle, ChevronLeft, Trash2,
+  Star, ThumbsUp, ThumbsDown, AlertCircle, ChevronLeft, Trash2, Lock,
 } from 'lucide-react';
 import { useMenteeDetailPage, useMenteeProfile, type CohortRisk, type CohortMomentum } from '@/lib/hooks/mentor';
 import { useAuth } from '@/lib/context/AuthContext';
@@ -93,7 +93,7 @@ export default function MenteeDetail() {
   const menteeId = params.id as string;
 
   const {
-    match, tasks, loading, completionLoading, rejectReason,
+    match, tasks, loadError, loading, completionLoading, rejectReason,
     showRejectModal, showCompleteConfirm, setRejectReason,
     setShowRejectModal, setShowCompleteConfirm,
     handleApproveCompletion, handleRejectCompletion, fetchMenteeDetails,
@@ -216,13 +216,41 @@ export default function MenteeDetail() {
   }
 
   if (!match) {
+    // Say which of the three things actually happened. "Mentee not found" for a
+    // 403 sent mentors looking for deleted data when the real cause was an
+    // access rule, and gave them nothing to act on.
+    const denied = loadError === 'forbidden';
+    const broke = loadError === 'failed';
     return (
       <div className="text-center py-12">
-        <User className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-        <p className="text-slate-600">Mentee not found</p>
-        <Link href="/mentor/mentees" className="text-brand-600 hover:text-brand-700 text-sm mt-2 inline-block">
-          Back to Mentees
-        </Link>
+        {denied
+          ? <Lock className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+          : <User className="w-12 h-12 text-slate-300 mx-auto mb-3" />}
+        <p className="text-slate-800 font-medium">
+          {denied ? 'You do not have access to this mentee'
+            : broke ? 'Could not load this mentee'
+              : 'Mentee not found'}
+        </p>
+        <p className="text-slate-500 text-sm mt-1 max-w-sm mx-auto">
+          {denied
+            ? 'They may have been moved to another clan, or your permissions for their clan changed. Ask an admin or their lead mentor if you need access.'
+            : broke
+              ? 'Something went wrong on our end. Try again in a moment.'
+              : 'This mentee is not in any of your clans.'}
+        </p>
+        <div className="mt-4 flex items-center justify-center gap-3">
+          {broke && (
+            <button
+              onClick={() => fetchMenteeDetails()}
+              className="text-brand-600 hover:text-brand-700 text-sm font-medium"
+            >
+              Try again
+            </button>
+          )}
+          <Link href="/mentor/mentees" className="text-brand-600 hover:text-brand-700 text-sm">
+            Back to Mentees
+          </Link>
+        </div>
       </div>
     );
   }
@@ -253,6 +281,20 @@ export default function MenteeDetail() {
 
   return (
     <div className="space-y-6">
+      {/* Paused mentees still open (that is the point - you resume them from
+          here), but their numbers are frozen and they are out of reports. Say so
+          rather than leaving the mentor to infer it from a toggle. */}
+      {pauseState?.paused && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <PauseCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <p className="text-sm text-amber-900">
+            <span className="font-medium">This mentee is paused.</span>{' '}
+            They stay in the clan but are excluded from reports and reminders. Use
+            Resume to bring them back.
+          </p>
+        </div>
+      )}
+
       {/* ── Header ───────────────────────────────────────────────────── */}
       <div>
         <Link href="/mentor/mentees" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 mb-4">

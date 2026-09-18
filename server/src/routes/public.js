@@ -1,8 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const publicController = require('../controllers/publicController');
+const clanController = require('../controllers/clanController');
 const upload = require('../middlewares/upload');
-const { publicIntakeLimiter } = require('../middlewares/rateLimiter');
+const { publicIntakeLimiter, certificateVerifyLimiter } = require('../middlewares/rateLimiter');
+const { authenticate, optionalAuth } = require('../middlewares/auth');
+const { validateBody } = require('../middlewares/validate');
+const clanSchemas = require('../validations/clanValidation');
 
 /**
  * Public, UNAUTHENTICATED intake surface. Nothing here requires a login - it
@@ -26,6 +30,12 @@ router.post('/cohorts/:slug/resume', publicIntakeLimiter, publicController.resum
 
 // Applicant status + assessment (magic-link token)
 router.get('/applications/:token', publicController.getStatus);
+
+// ── Credential verification ─────────────────────────────────────────────────
+// Deliberately unauthenticated: the reason a number is printed on a certificate
+// is so a stranger reading a CV can check it. The response carries only what
+// confirms the claim — see certificateService.verifyByNumber.
+router.get('/verify/:number', certificateVerifyLimiter, publicController.verifyCertificate);
 router.patch('/applications/:token', publicIntakeLimiter, publicController.updateInfo);
 router.post('/applications/:token/withdraw', publicIntakeLimiter, publicController.withdraw);
 router.post('/applications/:token/assessment', publicIntakeLimiter, publicController.submitAssessment);
@@ -34,6 +44,21 @@ router.post(
   publicIntakeLimiter,
   upload.singleSafe('file'),
   publicController.uploadFile
+);
+
+// Public clan joining link (opaque token). GET may include optional auth so an
+// already-logged-in visitor sees membership/pending state. POST requires auth.
+router.get(
+  '/clans/join/:token',
+  optionalAuth,
+  clanController.getPublicClanJoin
+);
+router.post(
+  '/clans/join/:token/request',
+  publicIntakeLimiter,
+  authenticate,
+  validateBody(clanSchemas.publicJoinRequestBody),
+  clanController.submitPublicJoinRequest
 );
 
 module.exports = router;
