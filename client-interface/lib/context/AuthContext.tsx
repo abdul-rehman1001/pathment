@@ -27,7 +27,7 @@ interface AuthContextType {
   setActiveRole: (role: UserRole) => void;
   login: (credentials: LoginCredentials, rememberMe?: boolean) => Promise<{ requiresTwoFactor: boolean }>;
   verify2FA: (code: string, rememberMe?: boolean) => Promise<void>;
-  register: (data: RegisterData) => Promise<void>;
+  register: (data: RegisterData) => Promise<any>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   updateUser: (updates: Partial<User>) => void;
@@ -227,8 +227,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = async (data: RegisterData) => {
     try {
-      await apiClient.post(apiConfig.endpoints.register, data);
-      // After registration, user needs to verify email
+      const response = await apiClient.post<any>(apiConfig.endpoints.register, data);
+      return response?.data || response;
     } catch (error) {
       throw error;
     }

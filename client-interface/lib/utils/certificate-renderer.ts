@@ -8,7 +8,20 @@
  * 4. Export via canvas.toBlob() is 100% clean, fast, and offline-safe.
  */
 
-import type { CertificateTemplate } from '@/lib/services/certificates-api';
+import type { CertificateElement, CertificateTemplate } from '@/lib/services/certificates-api';
+
+/**
+ * The parts of a template that actually get drawn.
+ *
+ * Narrower than `CertificateTemplate` on purpose: rendering does not need an
+ * id, a status or a createdAt, and saying so lets the editor preview a template
+ * that is still being built — the working copy on screen, not the last version
+ * saved to the server.
+ */
+export type RenderableTemplate = Pick<
+  CertificateTemplate,
+  'bgImageUrl' | 'logoUrl' | 'logoConfig' | 'config' | 'criteria'
+>;
 
 export interface CertificateRenderData {
   menteeName:      string;
@@ -17,6 +30,12 @@ export interface CertificateRenderData {
   dateIssued:      string;
   issuerName:      string;
   issuerTitle:     string;
+  /** The tier this certificate was awarded at — what tier-aware elements resolve against. */
+  tier?:           string;
+  /** That tier's display name, for the {{tier_name}} variable. */
+  tierName?:       string;
+  /** The credential's public number, printed on it. */
+  certificateNumber?: string;
 }
 
 // ==================== ASSET PRE-FETCHING ====================
@@ -45,10 +64,31 @@ async function prefetchTemplateAssets(
 
   if (template.bgImageUrl)  urls.add(template.bgImageUrl);
   if (template.logoUrl)     urls.add(template.logoUrl);
+  // Each tier's own certificate artwork.
+  for (const tier of template.criteria ?? []) {
+    if (tier.artworkUrl) urls.add(tier.artworkUrl);
+  }
 
-  for (const el of template.config ?? []) {
-    if (el.type === 'badge' && (el as any).badgeUrl) urls.add((el as any).badgeUrl);
-    if (el.type === 'image' && (el as any).imageUrl) urls.add((el as any).imageUrl);
+  const everyLayer = [
+    ...(template.config ?? []),
+    ...(template.criteria ?? []).flatMap(tier => tier.layout ?? []),
+  ];
+  for (const el of everyLayer) {
+    if (el.type === 'badge' && el.badgeUrl) urls.add(el.badgeUrl);
+    if (el.type === 'image' && el.imageUrl) urls.add(el.imageUrl);
+    // Per-tier badge art. Every tier's URL is fetched, not just the one being
+    // rendered, because prefetching happens before we know which element
+    // resolves to what and the set is small (one image per tier at most).
+    if (el.type === 'badge' && el.tierValues) {
+      for (const url of Object.values(el.tierValues)) {
+        if (typeof url === 'string' && url.trim()) urls.add(url);
+      }
+    }
+  }
+  // Tier badges declared on the criteria, which is where a badge element falls
+  // back to when it carries no art of its own.
+  for (const tier of template.criteria ?? []) {
+    if (tier.badgeUrl) urls.add(tier.badgeUrl);
   }
   if (badgeUrlOverride) urls.add(badgeUrlOverride);
 
@@ -125,12 +165,133 @@ async function ensureFontsLoaded(): Promise<void> {
   return fontLoadPromise;
 }
 
+// ==================== TIER-AWARE RESOLUTION ====================
+
+/**
+ * One design, several outcomes.
+ *
+ * A certificate template is authored once but issued at whichever tier the
+ * recipient earned, and the parts that should differ between a gold and a
+ * participation award are usually small: a line of text, a badge, a seal that
+ * only the top tier gets. Splitting the template per tier would mean four
+ * near-identical designs that drift apart the first time somebody moves the
+ * signature line. So the *element* carries the variation instead:
+ *
+ *   tierValues       what this element says (text) or shows (badge) per tier
+ *   visibleForTiers  which tiers see it at all
+ *
+ * Both are optional and both are absent on every element authored before they
+ * existed, so an untouched template renders exactly as it always did.
+ */
+
+/** The tier a certificate is being rendered for. Empty string = none stated. */
+const tierOf = (data: CertificateRenderData): string => data.tier || '';
+
+/** The tier definition a certificate is being rendered against, if it has one. */
+function tierOfTemplate(template: RenderableTemplate, data: CertificateRenderData) {
+  const tier = tierOf(data);
+  if (!tier) return undefined;
+  return (template.criteria || []).find(c => c.id === tier);
+}
+
+/**
+ * The image this certificate is drawn on.
+ *
+ * Each tier owns its whole design now, so the artwork comes from the tier
+ * rather than from one background shared by all of them. `bgImageUrl` remains
+ * the fallback for a tier whose artwork has not been uploaded yet, and for
+ * rendering with no tier stated at all (the builder canvas) — a half-configured
+ * template should still show something rather than a blank page.
+ */
+export function resolveArtworkUrl(template: RenderableTemplate, data: CertificateRenderData): string {
+  return tierOfTemplate(template, data)?.artworkUrl || template.bgImageUrl || '';
+}
+
+/**
+ * The layers to draw. Per tier, because two tiers' artwork rarely puts the
+ * recipient's name in the same place — which is the entire reason each tier
+ * carries its own design. Falls back to the template-wide `config` for a tier
+ * with no layout of its own.
+ */
+export function resolveLayout(template: RenderableTemplate, data: CertificateRenderData): CertificateElement[] {
+  const layout = tierOfTemplate(template, data)?.layout;
+  if (Array.isArray(layout) && layout.length) return layout;
+  return Array.isArray(template.config) ? template.config : [];
+}
+
+/**
+ * Is this element part of THIS tier's certificate?
+ *
+ * An empty or missing list means "every tier" rather than "no tier" — the field
+ * is opt-in, and the alternative reading would make every existing element
+ * disappear the moment the field was introduced.
+ */
+export function isElementVisibleForTier(el: CertificateElement, data: CertificateRenderData): boolean {
+  const only = el.visibleForTiers;
+  if (!Array.isArray(only) || only.length === 0) return true;
+  const tier = tierOf(data);
+  // Rendering without a stated tier (the editor canvas, a legacy caller) shows
+  // everything: hiding layers somebody is trying to position would be worse
+  // than showing one too many.
+  if (!tier) return true;
+  return only.includes(tier);
+}
+
+/** This element's per-tier value, or undefined when it does not vary here. */
+export function resolveTierValue(el: CertificateElement, data: CertificateRenderData): string | undefined {
+  const tier = tierOf(data);
+  if (!tier) return undefined;
+  const value = el.tierValues?.[tier];
+  // A blank entry is "nothing special for this tier", not "render an empty
+  // string" — otherwise filling in two tiers would silently blank the rest.
+  return typeof value === 'string' && value.trim() !== '' ? value : undefined;
+}
+
+/**
+ * The artwork a badge element should draw, most specific source first:
+ *   1. this element's own art for this tier   (tierValues)
+ *   2. the caller's explicit override         (badgeUrlOverride — legacy path)
+ *   3. this element's own fixed art           (badgeUrl)
+ *   4. the tier's badge from the criteria     (the default every template gets)
+ *
+ * The override sits above `badgeUrl` because that is the order the single-badge
+ * implementation used, and templates were authored against it.
+ */
+export function resolveBadgeUrl(
+  el: CertificateElement,
+  data: CertificateRenderData,
+  criteria?: Array<{ id: string; badgeUrl?: string }> | null,
+  badgeUrlOverride?: string | null,
+): string {
+  const perTier = resolveTierValue(el, data);
+  if (perTier) return perTier;
+  if (badgeUrlOverride) return badgeUrlOverride;
+  if (el.badgeUrl) return el.badgeUrl;
+  const tier = tierOf(data);
+  if (tier && Array.isArray(criteria)) {
+    return criteria.find(c => c.id === tier)?.badgeUrl || '';
+  }
+  return '';
+}
+
 // ==================== TEXT RESOLVER ====================
 
-export function resolveText(el: Record<string, any>, data: CertificateRenderData): string {
-  let text = el.text || '';
+export function resolveText(el: CertificateElement, data: CertificateRenderData): string {
+  // Per-tier wording is the most specific thing the author stated for THIS
+  // tier, so it outranks the layer's dynamicKey.
+  //
+  // It did not, and that silently discarded their work: a {{tier_name}} layer
+  // with per-type wording set (Gold → "OF GOLD", Participation → "OF
+  // PARTICIPATION") rendered "Participation Certificate", because this
+  // switch ran second and overwrote the value resolved just above. The wording
+  // was computed correctly and then thrown away.
+  //
+  // Variables are still substituted into per-tier wording further down, so
+  // "Awarded to {{mentee_name}} with Distinction" works as a gold-only line.
+  const perTier = resolveTierValue(el, data);
+  let text = perTier ?? (el.text || '');
 
-  if (el.dynamicKey) {
+  if (!perTier && el.dynamicKey) {
     switch (el.dynamicKey) {
       case 'mentee_name':
         text = data.menteeName || text;
@@ -149,6 +310,12 @@ export function resolveText(el: Record<string, any>, data: CertificateRenderData
       case 'issuer_title':
         text = data.issuerTitle || text;
         break;
+      case 'tier_name':
+        text = data.tierName || text;
+        break;
+      case 'certificate_number':
+        text = data.certificateNumber || text;
+        break;
     }
   }
 
@@ -160,7 +327,9 @@ export function resolveText(el: Record<string, any>, data: CertificateRenderData
       .replace(/\{\{\s*date_issued\s*\}\}/gi, data.dateIssued || '')
       .replace(/\{\{\s*issuer_name\s*\}\}/gi, data.issuerName || '')
       .replace(/\{\{\s*mentor_name\s*\}\}/gi, data.issuerName || '')
-      .replace(/\{\{\s*issuer_title\s*\}\}/gi, data.issuerTitle || '');
+      .replace(/\{\{\s*issuer_title\s*\}\}/gi, data.issuerTitle || '')
+      .replace(/\{\{\s*tier_name\s*\}\}/gi, data.tierName || '')
+      .replace(/\{\{\s*certificate_number\s*\}\}/gi, data.certificateNumber || '');
   }
 
   return text;
@@ -196,8 +365,8 @@ export async function renderCertificateToBlobUrl(
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-  // 1. Draw Background Image
-  const bgImg = imageMap.get(template.bgImageUrl || '');
+  // 1. Draw the certificate artwork — this tier's, not one shared background.
+  const bgImg = imageMap.get(resolveArtworkUrl(template, data));
   if (bgImg) {
     ctx.drawImage(bgImg, 0, 0, WIDTH, HEIGHT);
   }
@@ -214,16 +383,19 @@ export async function renderCertificateToBlobUrl(
     ctx.drawImage(logoImg, lx - lw / 2, ly - lh / 2, lw, lh);
   }
 
-  // 3. Draw Elements (Badges, Images, Text)
-  const elements = Array.isArray(template.config) ? template.config : [];
+  // 3. Draw the layers this tier positions on its own artwork.
+  const elements = resolveLayout(template, data);
 
   for (const el of elements) {
+    // A layer this tier does not get is simply not drawn.
+    if (!isElementVisibleForTier(el, data)) continue;
+
     const left  = ((el.xPercent  ?? 50) / 100) * WIDTH;
     const top   = ((el.yPercent  ?? 50) / 100) * HEIGHT;
     const width = ((el.widthPercent || 15) / 100) * WIDTH;
 
     if (el.type === 'badge') {
-      const rawUrl = badgeUrlOverride || (el as any).badgeUrl || '';
+      const rawUrl = resolveBadgeUrl(el, data, template.criteria, badgeUrlOverride);
       const badgeImg = imageMap.get(rawUrl);
       if (badgeImg) {
         const height = badgeImg.naturalWidth ? (width / badgeImg.naturalWidth) * badgeImg.naturalHeight : width;
@@ -233,7 +405,7 @@ export async function renderCertificateToBlobUrl(
     }
 
     if (el.type === 'image') {
-      const rawUrl = (el as any).imageUrl || '';
+      const rawUrl = el.imageUrl || '';
       const customImg = imageMap.get(rawUrl);
       if (customImg) {
         const height = customImg.naturalWidth ? (width / customImg.naturalWidth) * customImg.naturalHeight : width;
@@ -243,7 +415,7 @@ export async function renderCertificateToBlobUrl(
     }
 
     // Text (dynamic or static)
-    const text = resolveText(el as any, data);
+    const text = resolveText(el, data);
     if (!text) continue;
 
     const fontSize   = el.fontSizePercent ? (el.fontSizePercent / 100) * HEIGHT : 24;

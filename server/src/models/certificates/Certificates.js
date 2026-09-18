@@ -17,7 +17,11 @@ module.exports = (sequelize, DataTypes) => {
     programId: { type: DataTypes.UUID, allowNull: false, field: 'program_id' },
     status: { type: DataTypes.STRING(20), defaultValue: 'active' },
     aiEvaluation: { type: DataTypes.JSONB, field: 'ai_evaluation' },
-    aiEvaluationRanAt: { type: DataTypes.DATE, field: 'ai_evaluation_ran_at' }
+    aiEvaluationRanAt: { type: DataTypes.DATE, field: 'ai_evaluation_ran_at' },
+    // When mentors are asked to have finished reviewing the AI's tier
+    // assignments. A nudge, never a gate — nothing issues on its own when it
+    // passes; the admin's banner simply starts saying "overdue".
+    verificationDeadline: { type: DataTypes.DATE, field: 'verification_deadline' }
   }, { tableName: 'certificate_templates', underscored: true });
 
   CertificateTemplate.associate = function (models) {
@@ -38,6 +42,13 @@ module.exports = (sequelize, DataTypes) => {
     issuedBy: { type: DataTypes.UUID, allowNull: false, field: 'issued_by' },
     imageUrl: { type: DataTypes.TEXT, field: 'image_url' },
     tier: { type: DataTypes.STRING(50), defaultValue: 'participation' },
+    /**
+     * The credential's public identity: opaque, unambiguous, unique, and
+     * printed on the certificate itself. Assigned at issuance and never
+     * reused — a recipient quotes it on a CV and anybody can resolve it at
+     * /verify/<number>.
+     */
+    certificateNumber: { type: DataTypes.STRING(32), field: 'certificate_number', unique: true },
     metadata: { type: DataTypes.JSONB }
   }, { tableName: 'certificate_instances', underscored: true });
 
@@ -52,5 +63,70 @@ module.exports = (sequelize, DataTypes) => {
     }
   };
 
-  return [CertificateTemplate, CertificateInstance];
+  // 3. CertificateVerification (the mentor's review of an AI tier assignment)
+  const CertificateVerification = sequelize.define('CertificateVerification', {
+    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    templateId: { type: DataTypes.UUID, allowNull: false, field: 'template_id' },
+    menteeId: { type: DataTypes.UUID, allowNull: false, field: 'mentee_id' },
+    clanId: { type: DataTypes.UUID, field: 'clan_id' },
+    /** What the AI proposed — kept after an override so the change stays visible. */
+    aiTier: { type: DataTypes.STRING(50), field: 'ai_tier' },
+    aiMatchScore: { type: DataTypes.DECIMAL(5, 2), field: 'ai_match_score' },
+    /** What will actually be issued. */
+    finalTier: { type: DataTypes.STRING(50), field: 'final_tier' },
+    overridden: { type: DataTypes.BOOLEAN, defaultValue: false },
+    overrideReason: { type: DataTypes.TEXT, field: 'override_reason' },
+    status: {
+      type: DataTypes.STRING(20),
+      defaultValue: 'pending',
+      validate: { isIn: [['pending', 'verified']] }
+    },
+    verifiedBy: { type: DataTypes.UUID, field: 'verified_by' },
+    verifiedAt: { type: DataTypes.DATE, field: 'verified_at' }
+  }, { tableName: 'certificate_verifications', underscored: true });
+
+  CertificateVerification.associate = function (models) {
+    if (models.CertificateTemplate) {
+      CertificateVerification.belongsTo(models.CertificateTemplate, { foreignKey: 'templateId', as: 'template' });
+    }
+    if (models.User) {
+      CertificateVerification.belongsTo(models.User, { foreignKey: 'menteeId', as: 'mentee' });
+      CertificateVerification.belongsTo(models.User, { foreignKey: 'verifiedBy', as: 'verifier' });
+    }
+    if (models.Clan) {
+      CertificateVerification.belongsTo(models.Clan, { foreignKey: 'clanId', as: 'clan' });
+    }
+  };
+
+  // 4. CertificateClanApproval — the admin releasing a clan for issuing.
+  //
+  // Verified and approved are different facts. "My mentors have finished
+  // checking" is the mentors' statement; "these may now go out" is the
+  // admin's, and only the second one lets a mentor press send.
+  const CertificateClanApproval = sequelize.define('CertificateClanApproval', {
+    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    templateId: { type: DataTypes.UUID, allowNull: false, field: 'template_id' },
+    clanId: { type: DataTypes.UUID, allowNull: false, field: 'clan_id' },
+    approvedBy: { type: DataTypes.UUID, field: 'approved_by' },
+    approvedAt: { type: DataTypes.DATE, defaultValue: DataTypes.NOW, field: 'approved_at' },
+    /** Released while mentors were still reviewing — allowed, but worth seeing. */
+    approvedBeforeVerified: {
+      type: DataTypes.BOOLEAN, defaultValue: false, field: 'approved_before_verified'
+    },
+    note: { type: DataTypes.TEXT }
+  }, { tableName: 'certificate_clan_approvals', underscored: true });
+
+  CertificateClanApproval.associate = function (models) {
+    if (models.CertificateTemplate) {
+      CertificateClanApproval.belongsTo(models.CertificateTemplate, { foreignKey: 'templateId', as: 'template' });
+    }
+    if (models.Clan) {
+      CertificateClanApproval.belongsTo(models.Clan, { foreignKey: 'clanId', as: 'clan' });
+    }
+    if (models.User) {
+      CertificateClanApproval.belongsTo(models.User, { foreignKey: 'approvedBy', as: 'approver' });
+    }
+  };
+
+  return [CertificateTemplate, CertificateInstance, CertificateVerification, CertificateClanApproval];
 };

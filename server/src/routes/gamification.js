@@ -1,15 +1,23 @@
 const express = require('express');
 const Joi = require('joi');
 const gamificationController = require('../controllers/gamificationController');
-const { authenticate, authorize } = require('../middlewares/auth');
+const { authenticate, authorize, optionalAuth } = require('../middlewares/auth');
 const { requirePermission, requirePermissionMinScope } = require('../middlewares/authz');
 const { PERMISSIONS } = require('../config/permissions');
 const { validate } = require('../middlewares/validate');
 
 const router = express.Router();
 
-// Public routes
-router.get('/leaderboard', gamificationController.getLeaderboard);
+// Public routes.
+//
+// The leaderboard takes `optionalAuth` rather than nothing: it ranks by the
+// progress score, two of whose dimensions are percentiles, so the peer group is
+// part of the answer and the caller's own programme is the sensible one. Left
+// unauthenticated it had no way to know that and returned an empty board to
+// every signed-in mentee. Anonymous callers still reach it and can name a
+// programme with ?programId=; without either there is no peer group and so no
+// honest ranking to give.
+router.get('/leaderboard', optionalAuth, gamificationController.getLeaderboard);
 router.get('/badges', gamificationController.getAllBadges);
 router.get('/challenges', gamificationController.getAllChallenges);
 

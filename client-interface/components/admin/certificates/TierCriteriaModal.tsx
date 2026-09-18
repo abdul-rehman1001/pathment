@@ -135,7 +135,7 @@ export function TierCriteriaModal({ isOpen, editingTier, onClose, onSave }: Tier
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-      <div className="bg-card border border-border w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
+      <div className="bg-card border border-border w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
         {}
         <div className="px-6 py-5 border-b border-border flex items-center justify-between">
           <h3 className="text-sm font-bold text-foreground flex items-center gap-1.5">
@@ -174,13 +174,13 @@ export function TierCriteriaModal({ isOpen, editingTier, onClose, onSave }: Tier
                     <div className="flex flex-col items-center gap-1 text-center">
                       <img src={tierModalBadgeUrl} className="w-10 h-10 object-contain rounded" alt="Badge" />
                       <span className="text-[10px] text-brand-600 font-bold">Badge uploaded ✓</span>
-                      <span className="text-[9px] text-muted-foreground">Click to replace</span>
+                      <span className="text-[10px] text-muted-foreground">Click to replace</span>
                     </div>
                   ) : (
                     <div className="flex flex-col items-center gap-1 text-center text-muted-foreground">
                       <ImageIcon className="w-5 h-5" />
                       <span>Click to upload badge image</span>
-                      <span className="text-[9px] text-muted-foreground/60">Fitted square icon</span>
+                      <span className="text-[10px] text-muted-foreground/60">Fitted square icon</span>
                     </div>
                   )}
                 </div>
@@ -192,7 +192,7 @@ export function TierCriteriaModal({ isOpen, editingTier, onClose, onSave }: Tier
           <div className="space-y-2 border-t border-border/60 pt-3">
             <div className="flex items-center justify-between">
               <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5 cursor-pointer">
-                Keywords / Tech Stack <span className="text-[9px] text-muted-foreground/60 font-normal">(AI matches loosely)</span>
+                Keywords / Tech Stack <span className="text-[10px] text-muted-foreground/60 font-normal">(AI matches loosely)</span>
               </label>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input
@@ -253,7 +253,7 @@ export function TierCriteriaModal({ isOpen, editingTier, onClose, onSave }: Tier
 
           {}
           <div className="space-y-3 border-t border-border/60 pt-3">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
               Hard Constraints <span className="normal-case font-normal text-muted-foreground/60">(AI cannot bypass these)</span>
             </p>
 
@@ -372,7 +372,7 @@ export function TierCriteriaModal({ isOpen, editingTier, onClose, onSave }: Tier
                 <div className="flex items-center justify-between">
                   <label className="text-[10px] font-semibold text-muted-foreground">
                     Min Attendance %
-                    <span className="ml-1 text-[9px] font-normal text-muted-foreground/60">(cohort reviews)</span>
+                    <span className="ml-1 text-[10px] font-normal text-muted-foreground/60">(cohort reviews)</span>
                   </label>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input
@@ -398,7 +398,7 @@ export function TierCriteriaModal({ isOpen, editingTier, onClose, onSave }: Tier
           {}
           <div className="space-y-2 border-t border-border/60 pt-3">
             <div className="flex items-center justify-between">
-              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">
+              <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block">
                 Custom AI Rule <span className="normal-case font-normal text-muted-foreground/60">(qualitative)</span>
               </label>
               <label className="relative inline-flex items-center cursor-pointer">
@@ -434,7 +434,7 @@ export function TierCriteriaModal({ isOpen, editingTier, onClose, onSave }: Tier
           <button
             type="button"
             onClick={handleSave}
-            className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold text-xs shadow-sm"
+            className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-medium text-sm shadow-sm"
           >
             Save Certificate Type
           </button>

@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { mentorApi } from '@/lib/services/mentor-api';
 import { useClan, ALL_CLANS } from '@/lib/context/ClanContext';
+import { scopeToClan, clanIdOfRow } from '@/lib/utils/clan-scope';
 import { qk, useApiQuery } from '@/lib/query';
 
 export type CohortMomentum = 'up' | 'flat' | 'down';
@@ -59,6 +60,8 @@ export interface UseMentorCohortReturn {
   totals: CohortTotals | null;
   loading: boolean;
   error: string | null;
+  /** Mentees the sidebar clan picker is holding back from `cohort`. */
+  hiddenByClan: number;
   refetch: () => Promise<void>;
 }
 
@@ -80,10 +83,15 @@ export function useMentorCohort(): UseMentorCohortReturn {
   const rawTotals = data?.totals ?? null;
 
   // Scope to the active clan (multi-clan mentors). 'all' = the merged view.
-  const cohort = useMemo(
-    () => (activeClanId === ALL_CLANS ? allCohort : allCohort.filter((m) => m.clan?.id === activeClanId)),
+  // One shared rule with the inbox, the approvals queue and the sidebar badges
+  // — see lib/utils/clan-scope.
+  const scoped = useMemo(
+    () => scopeToClan(allCohort, activeClanId, clanIdOfRow),
     [allCohort, activeClanId]
   );
+  const cohort = scoped.visible;
+  /** Mentees the clan picker is holding back — lets the page avoid claiming there are none. */
+  const hiddenByClan = scoped.hiddenByClan;
 
   // Recompute the summary totals for the scoped set so headline numbers match
   // what's on screen; the unscoped view keeps the server's totals as-is.
@@ -99,5 +107,5 @@ export function useMentorCohort(): UseMentorCohortReturn {
     };
   }, [cohort, allCohort, activeClanId, rawTotals]);
 
-  return { cohort, totals, loading, error, refetch };
+  return { cohort, totals, hiddenByClan, loading, error, refetch };
 }

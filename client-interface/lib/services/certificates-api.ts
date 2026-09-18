@@ -4,7 +4,7 @@ export interface CertificateElement {
   id: string;
   text: string;
   type: 'static' | 'dynamic' | 'badge' | 'image';
-  dynamicKey?: 'mentee_name' | 'mentor_name' | 'date_issued' | 'program_name' | 'fellowship_name' | 'issuer_name' | 'issuer_title';
+  dynamicKey?: 'mentee_name' | 'mentor_name' | 'date_issued' | 'program_name' | 'fellowship_name' | 'issuer_name' | 'issuer_title' | 'tier_name' | 'certificate_number';
   xPercent: number;
   yPercent: number;
   fontSizePercent: number;
@@ -14,6 +14,30 @@ export interface CertificateElement {
   fontStyle?: string;
   widthPercent?: number;
   imageUrl?: string;
+  /** A badge element's own artwork, when it does not vary by tier. */
+  badgeUrl?: string;
+
+  // ── Tier-aware content ────────────────────────────────────────────────────
+  // One certificate design, several outcomes. These two fields let a single
+  // element say something different — or nothing at all — depending on which
+  // tier the recipient was awarded, so gold and participation can share a
+  // layout without becoming two templates that drift apart.
+
+  /**
+   * Content keyed by tier id (the ids in `template.criteria`).
+   *   text elements  → the string to render for that tier
+   *   badge elements → the image URL to render for that tier
+   * A tier with no entry here falls back: text to `text`, a badge to that
+   * tier's own `criteria[].badgeUrl`. So filling in only the tiers that differ
+   * is a valid and normal way to use it.
+   */
+  tierValues?: Record<string, string>;
+
+  /**
+   * Render this element ONLY for these tiers. Absent or empty means every
+   * tier, which is what every element written before this field existed means.
+   */
+  visibleForTiers?: string[];
 }
 
 export interface CertificateTemplate {
@@ -31,6 +55,14 @@ export interface CertificateTemplate {
     id: string;
     name: string;
     badgeUrl?: string;
+    /**
+     * This tier's certificate — the whole artwork, not a badge pasted onto a
+     * shared background. Each tier is its own design, so the recipient's name,
+     * the date and the certificate number are positioned per tier in `layout`
+     * rather than once for the template.
+     */
+    artworkUrl?: string;
+    layout?: CertificateElement[];
     keywords?: string[] | null;
     minScorePercent?: number | null;
     maxOpenBlockers?: number | null;
@@ -68,6 +100,8 @@ export interface CertificateInstance {
 
   imageUrl?: string;
   tier: string;
+  /** The credential's public identity, printed on it and resolvable at /verify. */
+  certificateNumber?: string;
   metadata: any;
   template?: CertificateTemplate;
   mentee?: { id: string; firstName: string; lastName: string; email: string };
@@ -133,7 +167,296 @@ export interface AIEvaluationResult {
   reasoning: string;
 }
 
+
+// ── Mentor verification of AI-assigned grades ───────────────────────────────
+
+/** One mentee awaiting (or carrying) a mentor's sign-off on their grade. */
+export interface CertificateVerification {
+  id: string;
+  menteeId: string;
+  mentee: { id: string; firstName: string; lastName: string; email: string; profilePictureUrl?: string } | null;
+  clanId: string | null;
+  clanName: string | null;
+  /** What the AI proposed — kept after an override so the change stays visible. */
+  aiTier: string | null;
+  aiMatchScore: number | null;
+  /** What will actually be issued. */
+  finalTier: string | null;
+  overridden: boolean;
+  overrideReason: string | null;
+  status: 'pending' | 'verified';
+  verifiedAt: string | null;
+  verifiedBy: string | null;
+}
+
+/** Per-clan progress through the review round — what the admin's banner shows. */
+export interface VerificationClanStatus {
+  clanId: string | null;
+  clanName: string;
+  total: number;
+  verified: number;
+  pending: number;
+  overridden: number;
+  complete: boolean;
+  /** Released by the admin — this is what lets the clan's mentors send. */
+  approved: boolean;
+  /** Signed off but not released: the admin's move. */
+  readyToApprove: boolean;
+}
+
+/** A clan's state inside one mentor's review queue. */
+export interface ReviewerClanState {
+  clanId: string;
+  clanName: string | null;
+  pending: number;
+  verified: number;
+  /** The admin has released this clan. */
+  approved: boolean;
+  /** Whether this mentor may send certificates for it yet. */
+  canSend: boolean;
+}
+
+export interface VerificationSummary {
+  deadline: string | null;
+  /** The deadline has passed AND work is outstanding. Never blocks issuing. */
+  overdue: boolean;
+  total: number;
+  verified: number;
+  pending: number;
+  overridden: number;
+  allVerified: boolean;
+  /** Clans the admin has released for issuing. */
+  approvedClans: number;
+  /** Verified but not yet released — waiting on the admin. */
+  awaitingApproval: number;
+  clans: VerificationClanStatus[];
+}
+
+// ── "Why this certificate?" — one mentee's whole case ───────────────────────
+
+/** What the record says about a mentee today, recomputed on every read. */
+export interface MenteeMetrics {
+  mentee_id: string;
+  clan_id: string | null;
+  clan_name: string | null;
+  normalized_score: number;
+  /** Progress through the ROADMAP — see `completion_basis` for the sum. */
+  completion_rate: number;
+  on_time_rate: number;
+  avg_rating: number | null;
+  total_tasks: number;
+  completed_tasks: number;
+  /** Which denominator `completion_rate` used, and the counts behind it. */
+  completion_basis?: {
+    basis: 'roadmap' | 'all_assigned';
+    counted_total: number;
+    counted_completed: number;
+    roadmap_total: number;
+    roadmap_completed: number;
+    custom_total: number;
+    custom_completed: number;
+  };
+  score_breakdown: {
+    points_pct: number;
+    rating_pct: number;
+    task_score: number;
+    blocker_score: number;
+    on_time_pct: number;
+    attendance_pct: number | null;
+    composite: number;
+  };
+  blockers: {
+    total: number;
+    resolved: number;
+    open: number;
+    open_by_severity?: Record<string, number>;
+    categories?: string[];
+  };
+  cohort_reviews: {
+    total_sessions: number;
+    present: number;
+    excused: number;
+    absent: number;
+    attendance_pct: number | null;
+    data_available: boolean;
+  };
+  tasks?: EvidenceTask[];
+}
+
+/** One assigned task, as proof of work. */
+export interface EvidenceTask {
+  title: string;
+  description?: string | null;
+  status: string;
+  type: string;
+  difficulty: string;
+  isCustomTask: boolean;
+  isLate: boolean;
+  rating: number | null;
+  pointsPct?: number | null;
+  roadmapId?: string | null;
+  roadmapName?: string | null;
+  taskOrder?: number | null;
+  dueDate?: string | null;
+}
+
+/** A roadmap the mentee was set, and how far through it they are. */
+export interface EvidenceRoadmap {
+  id: string | null;
+  name: string;
+  total: number;
+  completed: number;
+  remaining: number;
+  late: number;
+  percent: number;
+  tasks: EvidenceTask[];
+}
+
+/** One tier's thresholds, as configured on the template. */
+export interface TierThresholds {
+  id: string;
+  name: string;
+  minScorePercent: number | null;
+  maxOpenBlockers: number | null;
+  minCompletionRate: number | null;
+  minOnTimeRate: number | null;
+  minAvgRating: number | null;
+  minAttendanceRate: number | null;
+}
+
+export interface TierConstraintChecks {
+  score_ok: boolean;
+  blockers_ok: boolean;
+  completion_rate_ok: boolean;
+  on_time_rate_ok: boolean;
+  rating_ok: boolean;
+  attendance_ok: boolean;
+}
+
+export interface MenteeEvidence {
+  mentee: { id: string; firstName: string; lastName: string; email: string; profilePictureUrl?: string | null };
+  clan: { id: string; name: string } | null;
+  criteria: TierThresholds[];
+  metrics: MenteeMetrics;
+  /** The work itself, grouped by the roadmap it came from. */
+  roadmaps: EvidenceRoadmap[];
+  constraints: {
+    /** The highest tier whose hard thresholds this mentee actually clears. */
+    maxEligibleTier: string;
+    hardChecks: Record<string, TierConstraintChecks>;
+  };
+  /** What the AI proposed, when it has been run. One input, not the answer. */
+  ai: AIEvaluationResult | null;
+  /** What a mentor decided — and, when they overruled the AI, why. */
+  verification: {
+    status: 'pending' | 'verified';
+    aiTier: string | null;
+    aiMatchScore: number | null;
+    finalTier: string | null;
+    overridden: boolean;
+    overrideReason: string | null;
+    verifiedAt: string | null;
+    verifiedBy: string | null;
+  } | null;
+  issued: { id: string; tier: string; certificateNumber: string | null; issuedAt: string } | null;
+}
+
 export const certificatesApi = {
+
+  /**
+   * Why one mentee is getting the certificate they are getting: live metrics,
+   * how they measure against each tier, the AI's opinion, and any mentor
+   * override with its reason. Scoped server-side.
+   */
+  getMenteeEvidence: (templateId: string, menteeId: string) =>
+    apiClient.get<{ success: boolean; data: MenteeEvidence }>(
+      `/certificates/templates/${templateId}/mentees/${menteeId}/evidence`
+    ),
+
+  // ── Verification round ────────────────────────────────────────────────────
+
+  /** The mentees this user must sign off on. Scoped to their clans server-side. */
+  listVerifications: (templateId: string, clanId?: string) => {
+    const qs = clanId ? `?clanId=${encodeURIComponent(clanId)}` : '';
+    return apiClient.get<{
+      success: boolean;
+      data: {
+        template: { id: string; name: string; criteria: CertificateTemplate['criteria']; verificationDeadline: string | null };
+        rows: CertificateVerification[];
+        clans: ReviewerClanState[];
+      };
+    }>(`/certificates/templates/${templateId}/verifications${qs}`);
+  },
+
+  /**
+   * Confirm or change one mentee's grade. Omit `finalTier` to accept the AI's.
+   * A different tier is an override and the server requires a reason.
+   */
+  verifyOne: (templateId: string, menteeId: string, body: { finalTier?: string; reason?: string }) =>
+    apiClient.post<{ success: boolean; data: { verification: CertificateVerification } }>(
+      `/certificates/templates/${templateId}/verifications/${menteeId}`, body
+    ),
+
+  /** Sign off several at once — "these all look right". */
+  verifyMany: (templateId: string, decisions: Array<{ menteeId: string; finalTier?: string; reason?: string }>) =>
+    apiClient.post<{ success: boolean; message: string; data: { verified: number } }>(
+      `/certificates/templates/${templateId}/verifications/bulk`, { decisions }, { timeout: 120000 }
+    ),
+
+  /**
+   * Release a clan for issuing. Verification says the grades are right;
+   * approval says they may go out — and only approval lets a mentor send.
+   */
+  approveClan: (templateId: string, clanId: string, note?: string) =>
+    apiClient.post<{ success: boolean; message: string; data: { approvedBeforeVerified: boolean; outstandingAtApproval: number } }>(
+      `/certificates/templates/${templateId}/clans/${clanId}/approve`, { note }
+    ),
+
+  /** Withdraw a clan's release — nothing more can be sent for it. */
+  revokeClanApproval: (templateId: string, clanId: string) =>
+    apiClient.delete<{ success: boolean; message: string }>(
+      `/certificates/templates/${templateId}/clans/${clanId}/approve`
+    ),
+
+  /** Per-clan progress, for the admin banner. */
+  getVerificationSummary: (templateId: string) =>
+    apiClient.get<{ success: boolean; data: VerificationSummary }>(
+      `/certificates/templates/${templateId}/verification-summary`
+    ),
+
+  /**
+   * Hand the graded mentees to their clans' mentors for sign-off, with a
+   * deadline. Explicit rather than automatic: an admin usually re-runs the AI
+   * while tuning the criteria, and notifying on every run is noise.
+   */
+  sendToClans: (templateId: string, body: { deadline?: string; clanIds?: string[] } = {}) =>
+    apiClient.post<{
+      success: boolean;
+      message: string;
+      data: { created: number; updated: number; notified: number; deadline: string };
+    }>(`/certificates/templates/${templateId}/send-to-clans`, body, { timeout: 120000 }),
+
+  /** Re-notify mentors, optionally moving the deadline. */
+  remindReviewers: (templateId: string, deadline?: string) =>
+    apiClient.post<{ success: boolean; message: string; data: { notified: number } }>(
+      `/certificates/templates/${templateId}/verifications-remind`, { deadline }
+    ),
+
+  /** Resolve a certificate number. Public — no auth, used by /verify. */
+  verifyCertificateNumber: (number: string) =>
+    apiClient.get<{
+      success: boolean;
+      data: {
+        valid: boolean;
+        certificateNumber?: string;
+        recipientName?: string | null;
+        tier?: string;
+        tierName?: string;
+        programName?: string | null;
+        templateName?: string | null;
+        issuedAt?: string;
+      };
+    }>(`/public/verify/${encodeURIComponent(number)}`),
 
   listTemplates: (programId?: string) => {
     const qs = new URLSearchParams();
@@ -192,7 +515,19 @@ export const certificatesApi = {
     tier?: string;
     recipients?: Array<{ menteeId: string; tier: string }>
   }) => 
-    apiClient.post<{ success: boolean; message: string; data: { instances: any[]; jobs: any[] } }>('/certificates/instances', data, { timeout: 120000 }),
+    apiClient.post<{
+      success: boolean;
+      message: string;
+      data: {
+        instances: Array<{ id: string; menteeId: string }>;
+        /** Actually issued. */
+        count: number;
+        /** Recipients skipped because they already hold this certificate. */
+        skipped: number;
+        /** True when every recipient was already issued, so nothing was sent. */
+        alreadyIssued?: boolean;
+      };
+    }>('/certificates/instances', data, { timeout: 120000 }),
     
   listMenteeCertificates: (menteeId: string) => 
     apiClient.get<{ success: boolean; data: CertificateInstance[] }>(`/certificates/instances/mentee/${menteeId}`),

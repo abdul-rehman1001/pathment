@@ -5,10 +5,10 @@ import { useAuth } from '@/lib/context/AuthContext';
 import { toast } from 'sonner';
 import {
   Award, Download, Linkedin,
-  Loader2, Calendar, ShieldCheck, X, Eye
+  Loader2, Calendar, ShieldCheck, X, Eye, BadgeCheck, Info
 } from 'lucide-react';
 import { certificatesApi, CertificateInstance } from '@/lib/services/certificates-api';
-import { CertificatePreview, type CertificateRenderData } from '@/components/certificates/shared';
+import { CertificatePreview, MenteeEvidenceDrawer, type CertificateRenderData } from '@/components/certificates/shared';
 import { downloadCertificateAsPng } from '@/lib/utils/certificate-renderer';
 
 // ==================== HELPERS ====================
@@ -25,6 +25,12 @@ function buildRenderData(cert: CertificateInstance, menteeName: string): Certifi
       ? `${cert.mentor.firstName} ${cert.mentor.lastName}`.trim()
       : 'Pathment Admin',
     issuerTitle: cert.mentor ? 'Mentor' : 'Pathment Admin',
+    // The tier the certificate was actually awarded at. Tier-aware layers —
+    // per-tier wording, per-tier badges, layers only the top tier gets —
+    // resolve against this, so it has to travel with the render data.
+    tier:        cert.tier,
+    tierName:    cert.template?.criteria?.find(c => c.id === cert.tier)?.name || cert.tier,
+    certificateNumber: cert.certificateNumber,
   };
 }
 
@@ -46,6 +52,13 @@ export default function MenteeCertificatesPage() {
   const [certificates, setCertificates] = useState<CertificateInstance[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [previewCert,  setPreviewCert]  = useState<CertificateInstance | null>(null);
+  /**
+   * Which certificate the mentee is asking "why did I get this?" about.
+   * Read-only for them: they see the same evidence their mentor reviewed —
+   * the numbers, how those measured against the tier, and any change a mentor
+   * made with the reason they gave — but they cannot re-grade themselves.
+   */
+  const [whyCert, setWhyCert] = useState<CertificateInstance | null>(null);
   const [downloading,  setDownloading]  = useState<string | null>(null);
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
@@ -99,11 +112,11 @@ export default function MenteeCertificatesPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="border-b border-border pb-4">
-        <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
-          <Award className="w-6 h-6 text-brand-500" />
-          My Certificates
+        <h1 className="text-slate-900 mb-2 inline-flex items-center gap-2">
+          <Award className="w-6 h-6 text-brand-600" />
+          My certificates
         </h1>
-        <p className="text-xs text-muted-foreground">View, download, and share your earned accomplishments</p>
+        <p className="text-slate-600">View, download, and share what you have earned.</p>
       </div>
 
       {/* Body */}
@@ -167,13 +180,28 @@ export default function MenteeCertificatesPage() {
                       {cert.template?.name || 'Certificate of Completion'}
                     </h3>
                     <div className="space-y-1 pt-1">
-                      <div className="flex items-center gap-1.5 text-[9px] text-muted-foreground font-semibold">
+                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-semibold">
                         <Calendar className="w-3 h-3 text-brand-500" /> Issued: {dateStr}
                       </div>
-                      <div className="flex items-center gap-1.5 text-[9px] text-muted-foreground font-semibold">
+                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-semibold">
                         <ShieldCheck className="w-3 h-3 text-brand-500" />
                         Verified by: {cert.mentor ? `${cert.mentor.firstName} ${cert.mentor.lastName}` : 'Pathment Admin'}
                       </div>
+                      {/* The credential's public identity. Shown as a link so a
+                          mentee can open the page anyone else would see when
+                          they check it — and copy the number from there. */}
+                      {cert.certificateNumber && (
+                        <a
+                          href={`/verify/${cert.certificateNumber}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex items-center gap-1.5 text-[10px] font-semibold text-brand-600 hover:underline"
+                        >
+                          <BadgeCheck className="w-3 h-3" />
+                          <span className="font-mono tracking-wider">{cert.certificateNumber}</span>
+                        </a>
+                      )}
                     </div>
                   </div>
 
@@ -187,6 +215,14 @@ export default function MenteeCertificatesPage() {
                     </button>
 
                     <button
+                      onClick={e => { e.stopPropagation(); setWhyCert(cert); }}
+                      className="p-2 bg-muted hover:bg-muted/70 text-foreground border border-border rounded-xl transition-colors flex items-center justify-center"
+                      title="Why did I get this?"
+                    >
+                      <Info className="w-3.5 h-3.5" />
+                    </button>
+
+                    <button
                       onClick={() => handleDownload(cert)}
                       disabled={isDownloading}
                       className="p-2 bg-muted hover:bg-muted/70 text-foreground border border-border rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-0.5 disabled:opacity-60"
@@ -195,7 +231,7 @@ export default function MenteeCertificatesPage() {
                       {isDownloading
                         ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                         : <Download className="w-3.5 h-3.5" />}
-                      <span className="text-[9px] font-bold">PNG</span>
+                      <span className="text-[10px] font-bold">PNG</span>
                     </button>
 
                     <a
@@ -215,6 +251,14 @@ export default function MenteeCertificatesPage() {
           })}
         </div>
       )}
+
+      {/* The case behind one certificate, for the person who earned it. */}
+      <MenteeEvidenceDrawer
+        templateId={whyCert?.templateId ?? null}
+        menteeId={whyCert?.menteeId ?? null}
+        onClose={() => setWhyCert(null)}
+        canDecide={false}
+      />
 
       {/* Full-screen preview modal */}
       {previewCert && (

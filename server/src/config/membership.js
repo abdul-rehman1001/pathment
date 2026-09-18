@@ -16,4 +16,17 @@
  */
 const VISIBLE_MEMBERSHIP_STATUSES = ['active', 'paused'];
 
-module.exports = { VISIBLE_MEMBERSHIP_STATUSES };
+/**
+ * Clan roles, strongest first.
+ *
+ * One person can hold several in one clan — the promotion path deliberately
+ * keeps somebody's mentee row when they become a co-mentor — so "what is this
+ * person here?" needs a tie-break, and it is always the most senior hat.
+ */
+const CLAN_ROLE_RANK = { lead_mentor: 3, core_team: 2, co_mentor: 1, mentee: 0 };
+
+/** The most senior of the clan roles given, or null when there are none. */
+const strongestClanRole = (roles) =>
+  [...(roles || [])].sort((a, b) => (CLAN_ROLE_RANK[b] ?? -1) - (CLAN_ROLE_RANK[a] ?? -1))[0] || null;
+
+module.exports = { VISIBLE_MEMBERSHIP_STATUSES, CLAN_ROLE_RANK, strongestClanRole };

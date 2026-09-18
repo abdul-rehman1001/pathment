@@ -17,6 +17,41 @@ type HistoryItem = {
   issuedBy:  { id: string; firstName: string; lastName: string; email: string; role: string } | null;
 };
 
+/**
+ * How a person's role reads in this list.
+ *
+ * The server sends the role held IN THIS PROGRAMME — lead_mentor, co_mentor,
+ * core_team, mentee or admin — rather than the account's signup role, so a
+ * co-mentor promoted from a mentee account is no longer labelled MENTEE beside
+ * certificates they issued. These labels have to cover all five: the old code
+ * tested only for 'mentor' / 'admin', so anything else fell through to the
+ * mentee styling with its raw key showing.
+ */
+const ROLE_LABEL: Record<string, string> = {
+  admin: 'Admin',
+  lead_mentor: 'Lead mentor',
+  co_mentor: 'Co-mentor',
+  core_team: 'Core team',
+  mentor: 'Mentor',
+  mentee: 'Mentee',
+};
+
+// brand-* for anyone who mentors, amber for the org, slate for a learner.
+// Hardcoded indigo-* is against the theming convention (all accent colour comes
+// from the brand token scale so the app re-skins by swapping CSS vars) and the
+// three that were here are gone with it.
+const ROLE_BADGE: Record<string, string> = {
+  admin: 'bg-amber-500/10 text-amber-600 border border-amber-500/20',
+  lead_mentor: 'bg-brand-500/15 text-brand-700 border border-brand-500/30',
+  co_mentor: 'bg-brand-500/10 text-brand-600 border border-brand-500/20',
+  mentor: 'bg-brand-500/10 text-brand-600 border border-brand-500/20',
+  core_team: 'bg-brand-500/5 text-brand-600 border border-brand-500/15',
+  mentee: 'bg-slate-500/10 text-slate-600 border border-slate-500/20',
+};
+
+const roleLabel = (role?: string | null) => ROLE_LABEL[role || ''] || role || 'Admin';
+const roleBadge = (role?: string | null) => ROLE_BADGE[role || ''] || ROLE_BADGE.mentee;
+
 interface CertificateHistoryLogProps {
   templateId: string;
   userRole:   'admin' | 'mentor';
@@ -263,7 +298,7 @@ export default function CertificateHistoryLog({ templateId, userRole }: Certific
       ) : (
         <div className="border border-border rounded-2xl overflow-hidden divide-y divide-border">
           {/* Header */}
-          <div className="grid grid-cols-12 gap-2 px-4 py-3 bg-muted/40 text-[10px] font-bold text-muted-foreground uppercase tracking-wider items-center">
+          <div className="grid grid-cols-12 gap-2 px-4 py-3 bg-muted/40 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider items-center">
             <div className="col-span-3">Recipient</div>
             <div className="col-span-2 text-center">Badge Tier</div>
             <div className="col-span-3">Issued By</div>
@@ -289,12 +324,8 @@ export default function CertificateHistoryLog({ templateId, userRole }: Certific
                           : 'Deleted User'}
                       </span>
                       {userRole === 'admin' && item.recipient && (
-                        <span className={`px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-wider ${
-                          item.recipient.role === 'mentor'
-                            ? 'bg-indigo-500/10 text-indigo-600'
-                            : 'bg-brand-500/10 text-brand-600'
-                        }`}>
-                          {item.recipient.role}
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${roleBadge(item.recipient.role)}`}>
+                          {roleLabel(item.recipient.role)}
                         </span>
                       )}
                     </div>
@@ -305,7 +336,7 @@ export default function CertificateHistoryLog({ templateId, userRole }: Certific
 
                   {/* Tier */}
                   <div className="col-span-2 flex justify-center">
-                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 border rounded-full text-[10px] font-bold uppercase tracking-wider ${getTierColor(item.tier)}`}>
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 border rounded-full text-[10px] font-semibold uppercase tracking-wider ${getTierColor(item.tier)}`}>
                       <Award className="w-3.5 h-3.5" /> {getTierName(item.tier)}
                     </span>
                   </div>
@@ -318,12 +349,8 @@ export default function CertificateHistoryLog({ templateId, userRole }: Certific
                           <span className="truncate">
                             {item.issuedBy.firstName} {item.issuedBy.lastName}
                           </span>
-                          <span className={`px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-wider ${
-                            item.issuedBy.role === 'admin'
-                              ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20'
-                              : 'bg-indigo-500/10 text-indigo-600 border border-indigo-500/20'
-                          }`}>
-                            {item.issuedBy.role || 'Admin'}
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${roleBadge(item.issuedBy.role)}`}>
+                            {roleLabel(item.issuedBy.role)}
                           </span>
                         </div>
                         <div className="text-[10px] text-muted-foreground truncate">

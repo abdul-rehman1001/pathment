@@ -84,6 +84,7 @@ export default function CohortReview() {
   // session on the same clan). Single-clan mentors never see the picker and the
   // server resolves their one clan automatically.
   const effectiveClanId = activeClanId !== ALL_CLANS ? activeClanId : (clans[0]?.id ?? null);
+  const activeClanName = clans.find((c) => c.id === effectiveClanId)?.name ?? null;
   useEffect(() => {
     if (clans.length >= 2 && activeClanId === ALL_CLANS && clans[0]?.id) {
       setActiveClanId(clans[0].id);
@@ -91,6 +92,29 @@ export default function CohortReview() {
   }, [clans, activeClanId, setActiveClanId]);
 
   const [idx, setIdx] = useState(0);
+  // Guards the one-time restore of ?mentee= below; the clan-change effect also
+  // trips it so a new clan never re-restores the previous clan's mentee.
+  const restoredRef = useRef(false);
+
+  // Switching clans restarts the review: a different clan has a different
+  // cohort and its own dated session, so a carried-over mentee index or a
+  // ?session=/?mentee= from the previous clan points at the wrong thing. The
+  // clan tabs used to do this in their click handler; now that the sidebar is
+  // the only control, the reset follows the clan instead of the button.
+  const previousClanRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!effectiveClanId) return;
+    if (previousClanRef.current === null) { previousClanRef.current = effectiveClanId; return; }
+    if (previousClanRef.current === effectiveClanId) return;
+    previousClanRef.current = effectiveClanId;
+    setIdx(0);
+    restoredRef.current = true; // do not re-restore the old clan's ?mentee=
+    const params = new URLSearchParams(Array.from(searchParams.entries()));
+    params.delete('session');
+    params.delete('mentee');
+    router.replace(`/mentor/review${params.toString() ? `?${params.toString()}` : ''}`, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveClanId]);
   const [tasks, setTasks] = useState<any[]>([]); // eslint-disable-line @typescript-eslint/no-explicit-any
   const [tasksLoading, setTasksLoading] = useState(false);
   const [profile, setProfile] = useState<any>(null); // eslint-disable-line @typescript-eslint/no-explicit-any -- full mentee profile (aiSummary/signals)
@@ -152,7 +176,6 @@ export default function CohortReview() {
   // loads (deep-link / refresh). After that, navigation (selectMentee) owns both
   // idx and the URL. Running this on every menteeParam change made it fight
   // selectMentee on a lagging param, so Prev/Next appeared not to update the URL.
-  const restoredRef = useRef(false);
   useEffect(() => {
     if (restoredRef.current || !cohort.length) return;
     restoredRef.current = true;
@@ -781,31 +804,13 @@ export default function CohortReview() {
         </div>
       </div>
 
-      {/* Clan tabs — only for mentors who run more than one clan. Each clan has
-          its own daily session + history, shared by its lead and co-mentors. */}
-      {clans.length >= 2 && (
-        <div className="flex items-center gap-1 overflow-x-auto border-b border-slate-200">
-          {clans.map((c) => {
-            const active = c.id === effectiveClanId;
-            return (
-              <button
-                key={c.id}
-                onClick={() => {
-                  if (c.id === activeClanId) return;
-                  setActiveClanId(c.id);
-                  setIdx(0);
-                  const params = new URLSearchParams(Array.from(searchParams.entries()));
-                  params.delete('session'); params.delete('mentee');
-                  router.replace(`/mentor/review${params.toString() ? `?${params.toString()}` : ''}`, { scroll: false });
-                }}
-                className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors ${
-                  active ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                {c.name}
-              </button>
-            );
-          })}
+      {/* The clan is chosen in the sidebar — there is no second control here.
+          The name is shown for orientation, because which clan's session you are
+          running is not otherwise visible on this screen. */}
+      {clans.length >= 2 && activeClanName && (
+        <div className="flex items-center gap-2 border-b border-slate-200 pb-2 text-sm">
+          <span className="font-medium text-slate-700">{activeClanName}</span>
+          <span className="text-xs text-slate-400">· switch clans in the sidebar</span>
         </div>
       )}
 

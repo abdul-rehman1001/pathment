@@ -8,6 +8,8 @@ interface TierCriteria {
   name: string;
   priority?: number;
   badgeUrl?: string;
+  /** The type's own certificate image — what actually gets issued. */
+  artworkUrl?: string;
   keywords?: string[] | null;
   minScorePercent?: number | null;
   maxOpenBlockers?: number | null;
@@ -66,7 +68,7 @@ export function CriteriaTable({ criteria, onAdd, onEdit, onDelete, onReorder }: 
   };
 
   return (
-    <div className="bg-card border border-border rounded-3xl p-6 shadow-xs space-y-5">
+    <div className="bg-card border border-border rounded-2xl p-6 shadow-xs space-y-5">
       {}
       <div className="flex items-center justify-between border-b border-border pb-4">
         <div className="flex items-start gap-3.5">
@@ -93,7 +95,7 @@ export function CriteriaTable({ criteria, onAdd, onEdit, onDelete, onReorder }: 
       {}
       <div className="border border-border rounded-2xl overflow-hidden bg-muted/10 divide-y divide-border">
         {}
-        <div className="grid grid-cols-12 gap-4 px-6 py-3.5 bg-muted/40 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+        <div className="grid grid-cols-12 gap-4 px-6 py-3.5 bg-muted/40 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
           <div className="col-span-1" />
           <div className="col-span-4">Certificate Type</div>
           <div className="col-span-5">Criteria Summary</div>
@@ -145,14 +147,27 @@ export function CriteriaTable({ criteria, onAdd, onEdit, onDelete, onReorder }: 
 
                 {}
                 <div className="col-span-4 flex items-center gap-2">
-                  {tier.badgeUrl ? (
-                    <img src={tier.badgeUrl} className="w-7 h-7 object-contain rounded-md" alt={tier.name} />
+                  {/* The type's own certificate artwork, which is the thing that
+                      gets issued. Falls back to its badge icon, then initials. */}
+                  {tier.artworkUrl || tier.badgeUrl ? (
+                    <img
+                      src={tier.artworkUrl || tier.badgeUrl}
+                      className="w-10 h-7 object-cover rounded-md border border-border"
+                      alt={tier.name}
+                    />
                   ) : (
-                    <div className="w-7 h-7 rounded-md bg-brand-500/10 flex items-center justify-center font-bold text-brand-500 text-[10px]">
+                    <div className="w-10 h-7 rounded-md bg-brand-500/10 flex items-center justify-center font-bold text-brand-500 text-[10px]">
                       {tier.name.slice(0, 2).toUpperCase()}
                     </div>
                   )}
-                  <span className="font-bold text-foreground">{tier.name}</span>
+                  <div className="min-w-0">
+                    <span className="font-bold text-foreground block truncate">{tier.name}</span>
+                    {/* A type with no artwork cannot produce a certificate. Flag
+                        it in the list, not at download time. */}
+                    {!tier.artworkUrl && (
+                      <span className="text-[10px] font-semibold text-amber-600 uppercase tracking-wider">No artwork</span>
+                    )}
+                  </div>
                 </div>
 
                 {}

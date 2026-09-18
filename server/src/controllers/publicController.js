@@ -1,6 +1,7 @@
 const { catchAsync } = require('../middlewares/errorHandler');
 const { successResponse } = require('../utils/responses');
 const publicIntakeService = require('../services/publicIntakeService');
+const certificateService = require('../services/certificateService');
 
 // ─── Catalog ─────────────────────────────────────────────────────────────────
 const listPrograms = catchAsync(async (req, res) => {
@@ -57,6 +58,23 @@ const uploadFile = catchAsync(async (req, res) => {
   res.status(201).json(successResponse('File uploaded', result, 201));
 });
 
+
+/**
+ * GET /api/public/verify/:number  — resolve a certificate number.
+ *
+ * Always 200: "this code is not a credential we issued" is a legitimate answer
+ * to a legitimate question, not an error. A 404 here would also let a caller
+ * distinguish "malformed" from "well-formed but unknown", which is a small
+ * oracle worth not handing out.
+ */
+const verifyCertificate = catchAsync(async (req, res) => {
+  const result = await certificateService.verifyByNumber(req.params.number);
+  res.status(200).json(successResponse(
+    result.valid ? 'Certificate verified' : 'No certificate found for that number',
+    result
+  ));
+});
+
 module.exports = {
   listPrograms,
   getProgram,
@@ -67,5 +85,6 @@ module.exports = {
   submitAssessment,
   updateInfo,
   withdraw,
-  uploadFile
+  uploadFile,
+  verifyCertificate
 };

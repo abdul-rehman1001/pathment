@@ -1,11 +1,18 @@
 'use client';
 
-import type { CertificateTemplate } from '@/lib/services/certificates-api';
-import { resolveText, type CertificateRenderData } from '@/lib/utils/certificate-renderer';
+import type { RenderableTemplate } from '@/lib/utils/certificate-renderer';
+import {
+  resolveText,
+  resolveBadgeUrl,
+  resolveArtworkUrl,
+  resolveLayout,
+  isElementVisibleForTier,
+  type CertificateRenderData,
+} from '@/lib/utils/certificate-renderer';
 export type { CertificateRenderData };
 
 interface CertificatePreviewProps {
-  template: CertificateTemplate;
+  template: RenderableTemplate;
   recipientData: CertificateRenderData;
   badgeUrlOverride?: string | null;
   className?: string;
@@ -19,10 +26,12 @@ export function CertificatePreview({
   badgeUrlOverride,
   className,
 }: CertificatePreviewProps) {
-  const bgImageUrl = template.bgImageUrl || '';
+  // This tier's artwork and this tier's layers — shared with the PNG renderer
+  // so the preview cannot promise something the download does not produce.
+  const bgImageUrl = resolveArtworkUrl(template, recipientData);
   const logoUrl = template.logoUrl || '';
   const logoConfig = template.logoConfig || { xPercent: 10, yPercent: 10, widthPercent: 15 };
-  const elements = Array.isArray(template.config) ? template.config : [];
+  const elements = resolveLayout(template, recipientData);
 
   return (
 
@@ -64,12 +73,17 @@ export function CertificatePreview({
 
       {/* Elements */}
       {elements.map((el, idx) => {
+        // Tier-aware layers: skip the ones this tier does not get. Kept in step
+        // with the canvas renderer (lib/utils/certificate-renderer) — the two
+        // must agree or the preview lies about what downloads.
+        if (!isElementVisibleForTier(el, recipientData)) return null;
+
         const left = el.xPercent ?? 50;
         const top = el.yPercent ?? 50;
         const width = el.widthPercent || 15;
 
         if (el.type === 'badge') {
-          const url = badgeUrlOverride || (el as any).badgeUrl || '';
+          const url = resolveBadgeUrl(el, recipientData, template.criteria, badgeUrlOverride);
           if (!url) return null;
           return (
             <div
@@ -89,7 +103,7 @@ export function CertificatePreview({
         }
 
         if (el.type === 'image') {
-          const url = (el as any).imageUrl || '';
+          const url = el.imageUrl || '';
           if (!url) return null;
           return (
             <div
@@ -109,7 +123,7 @@ export function CertificatePreview({
         }
 
         // static / dynamic text
-        const text = resolveText(el as any, recipientData);
+        const text = resolveText(el, recipientData);
         const fontSizeNum = el.fontSizePercent ?? 2.0;
         const fontSize = `${(fontSizeNum * 0.7067).toFixed(3)}cqw`;
         const color = el.color || '#1e293b';

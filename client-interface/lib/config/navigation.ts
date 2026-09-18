@@ -77,6 +77,7 @@ export const navigationConfig: Record<string, NavLink[]> = {
         { path: '/admin/users/mentees', icon: School, label: 'Mentees', permission: 'user.manage' },
         { path: '/admin/requests', icon: GitPullRequest, label: 'Clan Requests', permission: 'mentee.manage' },
         { path: '/admin/promotions', icon: TrendingUp, label: 'Promotions', permission: 'user.manage' },
+        { path: '/admin/top-performers', icon: Trophy, label: 'Top Performers', permission: 'user.manage' },
       ],
     },
     {
@@ -125,6 +126,7 @@ export const navigationConfig: Record<string, NavLink[]> = {
         { path: '/mentor/clan-team', icon: ShieldCheck, label: 'Clan Team' },
         { path: '/mentor/at-risk', icon: AlertTriangle, label: 'At-risk' },
         { path: '/mentor/promotions', icon: TrendingUp, label: 'Promotions' },
+        { path: '/mentor/top-performers', icon: Trophy, label: 'Top Performers' },
       ],
     },
     {

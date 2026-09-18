@@ -176,6 +176,18 @@ const publicIntakeLimiter = make({
   skipSuccessfulRequests: false,
 });
 
+// Public credential verification. A twelve-character code out of 5.3 x 10^17
+// cannot realistically be brute-forced, so this is not the thing keeping
+// credentials private — it stops the endpoint being used as free lookup traffic
+// and keeps one scraper from crowding out people actually checking a CV. Read
+// only, so the cap is generous: a recruiter checking a dozen codes is normal.
+const certificateVerifyLimiter = make({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  message: 'Too many verification lookups. Please try again shortly.',
+  skipSuccessfulRequests: false
+});
+
 module.exports = {
   loginLimiter,
   passwordResetLimiter,
@@ -186,6 +198,7 @@ module.exports = {
   refreshTokenLimiter,
   apiLimiter,
   publicIntakeLimiter,
+  certificateVerifyLimiter,
   // Exported for tests: the bucketing and exemption rules are the whole point of
   // the backstop, and they are easier to pin directly than through 3000 requests.
   callerKey,

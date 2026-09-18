@@ -58,6 +58,13 @@ async function checkRunCompletion(runId, triggeredBy) {
         { aiEvaluation: { results: enrichedResults, ranAt }, aiEvaluationRanAt: ranAt },
         { where: { id: templateId } }
       );
+
+      // The round is NOT opened here. Grading and asking mentors to review are
+      // two different decisions: an admin usually runs the AI more than once
+      // while tuning the criteria, and mailing every mentor on each run would
+      // train them to ignore the notification. The admin sends to clans
+      // explicitly, with a deadline they choose — see
+      // certificateVerificationService.sendToClans.
     }
 
     emitToUser(triggeredBy, 'ai-eval:complete', {

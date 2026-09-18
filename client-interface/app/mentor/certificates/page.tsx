@@ -1,20 +1,21 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
-  Loader2, Award, Calendar, ArrowLeft, Search,
-  Users, Send, Eye, CheckCircle2, XCircle, AlertCircle,
-  TrendingUp, ShieldOff, Download, ExternalLink, Linkedin, ShieldCheck, X, ShieldAlert, Info,
-  ChevronDown, Sparkles, Edit3
+  Loader2, Award, Calendar, ArrowLeft, Users, Send, Eye, CheckCircle2, XCircle, AlertCircle,
+  TrendingUp, Download, Linkedin, ShieldCheck, X, Info,
+  Sparkles, Edit3, Clock, Lock
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/context/AuthContext';
-import { certificatesApi, CertificateTemplate, CertificateInstance } from '@/lib/services/certificates-api';
+import { extractApiErrorMessage } from '@/lib/utils/api-error';
+import { certificatesApi, CertificateTemplate, CertificateInstance, type ReviewerClanState, type CertificateVerification } from '@/lib/services/certificates-api';
 import CertificateHistoryLog from '@/components/admin/certificates/CertificateHistoryLog';
 import { DuplicateWarnModal } from '@/components/shared';
 import { getTierBadgeColor, getTierButtonColor, getTierIconColor } from '@/lib/utils/certificates';
 import { Drawer } from '@/components/shared/Drawer';
-import { AIDetailDrawer, AIEvaluationBanner, RecipientRosterTable, CertificatePreview, type CertificateRenderData } from '@/components/certificates/shared';
+import { MenteeEvidenceDrawer, AIEvaluationBanner, RecipientRosterTable, CertificatePreview, RosterFilterBar, type CertificateRenderData, type ReviewFilter, type RosterSort } from '@/components/certificates/shared';
 import { useAIEvaluationProgress } from '@/components/admin/certificates/hooks';
 import { downloadCertificateAsPng } from '@/lib/utils/certificate-renderer';
 
@@ -31,6 +32,9 @@ type MenteeRow = {
   firstName: string;
   lastName: string;
   email: string;
+  /** Which clan they sit in, so the roster can be worked one clan at a time. */
+  clanId?: string | null;
+  clanName?: string | null;
   completedCount: number;
   totalTasks: number;
   criteriaMatch: number;
@@ -67,6 +71,7 @@ function EligibilityBadge({ match }: { match: number }) {
 
 export default function MentorCertificatesPage() {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
 
   const getLinkedInShareUrl = (c: CertificateInstance) => {
     const title = `Awarded: ${c.template?.name || 'Certificate of Mastery'} from Pathment`;
@@ -87,12 +92,44 @@ export default function MentorCertificatesPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
   const [badgeFilter, setBadgeFilter] = useState('all');
-  const [sortBy, setSortBy] = useState<'none' | 'score_desc' | 'score_asc'>('none');
+  const [clanFilter, setClanFilter] = useState('all');
+  const [reviewFilter, setReviewFilter] = useState<ReviewFilter>('all');
+  const [sortBy, setSortBy] = useState<RosterSort>('none');
   const [personalNote, setPersonalNote] = useState('');
   const [issuing, setIssuing] = useState(false);
+  /**
+   * Whether the admin has released this template for the mentor's clans.
+   *
+   * Sending is gated server-side, so without this the button was simply a way
+   * to earn a 403: the mentor pressed Issue and got an error instead of being
+   * told the admin has not approved yet. `null` = not loaded.
+   */
+  const [release, setRelease] = useState<ReviewerClanState[] | null>(null);
+
+  /**
+   * The open review round, keyed by mentee, or null before it has loaded.
+   *
+   * Reviewing and issuing are the same roster of people, so they are the same
+   * table: the mentor changes a grade in the row they are already looking at
+   * and signs it off there. A separate review screen meant holding one list in
+   * your head while reading another.
+   */
+  const [reviewRows, setReviewRows] = useState<Record<string, CertificateVerification> | null>(null);
+  const [reviewDeadline, setReviewDeadline] = useState<string | null>(null);
+  /**
+   * Whether the mentor has opened the round for editing. Grades sit locked
+   * until then — this table is also the issuing screen, and a stray click on a
+   * badge dropdown must not quietly re-grade somebody on the way past.
+   */
+  const [reviewing, setReviewing] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  /** Changed grades held back until the mentor says why. */
+  const [reasonDraft, setReasonDraft] = useState<
+    { decisions: Array<{ menteeId: string; finalTier: string }>; reasons: Record<string, string> } | null
+  >(null);
 
   const [mentorTiers, setMentorTiers] = useState<Record<string, string>>({});
-  const [aiDetailMentee, setAiDetailMentee] = useState<any | null>(null);
+  const [inspectedRecipient, setInspectedRecipient] = useState<any | null>(null);
 
   const {
     aiResults, setAiResults, aiRanAt, setAiRanAt, runningAI,
@@ -150,6 +187,12 @@ export default function MentorCertificatesPage() {
     dateIssued:    new Date(cert.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
     issuerName:    cert.mentor ? `${cert.mentor.firstName} ${cert.mentor.lastName}`.trim() : 'Pathment Admin',
     issuerTitle:   cert.mentor ? 'Mentor' : 'Pathment Admin',
+    // The tier the certificate was actually awarded at. Tier-aware layers —
+    // per-tier wording, per-tier badges, layers only the top tier gets —
+    // resolve against this, so it has to travel with the render data.
+    tier:        cert.tier,
+    tierName:    cert.template?.criteria?.find(c => c.id === cert.tier)?.name || cert.tier,
+    certificateNumber: cert.certificateNumber,
   });
 
   const getBadgeUrl = (cert: CertificateInstance): string | null => {
@@ -176,7 +219,59 @@ export default function MentorCertificatesPage() {
   };
 
   const currentTemplate = templates.find(t => t.id === activeTemplateId) ?? null;
+
+  /**
+   * The review round and the release gate come from one call, because they are
+   * one fact: who still needs signing off, and whether the admin has released
+   * the clan that follows from it. Refreshed on template change and after every
+   * decision, so an approval landing while this page is open shows up.
+   */
+  const loadReview = useCallback(async () => {
+    if (!activeTemplateId) { setRelease(null); setReviewRows(null); return; }
+    try {
+      const res = await certificatesApi.listVerifications(activeTemplateId);
+      setRelease(res.data?.clans ?? []);
+      setReviewDeadline(res.data?.template?.verificationDeadline ?? null);
+      const byMentee: Record<string, CertificateVerification> = {};
+      for (const row of res.data?.rows ?? []) byMentee[row.menteeId] = row;
+      setReviewRows(byMentee);
+    } catch {
+      // Advisory: a failed lookup must not strand the page. The server is the
+      // real gate, so the worst case is a button that 403s as it did before.
+      setRelease([]);
+      setReviewRows({});
+    }
+  }, [activeTemplateId]);
+
+  useEffect(() => { loadReview(); }, [loadReview]);
+
+  /**
+   * A clan is releasable when the admin has approved it. With no review round
+   * at all (`release` empty) the template predates this flow, so the old
+   * behaviour stands rather than locking a mentor out of a cycle already
+   * under way.
+   */
+  const noReviewRound = release !== null && release.length === 0;
+  const approvedClans = (release ?? []).filter(c => c.canSend);
+  const canIssue = noReviewRound || approvedClans.length > 0;
+  const awaitingApproval = (release ?? []).filter(c => !c.canSend);
   const criteria = currentTemplate?.criteria ?? [];
+
+  const reviewList = useMemo(() => Object.values(reviewRows ?? {}), [reviewRows]);
+  /** There is something to sign off on for this template. */
+  const reviewOpen = reviewList.length > 0;
+  const pendingReviewCount = reviewList.filter(r => r.status !== 'verified').length;
+  /**
+   * Locked whenever a round exists and the mentor has not opened it. Issuing is
+   * NOT gated on this — an approved clan can still be sent while the grades sit
+   * locked, which is the normal state once everything is signed off.
+   */
+  const tableLocked = reviewOpen && !reviewing;
+
+  const reviewDaysLeft = useMemo(() => {
+    if (!reviewDeadline) return null;
+    return Math.ceil((new Date(reviewDeadline).getTime() - Date.now()) / 86_400_000);
+  }, [reviewDeadline]);
 
   const fetchMyCertificates = async () => {
     if (!user?.id) return;
@@ -199,6 +294,23 @@ export default function MentorCertificatesPage() {
       fetchMyCertificates();
     }
   }, [activeTab, user?.id]);
+
+  /**
+   * The reminder notification links here with ?verify=<templateId>. Open that
+   * template with its grades already unlocked — the mentor followed a link that
+   * asked them to review, so make that the thing in front of them. Applied once
+   * so navigating back to the list does not snap them forward again.
+   */
+  const deepLinkApplied = useRef(false);
+  useEffect(() => {
+    if (deepLinkApplied.current) return;
+    const fromLink = searchParams.get('verify');
+    if (!fromLink) return;
+    deepLinkApplied.current = true;
+    setActiveTemplateId(fromLink);
+    setWorkspaceTab('issue');
+    setReviewing(true);
+  }, [searchParams]);
 
   useEffect(() => {
     certificatesApi.listTemplates()
@@ -358,6 +470,25 @@ export default function MentorCertificatesPage() {
       );
     }
 
+    if (clanFilter !== 'all') {
+      result = result.filter(m => m.clanId === clanFilter);
+    }
+
+    if (reviewFilter !== 'all') {
+      result = result.filter(m => {
+        const row = reviewRows?.[m.id];
+        switch (reviewFilter) {
+          case 'pending':  return !row || row.status !== 'verified';
+          case 'verified': return row?.status === 'verified';
+          case 'changed':  return Boolean(row?.overridden);
+          // "Approved to send" is a property of the clan, not the person: the
+          // admin releases a clan, and everyone in it becomes sendable.
+          case 'sendable': return (release ?? []).some(c => c.clanId === m.clanId && c.canSend);
+          default: return true;
+        }
+      });
+    }
+
     if (badgeFilter !== 'all') {
       result = result.filter((m: any) => {
         const assignedTier = getEffectiveTier(m);
@@ -372,7 +503,16 @@ export default function MentorCertificatesPage() {
     }
 
     return result;
-  }, [activeMentees, search, badgeFilter, sortBy, getEffectiveTier]);
+  }, [activeMentees, search, badgeFilter, clanFilter, reviewFilter, sortBy, getEffectiveTier, reviewRows, release]);
+
+  /** The clans this mentor actually has people in, for the filter. */
+  const rosterClans = useMemo(() => {
+    const byId = new Map<string, { id: string; name: string }>();
+    for (const m of activeMentees) {
+      if (m.clanId && !byId.has(m.clanId)) byId.set(m.clanId, { id: m.clanId, name: m.clanName || 'Unnamed clan' });
+    }
+    return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [activeMentees]);
 
   const allSelected = filtered.length > 0 && filtered.every(m => selectedIds.has(m.id));
 
@@ -482,6 +622,88 @@ export default function MentorCertificatesPage() {
     }
   };
 
+  /**
+   * A signed-off grade is what will actually be issued, so it beats whatever
+   * the AI seeded into the roster. Re-applied whenever something else writes
+   * into that roster — the qualification fetch settling, a fresh AI run, the
+   * round reloading — because any of them can land last.
+   */
+  useEffect(() => {
+    if (!reviewRows) return;
+    setMentorTiers(prev => {
+      const next = { ...prev };
+      for (const row of Object.values(reviewRows)) {
+        if (row.status === 'verified' && row.finalTier) next[row.menteeId] = row.finalTier;
+      }
+      return next;
+    });
+  }, [reviewRows, loadingQualifications, aiResults]);
+
+  /**
+   * Sign off the selected rows at the grades currently shown in the table.
+   *
+   * Anything the mentor moved away from the AI's pick is an override, and the
+   * server requires a reason for each — so those are held back and asked for
+   * rather than failing the whole batch on submit.
+   */
+  const handleVerify = () => {
+    if (!activeTemplateId || !pendingDecisions.length) return;
+    const decisions = pendingDecisions;
+
+    const changed = decisions.filter(d => {
+      const row = reviewRows?.[d.menteeId];
+      return row?.aiTier && d.finalTier !== row.aiTier;
+    });
+
+    if (changed.length) {
+      setReasonDraft({ decisions, reasons: Object.fromEntries(changed.map(d => [d.menteeId, ''])) });
+      return;
+    }
+    submitVerification(decisions);
+  };
+
+  const submitVerification = async (
+    decisions: Array<{ menteeId: string; finalTier: string }>,
+    reasons: Record<string, string> = {}
+  ) => {
+    try {
+      setVerifying(true);
+      await certificatesApi.verifyMany(
+        activeTemplateId!,
+        decisions.map(d => ({ ...d, reason: reasons[d.menteeId]?.trim() || undefined }))
+      );
+      const changedCount = Object.keys(reasons).length;
+      toast.success(
+        changedCount > 0
+          ? `Signed off ${decisions.length} grade(s), ${changedCount} changed — your admin is notified once the clan is complete.`
+          : `Signed off ${decisions.length} grade(s) — your admin is notified once the clan is complete.`
+      );
+      setReasonDraft(null);
+      await loadReview();
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, 'Could not save those decisions'));
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  /**
+   * The selected rows whose grade is not already recorded as shown: still
+   * pending, or signed off at a tier the mentor has since changed. Re-sending a
+   * decision that has not moved writes nothing new and would re-announce the
+   * clan as complete, so it is left out and the button counts honestly.
+   */
+  const pendingDecisions = useMemo(() => {
+    if (!reviewRows) return [];
+    return Array.from(selectedIds)
+      .filter(id => {
+        const row = reviewRows[id];
+        if (!row) return false;
+        return row.status !== 'verified' || row.finalTier !== getEffectiveTier(id);
+      })
+      .map(id => ({ menteeId: id, finalTier: getEffectiveTier(id) }));
+  }, [selectedIds, reviewRows, getEffectiveTier]);
+
   const handleRunAIEvaluation = () => {
     if (activeTemplateId) runAIEvaluation(activeTemplateId);
   };
@@ -495,12 +717,29 @@ export default function MentorCertificatesPage() {
         mentorId: user?.id
       });
       if (res.success) {
-        toast.success(`Queued ${recipientsList.length} certificate(s) for issuance`);
+        // Report what the server actually did. Some of the selection may
+        // already hold this certificate — those are skipped, not sent — and
+        // claiming "queued 20" when 18 were duplicates is a lie the mentor
+        // only discovers by counting.
+        const issued = res.data?.count ?? recipientsList.length;
+        const skipped = res.data?.skipped ?? 0;
+        if (issued === 0) {
+          toast.info(`Everyone selected already has this certificate.`);
+        } else {
+          toast.success(
+            skipped > 0
+              ? `Sent ${issued} certificate(s) — ${skipped} already had one`
+              : `Sent ${issued} certificate(s)`
+          );
+        }
         setSelectedIds(new Set());
         setRefreshKey(prev => prev + 1);
+        loadReview();
       }
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to issue certificates');
+    } catch (err) {
+      // The server's own words matter here: a refusal explains that the clan
+      // has not been approved yet, which a generic message would throw away.
+      toast.error(extractApiErrorMessage(err, 'Failed to issue certificates'));
     } finally {
       setIssuing(false);
     }
@@ -551,9 +790,9 @@ export default function MentorCertificatesPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between border-b border-border pb-4">
           <div>
-            <h1 className="text-xl font-bold text-foreground">Certificates</h1>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Manage certifications and view your achievements.
+            <h1 className="text-slate-900 mb-2">Certificates</h1>
+            <p className="text-slate-600">
+              Review your clan&apos;s grades, issue their credentials, and see your own.
             </p>
           </div>
           {}
@@ -636,10 +875,10 @@ export default function MentorCertificatesPage() {
                           {cert.template?.name || 'Certificate of Completion'}
                         </h3>
                         <div className="space-y-1 pt-1">
-                          <div className="flex items-center gap-1.5 text-[9px] text-muted-foreground font-semibold">
+                          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-semibold">
                             <Calendar className="w-3 h-3 text-brand-500" /> Issued: {dateStr}
                           </div>
-                          <div className="flex items-center gap-1.5 text-[9px] text-muted-foreground font-semibold">
+                          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-semibold">
                             <ShieldCheck className="w-3 h-3 text-brand-500" />
                             Verified by: {cert.mentor ? `${cert.mentor.firstName} ${cert.mentor.lastName}` : 'Pathment Admin'}
                           </div>
@@ -663,7 +902,7 @@ export default function MentorCertificatesPage() {
                           {isDownloading
                             ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                             : <Download className="w-3.5 h-3.5" />}
-                          <span className="text-[9px] font-bold">PNG</span>
+                          <span className="text-[10px] font-bold">PNG</span>
                         </button>
 
                         <a
@@ -689,7 +928,7 @@ export default function MentorCertificatesPage() {
               <span className="text-sm text-muted-foreground">Loading templates...</span>
             </div>
           ) : templates.length === 0 ? (
-            <div className="flex flex-col items-center justify-center min-h-[300px] border border-dashed border-border rounded-3xl p-10 bg-card text-center gap-3">
+            <div className="flex flex-col items-center justify-center min-h-[300px] border border-dashed border-border rounded-2xl p-10 bg-card text-center gap-3">
               <Award className="w-10 h-10 text-brand-500 opacity-40" />
               <p className="text-sm font-bold text-foreground">No Templates Available</p>
               <p className="text-xs text-muted-foreground max-w-xs">
@@ -720,8 +959,8 @@ export default function MentorCertificatesPage() {
                       </span>
                     </div>
                     <button
-                      onClick={() => setActiveTemplateId(t.id)}
-                      className="mt-auto w-full flex items-center justify-center gap-1.5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold transition-colors"
+                      onClick={() => { setActiveTemplateId(t.id); setReviewing(false); }}
+                      className="mt-auto w-full flex items-center justify-center gap-1.5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm font-medium transition-colors"
                     >
                       <Award className="w-3.5 h-3.5" /> Issue Certificates
                     </button>
@@ -807,14 +1046,14 @@ export default function MentorCertificatesPage() {
       <div className="flex items-center justify-between border-b border-border pb-4">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => { setActiveTemplateId(null); setWorkspaceTab('issue'); }}
+            onClick={() => { setActiveTemplateId(null); setWorkspaceTab('issue'); setReviewing(false); }}
             className="p-2 rounded-xl border border-border hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
           <div>
-            <h1 className="text-base font-bold text-foreground">Issue Certificate</h1>
-            <p className="text-[11px] text-muted-foreground font-medium">{currentTemplate?.name}</p>
+            <h1 className="text-slate-900">{currentTemplate?.name || 'Certificate'}</h1>
+            <p className="text-slate-600 text-sm">Review grades, then issue credentials.</p>
           </div>
         </div>
 
@@ -859,14 +1098,14 @@ export default function MentorCertificatesPage() {
       {}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-5 mb-6">
         {}
-        <div className="md:col-span-7 bg-card border border-border/80 rounded-3xl p-5 shadow-2xs flex flex-col justify-between">
+        <div className="md:col-span-7 bg-card border border-border/80 rounded-2xl p-5 shadow-2xs flex flex-col justify-between">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Certificate Template</p>
-              <h3 className="text-sm font-extrabold text-foreground mt-0.5">{currentTemplate?.name || 'Certificate Template'}</h3>
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Certificate Template</p>
+              <h3 className="text-sm font-bold text-foreground mt-0.5">{currentTemplate?.name || 'Certificate Template'}</h3>
             </div>
             {currentTemplate?.bgImageUrl && (
-              <span className="px-2.5 py-1 rounded-full bg-brand-500/10 text-brand-600 text-[10px] font-extrabold">Active</span>
+              <span className="px-2.5 py-1 rounded-full bg-brand-500/10 text-brand-600 text-[10px] font-bold">Active</span>
             )}
           </div>
           {currentTemplate?.bgImageUrl && (
@@ -877,12 +1116,12 @@ export default function MentorCertificatesPage() {
         </div>
 
         {}
-        <div className="md:col-span-5 bg-card border border-border/80 rounded-3xl p-5 shadow-2xs flex flex-col justify-between">
+        <div className="md:col-span-5 bg-card border border-border/80 rounded-2xl p-5 shadow-2xs flex flex-col justify-between">
           <div>
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Selected Summary</p>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Selected Summary</p>
             <div className="flex items-center justify-between p-3 rounded-2xl bg-brand-500/5 border border-brand-500/15 mb-3">
               <span className="text-xs font-bold text-foreground">Total Selected Mentees</span>
-              <span className="text-base font-black text-brand-600 dark:text-brand-400 tabular-nums">{selectedSummary.total}</span>
+              <span className="text-base font-bold text-brand-600 dark:text-brand-400 tabular-nums">{selectedSummary.total}</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
               {criteria.map((c: any) => {
@@ -905,19 +1144,19 @@ export default function MentorCertificatesPage() {
       {}
       <div className="w-full">
         {workspaceTab === 'history' ? (
-          <div className="bg-card border border-border/80 rounded-3xl p-6 shadow-2xs flex flex-col min-h-[560px]">
+          <div className="bg-card border border-border/80 rounded-2xl p-6 shadow-2xs flex flex-col min-h-[560px]">
             <div className="flex items-center justify-between mb-4 border-b border-border pb-3">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Template History Logs</p>
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Template History Logs</p>
             </div>
             <CertificateHistoryLog templateId={activeTemplateId!} userRole="mentor" />
           </div>
         ) : (
-          <div className="bg-card border border-border rounded-3xl p-6 shadow-xs flex flex-col min-h-[580px]">
+          <div className="bg-card border border-border rounded-2xl p-6 shadow-xs flex flex-col min-h-[580px]">
             {}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-border/60 mb-5 gap-3">
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-xs font-bold text-foreground uppercase tracking-wider">Mentees Eligibility & Issuance</h3>
+                  <h3 className="text-xs font-semibold text-foreground uppercase tracking-wider">Mentees Eligibility & Issuance</h3>
                   <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-500/10 text-brand-600 dark:text-brand-400">
                     <TrendingUp className="w-3 h-3" />
                     {activeMentees.length} Active
@@ -953,78 +1192,49 @@ export default function MentorCertificatesPage() {
                 />
 
               {}
-              <AIDetailDrawer
-                mentee={aiDetailMentee}
-                onClose={() => setAiDetailMentee(null)}
-                criteria={criteria}
-                selectedTier={aiDetailMentee ? (mentorTiers[aiDetailMentee.mentee_id] ?? aiDetailMentee.certificate_tier) : undefined}
+              <MenteeEvidenceDrawer
+                templateId={activeTemplateId}
+                menteeId={inspectedRecipient?.mentee_id ?? null}
+                onClose={() => setInspectedRecipient(null)}
                 onTierChange={handleTierChange}
-                overrideLabel="Override Tier (Mentor)"
+                onDecided={loadReview}
               />
 
 
               {}
-              <div className="flex flex-col sm:flex-row gap-3 mb-5">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
-                  <input
-                    value={search}
-                    onChange={e => setSearch(e.target.value)}
-                    placeholder="Search mentees by name or email..."
-                    className="w-full pl-10 pr-10 py-2.5 text-xs bg-background hover:bg-muted/30 border border-border/70 focus:border-brand-500 rounded-xl text-foreground focus:outline-none placeholder:text-muted-foreground/50 transition-all shadow-3xs"
-                  />
-                  {search && (
-                    <button
-                      onClick={() => setSearch('')}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 p-0.5 hover:bg-muted rounded-full transition-colors"
-                      type="button"
-                    >
-                      <X className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" />
-                    </button>
-                  )}
-                </div>
-
-                {}
-                <div className="relative min-w-[150px]">
-                  <select
-                    value={badgeFilter}
-                    onChange={e => setBadgeFilter(e.target.value)}
-                    className="w-full px-3.5 py-2.5 pr-8 text-xs bg-background hover:bg-muted/30 border border-border/70 focus:border-brand-500 rounded-xl text-foreground font-semibold focus:outline-none transition-all cursor-pointer appearance-none shadow-3xs"
-                  >
-                    <option value="all">All Badges</option>
-                    {criteria.map((c: any) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/60 pointer-events-none" />
-                </div>
-
-                {}
-                <div className="relative min-w-[150px]">
-                  <select
-                    value={sortBy}
-                    onChange={e => setSortBy(e.target.value as any)}
-                    className="w-full px-3.5 py-2.5 pr-8 text-xs bg-background hover:bg-muted/30 border border-border/70 focus:border-brand-500 rounded-xl text-foreground font-semibold focus:outline-none transition-all cursor-pointer appearance-none shadow-3xs"
-                  >
-                    <option value="none">Sort: Default</option>
-                    <option value="score_desc">High Score first</option>
-                    <option value="score_asc">Low Score first</option>
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/60 pointer-events-none" />
-                </div>
-              </div>
+              {reviewOpen && (
+                <ReviewRoundBanner
+                  clans={release ?? []}
+                  pending={pendingReviewCount}
+                  total={reviewList.length}
+                  daysLeft={reviewDaysLeft}
+                  reviewing={reviewing}
+                />
+              )}
 
               {}
-              {selectedIds.size > 0 && filtered.length > 0 && (
+              <RosterFilterBar
+                search={search} onSearch={setSearch}
+                clan={clanFilter} onClan={setClanFilter}
+                clans={rosterClans} clanStates={release ?? []}
+                badge={badgeFilter} onBadge={setBadgeFilter}
+                criteria={criteria}
+                sort={sortBy} onSort={setSortBy}
+                review={reviewOpen ? reviewFilter : undefined}
+                onReview={reviewOpen ? setReviewFilter : undefined}
+              />
+
+              {}
+              {selectedIds.size > 0 && filtered.length > 0 && !tableLocked && (
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-brand-500/5 dark:bg-brand-500/10 border border-brand-500/20 dark:border-brand-500/30 rounded-xl p-3.5 text-xs mb-5 animate-in fade-in slide-in-from-top-2 duration-200 gap-3">
                   <div className="flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-brand-500 animate-pulse" />
                     <span className="font-semibold text-foreground">
-                      <strong className="font-extrabold">{selectedIds.size}</strong> {selectedIds.size === 1 ? 'mentee' : 'mentees'} selected
+                      <strong className="font-bold">{selectedIds.size}</strong> {selectedIds.size === 1 ? 'mentee' : 'mentees'} selected
                     </span>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap sm:justify-end">
-                    <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">Set Selected to:</span>
+                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Set Selected to:</span>
                     {criteria.map((c: any) => {
                       const badgeColor = getTierButtonColor(c.id);
                       return (
@@ -1032,7 +1242,7 @@ export default function MentorCertificatesPage() {
                           key={c.id}
                           type="button"
                           onClick={() => bulkSetBadge(c.id)}
-                          className={`px-2.5 py-1 rounded-lg text-[9px] font-extrabold transition-all border shadow-3xs uppercase tracking-wider ${badgeColor}`}
+                          className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all border shadow-3xs uppercase tracking-wider ${badgeColor}`}
                         >
                           {getTierName(c.id).replace(/\s*certificate\s*/i, '')}
                         </button>
@@ -1042,7 +1252,7 @@ export default function MentorCertificatesPage() {
                       <button
                         type="button"
                         onClick={resetToAIRecommendations}
-                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[9px] font-extrabold bg-violet-600 hover:bg-violet-700 text-white shadow-3xs uppercase tracking-wider transition-colors border border-transparent"
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-violet-600 hover:bg-violet-700 text-white shadow-3xs uppercase tracking-wider transition-colors border border-transparent"
                       >
                         <Sparkles className="w-2.5 h-2.5 text-white animate-pulse" /> Reset to AI
                       </button>
@@ -1063,31 +1273,96 @@ export default function MentorCertificatesPage() {
                   allSelected={allSelected}
                   assignedTiers={mentorTiers}
                   handleTierChange={handleTierChange}
-                  onInspectAI={setAiDetailMentee}
+                  onInspectRecipient={setInspectedRecipient}
                   loading={loadingQualifications}
                   getTierName={getTierName}
                   userRole="mentor"
                   recipientTypeLabel="Mentee"
                   emptyMessage={search ? 'No mentees match your search.' : 'No active mentees found.'}
+                  reviewRows={reviewRows ?? undefined}
+                  locked={tableLocked}
                 />
               </div>
 
               {}
-              <div className="flex items-center justify-between border-t border-border/60 pt-4 mt-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-4 mt-4">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground font-semibold">
                   <Users className="w-4 h-4 text-brand-500" />
                   <span>
-                    <span className="text-foreground font-extrabold">{selectedIds.size}</span> / {filtered.length} selected
+                    <span className="text-foreground font-bold">{selectedIds.size}</span> / {filtered.length} selected
                   </span>
                 </div>
-                <button
-                  onClick={handleIssue}
-                  disabled={issuing || selectedIds.size === 0}
-                  className="flex items-center gap-1.5 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed rounded-xl text-xs font-bold transition-all shadow-sm"
-                >
-                  {issuing ? <Loader2 className="animate-spin w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />}
-                  Issue Certificates
-                </button>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Unlocking the grades and sending them out are separate
+                      controls, because they are separate decisions and a clan
+                      that is fully signed off still needs to be able to send. */}
+                  {reviewOpen && (
+                    reviewing ? (
+                      <button
+                        type="button"
+                        onClick={() => setReviewing(false)}
+                        className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3.5 py-2.5 text-xs font-semibold text-muted-foreground hover:text-foreground"
+                      >
+                        <Lock className="w-3.5 h-3.5" /> Lock grades
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setReviewing(true)}
+                        className={`flex items-center gap-1.5 rounded-xl border px-3.5 py-2.5 text-xs font-bold transition-colors ${
+                          pendingReviewCount > 0
+                            ? 'border-amber-500/40 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20'
+                            : 'border-border bg-card text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        {pendingReviewCount > 0
+                          ? `Review ${pendingReviewCount} grade${pendingReviewCount === 1 ? '' : 's'}`
+                          : 'Review grades again'}
+                      </button>
+                    )
+                  )}
+
+                  {reviewing ? (
+                    <button
+                      type="button"
+                      onClick={handleVerify}
+                      disabled={verifying || pendingDecisions.length === 0}
+                      title={pendingDecisions.length === 0
+                        ? 'Every selected grade is already signed off at the badge shown.'
+                        : undefined}
+                      className="flex items-center gap-1.5 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed rounded-xl text-sm font-medium transition-all shadow-sm"
+                    >
+                      {verifying ? <Loader2 className="animate-spin w-3.5 h-3.5" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                      {pendingDecisions.length === 0
+                        ? 'All selected signed off'
+                        : `Verify ${pendingDecisions.length} grade${pendingDecisions.length === 1 ? '' : 's'}`}
+                    </button>
+                  ) : canIssue ? (
+                    /* Sending is unlocked by the admin approving the clan, after
+                       its grades are verified. Showing the button regardless
+                       just produced a 403 — the mentor pressed it and got an
+                       error rather than an explanation. */
+                    <button
+                      onClick={handleIssue}
+                      disabled={issuing || selectedIds.size === 0}
+                      className="flex items-center gap-1.5 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed rounded-xl text-sm font-medium transition-all shadow-sm"
+                    >
+                      {issuing ? <Loader2 className="animate-spin w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />}
+                      Issue Certificates
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/5 px-3.5 py-2.5">
+                      <Clock className="w-3.5 h-3.5 shrink-0 text-amber-500" />
+                      <span className="text-[11px] font-semibold text-foreground">
+                        {pendingReviewCount > 0
+                          ? `${pendingReviewCount} grade${pendingReviewCount === 1 ? '' : 's'} still need your sign-off.`
+                          : 'Signed off — waiting for an admin to approve your clan.'}
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -1128,7 +1403,7 @@ export default function MentorCertificatesPage() {
                     ) : (
                       <>
                         <div className="space-y-1">
-                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Keywords / Tech Stack</p>
+                          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Keywords / Tech Stack</p>
                           {kws.length === 0 ? (
                             <p className="text-[11px] text-amber-600 font-semibold italic">No keywords — AI uses hard constraints only.</p>
                           ) : (
@@ -1140,33 +1415,33 @@ export default function MentorCertificatesPage() {
                           )}
                         </div>
                         <div className="space-y-1">
-                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Hard Constraints (AI cannot bypass)</p>
+                          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Hard Constraints (AI cannot bypass)</p>
                           <div className="grid grid-cols-3 gap-2">
                             <div className="p-2 rounded-xl bg-muted/30 text-center">
-                              <p className="text-[9px] text-muted-foreground font-semibold">Min Score</p>
-                              <p className="text-xs font-extrabold text-foreground">{minScore > 0 ? `${minScore}%` : '—'}</p>
+                              <p className="text-[10px] text-muted-foreground font-semibold">Min Score</p>
+                              <p className="text-xs font-bold text-foreground">{minScore > 0 ? `${minScore}%` : '—'}</p>
                             </div>
                             <div className="p-2 rounded-xl bg-muted/30 text-center">
-                              <p className="text-[9px] text-muted-foreground font-semibold">Max Blockers</p>
-                              <p className="text-xs font-extrabold text-foreground">{maxB}</p>
+                              <p className="text-[10px] text-muted-foreground font-semibold">Max Blockers</p>
+                              <p className="text-xs font-bold text-foreground">{maxB}</p>
                             </div>
                             <div className="p-2 rounded-xl bg-muted/30 text-center">
-                              <p className="text-[9px] text-muted-foreground font-semibold">Min Completion</p>
-                              <p className="text-xs font-extrabold text-foreground">{minCompletion > 0 ? `${minCompletion}%` : '—'}</p>
+                              <p className="text-[10px] text-muted-foreground font-semibold">Min Completion</p>
+                              <p className="text-xs font-bold text-foreground">{minCompletion > 0 ? `${minCompletion}%` : '—'}</p>
                             </div>
                             <div className="p-2 rounded-xl bg-muted/30 text-center">
-                              <p className="text-[9px] text-muted-foreground font-semibold">Min On-Time</p>
-                              <p className="text-xs font-extrabold text-foreground">{minOnTime > 0 ? `${minOnTime}%` : '—'}</p>
+                              <p className="text-[10px] text-muted-foreground font-semibold">Min On-Time</p>
+                              <p className="text-xs font-bold text-foreground">{minOnTime > 0 ? `${minOnTime}%` : '—'}</p>
                             </div>
                             <div className="p-2 rounded-xl bg-muted/30 text-center col-span-2">
-                              <p className="text-[9px] text-muted-foreground font-semibold">Min Avg Rating</p>
-                              <p className="text-xs font-extrabold text-foreground">{minRating > 0 ? `${minRating} / 5` : '—'}</p>
+                              <p className="text-[10px] text-muted-foreground font-semibold">Min Avg Rating</p>
+                              <p className="text-xs font-bold text-foreground">{minRating > 0 ? `${minRating} / 5` : '—'}</p>
                             </div>
                           </div>
                         </div>
                         {customRule && (
                           <div className="space-y-1">
-                            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Custom AI Rule</p>
+                            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Custom AI Rule</p>
                             <p className="text-[11px] text-foreground italic bg-muted/30 rounded-xl px-3 py-2 leading-relaxed">"{customRule}"</p>
                           </div>
                         )}
@@ -1178,6 +1453,75 @@ export default function MentorCertificatesPage() {
             })}
           </div>
         </div>
+      </Drawer>
+
+      {/* Changing a grade is a mentor overruling the evidence. The admin
+          reading this in a month — and the mentor themselves — need to know
+          why, so the reason is asked for rather than merely invited. */}
+      <Drawer
+        open={reasonDraft !== null}
+        onClose={() => setReasonDraft(null)}
+        title="Why are these grades changing?"
+        subtitle="The AI graded from the record. Say what it could not see."
+        width="md"
+      >
+        {reasonDraft && (
+          <div className="space-y-5">
+            {Object.keys(reasonDraft.reasons).map(menteeId => {
+              const mentee = activeMentees.find(m => m.id === menteeId);
+              const row = reviewRows?.[menteeId];
+              const finalTier = reasonDraft.decisions.find(d => d.menteeId === menteeId)?.finalTier ?? '';
+              return (
+                <div key={menteeId} className="space-y-2 rounded-2xl border border-border bg-card p-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-bold text-foreground">
+                      {mentee ? `${mentee.firstName} ${mentee.lastName}` : 'Mentee'}
+                    </span>
+                    <span className="text-[10px] font-semibold text-muted-foreground line-through">
+                      {getTierName(row?.aiTier || '')}
+                    </span>
+                    <span aria-hidden className="text-[10px] font-bold text-amber-500">&rarr;</span>
+                    <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-600">
+                      {getTierName(finalTier)}
+                    </span>
+                  </div>
+                  <textarea
+                    rows={2}
+                    value={reasonDraft.reasons[menteeId]}
+                    onChange={e => setReasonDraft(d => d && ({
+                      ...d, reasons: { ...d.reasons, [menteeId]: e.target.value }
+                    }))}
+                    placeholder="e.g. mentored two juniors all season on top of their own track"
+                    className="w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  />
+                </div>
+              );
+            })}
+
+            <div className="flex items-center gap-2 border-t border-border pt-4">
+              <button
+                type="button"
+                onClick={() => submitVerification(reasonDraft.decisions, reasonDraft.reasons)}
+                disabled={verifying || Object.values(reasonDraft.reasons).some(r => !r.trim())}
+                className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-700 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed"
+              >
+                {verifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                Verify {reasonDraft.decisions.length} grade{reasonDraft.decisions.length === 1 ? '' : 's'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setReasonDraft(null)}
+                disabled={verifying}
+                className="rounded-xl border border-border px-4 py-2.5 text-xs font-semibold text-muted-foreground hover:text-foreground"
+              >
+                Cancel
+              </button>
+              {Object.values(reasonDraft.reasons).some(r => !r.trim()) && (
+                <span className="text-[10px] font-semibold text-amber-600">Every change needs a reason.</span>
+              )}
+            </div>
+          </div>
+        )}
       </Drawer>
 
       <DuplicateWarnModal
@@ -1200,6 +1544,87 @@ export default function MentorCertificatesPage() {
           await executeIssuance(cleanRecipients);
         }}
       />
+    </div>
+  );
+}
+
+/**
+ * Where this round stands, in the mentor's own terms.
+ *
+ * A mentor who has finished reviewing and sees no send button will assume
+ * something is broken. It is not — the admin releases each clan once the grades
+ * are checked, and the mentor sends after that. Saying so is this strip's whole
+ * job, and it says it above the table the work happens in.
+ */
+function ReviewRoundBanner({
+  clans, pending, total, daysLeft, reviewing,
+}: {
+  clans: ReviewerClanState[];
+  pending: number;
+  total: number;
+  daysLeft: number | null;
+  reviewing: boolean;
+}) {
+  const done = pending === 0;
+  const tone = reviewing
+    ? 'border-brand-500/30 bg-brand-500/5'
+    : done
+      ? 'border-emerald-500/25 bg-emerald-500/5'
+      : 'border-amber-500/30 bg-amber-500/5';
+
+  return (
+    <div className={`mb-5 space-y-2 rounded-2xl border px-4 py-3 ${tone}`}>
+      <div className="flex flex-wrap items-center gap-2">
+        {reviewing
+          ? <Edit3 className="w-4 h-4 shrink-0 text-brand-500" />
+          : done
+            ? <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500" />
+            : <Lock className="w-4 h-4 shrink-0 text-amber-500" />}
+        <span className="text-xs font-bold text-foreground">
+          {reviewing
+            ? 'Grades unlocked — change any badge below, then verify the ones you have checked'
+            : done
+              ? `All ${total} grades signed off`
+              : `${pending} of ${total} grades need your review`}
+        </span>
+        {!reviewing && !done && (
+          <span className="text-[11px] text-muted-foreground">
+            · badges locked until you open them for review
+          </span>
+        )}
+        {daysLeft !== null && !done && (
+          <span className={`inline-flex items-center gap-1 text-[11px] font-semibold ${
+            daysLeft < 0 ? 'text-red-600' : daysLeft <= 2 ? 'text-amber-600' : 'text-muted-foreground'
+          }`}>
+            <Clock className="w-3 h-3" />
+            {daysLeft < 0
+              ? `${Math.abs(daysLeft)} day${Math.abs(daysLeft) === 1 ? '' : 's'} overdue`
+              : `${daysLeft} day${daysLeft === 1 ? '' : 's'} left`}
+          </span>
+        )}
+      </div>
+
+      <ul className="space-y-1 pl-6">
+        {clans.map(clan => (
+          <li key={clan.clanId} className="flex flex-wrap items-center gap-2 text-[11px]">
+            <span className="font-semibold text-foreground">{clan.clanName || 'Your clan'}</span>
+            <span className="text-muted-foreground">
+              {clan.pending === 0
+                ? `all ${clan.verified} signed off`
+                : `${clan.pending} of ${clan.pending + clan.verified} outstanding`}
+            </span>
+            {clan.canSend ? (
+              <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/10 px-2 py-0.5 font-bold text-emerald-600">
+                <CheckCircle2 className="w-2.5 h-2.5" /> Approved — you can send
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-lg bg-muted px-2 py-0.5 font-semibold text-muted-foreground">
+                <Clock className="w-2.5 h-2.5" /> Waiting on admin approval
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

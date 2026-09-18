@@ -28,6 +28,15 @@ interface ConversationListProps {
   allCount?: number;
   archivedCount?: number;
   isBootstrapping?: boolean;
+  /**
+   * How many conversations the sidebar's clan picker is holding back, and how
+   * to clear it. An empty list that a filter caused has to say so — reading
+   * "No conversations yet" while the sidebar shows an unread badge is how a
+   * working inbox comes across as broken.
+   */
+  hiddenByClan?: number;
+  activeClanName?: string | null;
+  onShowAllClans?: () => void;
 }
 
 /** Format last message time */
@@ -63,6 +72,9 @@ export default function ConversationList({
   onTabChange,
   allCount,
   archivedCount,
+  hiddenByClan = 0,
+  activeClanName,
+  onShowAllClans,
   isBootstrapping = false,
 }: ConversationListProps) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -180,12 +192,36 @@ export default function ConversationList({
         ) : filteredConversations.length === 0 ? (
           <div className="p-8 text-center text-slate-500">
             <MessageSquare className="w-8 h-8 text-slate-300 dark:text-slate-700 mx-auto mb-2" />
-            <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
-              {searchQuery ? 'No matching chats' : activeTab === 'unread' ? 'No unread messages' : 'No conversations yet'}
-            </p>
-            <p className="text-xs text-slate-400 mt-1">
-              {searchQuery ? 'Try searching another name' : 'Click "New Chat" to message someone'}
-            </p>
+            {/* A list emptied by the clan picker is not an empty inbox. Name the
+                filter, count what it is holding back, and offer the way out. */}
+            {!searchQuery && activeTab !== 'unread' && hiddenByClan > 0 ? (
+              <>
+                <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  No conversations in {activeClanName || 'this clan'}
+                </p>
+                <p className="text-xs text-slate-400 mt-1">
+                  {hiddenByClan} conversation{hiddenByClan === 1 ? ' is' : 's are'} in your other clans.
+                </p>
+                {onShowAllClans && (
+                  <button
+                    type="button"
+                    onClick={onShowAllClans}
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-brand-500/40 bg-brand-500/10 px-3 py-1.5 text-xs font-bold text-brand-700 dark:text-brand-400 hover:bg-brand-500/20 transition-colors"
+                  >
+                    Show all clans
+                  </button>
+                )}
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  {searchQuery ? 'No matching chats' : activeTab === 'unread' ? 'No unread messages' : 'No conversations yet'}
+                </p>
+                <p className="text-xs text-slate-400 mt-1">
+                  {searchQuery ? 'Try searching another name' : 'Click "New Chat" to message someone'}
+                </p>
+              </>
+            )}
           </div>
         ) : (
           filteredConversations.map((conversation) => {

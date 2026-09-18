@@ -12,8 +12,8 @@ const {
   createAdmin,
   createMentee,
   createProgram,
-  createProgramLevel,
   createEnrollment,
+  createClan,
   authHeader,
 } = require('../helpers/seed');
 
@@ -28,13 +28,12 @@ describe('Admin — Enrollments & Invitations', () => {
   // TC-A19
   it('TC-A19: returns all enrolled mentees with status and progress for a program', async () => {
     const program = await createProgram({ createdBy: admin.id, name: 'Web Dev Program', status: 'published' });
-    const level = await createProgramLevel({ programId: program.id });
 
     const mentee1 = await createMentee({ email: 'mentee1@test.com' });
     const mentee2 = await createMentee({ email: 'mentee2@test.com' });
 
-    await createEnrollment({ menteeId: mentee1.id, programId: program.id, levelId: level.id, status: 'pending_match' });
-    await createEnrollment({ menteeId: mentee2.id, programId: program.id, levelId: level.id, status: 'active' });
+    await createEnrollment({ menteeId: mentee1.id, programId: program.id, status: 'pending_match' });
+    await createEnrollment({ menteeId: mentee2.id, programId: program.id, status: 'active' });
 
     const res = await request(app)
       .get(`/api/programs/${program.id}/enrollments`)
@@ -58,12 +57,20 @@ describe('Admin — Enrollments & Invitations', () => {
 
   // TC-A20
   it('TC-A20: sends invitation email and creates invite record for new user', async () => {
+    // An invite now has to say where the person lands: a mentor needs a clan
+    // (the program is derived from it), a mentee needs a program. An invite
+    // with no placement is rejected, which is why sending email+role alone
+    // stopped working.
+    const program = await createProgram({ createdBy: admin.id, name: 'Invite Program', status: 'published' });
+    const clan = await createClan({ programId: program.id, createdBy: admin.id, name: 'Invite Clan' });
+
     const res = await request(app)
       .post('/api/admin/invites')
       .set('Authorization', authHeader(admin))
       .send({
         email: 'newmentor@example.com',
         role: 'mentor',
+        clanId: clan.id,
         expiresInHours: 72,
       });
 

@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Plus, Trash2, Loader2, Award, Calendar, User, ChevronDown } from 'lucide-react';
+import { Plus, Trash2, Loader2, Award, Calendar, User } from 'lucide-react';
 import { toast } from 'sonner';
 import { certificatesApi, CertificateTemplate } from '@/lib/services/certificates-api';
 import { ConfirmModal } from '@/components/shared';
+import { SelectMenu } from '@/components/shared/SelectMenu';
 import { programsApi } from '@/lib/services/program-api';
 
 export default function AdminCertificatesPage() {
@@ -81,34 +82,26 @@ export default function AdminCertificatesPage() {
       {/* Header & Controls */}
       <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-border/60 pb-5 gap-4">
         <div>
-          <h1 className="text-xl font-bold text-foreground">Certificates</h1>
-          <p className="text-xs text-muted-foreground mt-0.5">Manage templates and issue certificates to mentees</p>
+          <h1 className="text-slate-900 mb-2">Certificates</h1>
+          <p className="text-slate-600">Design templates, grade a cohort, and issue credentials clan by clan.</p>
         </div>
 
         <div className="flex items-center gap-3.5 flex-wrap">
-          {/* Filter Dropdown */}
-          <div className="relative inline-flex items-center shadow-3xs rounded-xl border border-border/80 bg-background hover:bg-muted/30 transition-colors">
-            <span className="pl-3.5 pr-1.5 text-[9px] font-extrabold text-muted-foreground uppercase tracking-wider select-none border-r border-border/60 py-2">
-              Program
-            </span>
-            <select
-              value={selectedProgramFilter}
-              onChange={e => setSelectedProgramFilter(e.target.value)}
-              className="appearance-none pr-9 pl-3 py-2 text-xs font-bold text-foreground bg-transparent cursor-pointer focus:outline-none min-w-[150px] max-w-[240px]"
-            >
-              <option value="all" className="bg-card text-foreground">All Programs</option>
-              {programs.map(p => (
-                <option key={p.id} value={p.id} className="bg-card text-foreground">
-                  {p.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-3 w-3 h-3 pointer-events-none text-muted-foreground/60" />
-          </div>
+          {/* The shared menu, like every other in-page filter in the app. */}
+          <SelectMenu
+            value={selectedProgramFilter}
+            onChange={setSelectedProgramFilter}
+            options={[
+              { value: 'all', label: 'All programs' },
+              ...programs.map(p => ({ value: p.id, label: p.name })),
+            ]}
+            ariaLabel="Filter by program"
+            className="min-w-[200px]"
+          />
 
           <Link
             href="/admin/certificates/new"
-            className="flex items-center gap-1.5 px-4.5 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold text-xs transition-all shadow-sm"
+            className="flex items-center gap-1.5 px-4.5 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-medium text-sm transition-all shadow-sm"
           >
             <Plus className="w-4 h-4" />
             Create Template
@@ -175,11 +168,11 @@ export default function AdminCertificatesPage() {
                 {/* Card Content */}
                 <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
                   <div className="space-y-2">
-                    <span className="inline-block text-[9px] bg-brand-500/10 text-brand-600 dark:text-brand-400 px-2.5 py-0.5 rounded-md font-bold uppercase tracking-wider">
+                    <span className="inline-block text-[10px] bg-brand-500/10 text-brand-600 dark:text-brand-400 px-2.5 py-0.5 rounded-md font-semibold uppercase tracking-wider">
                       {template.program?.name || 'No Program'}
                     </span>
                     
-                    <h3 className="text-sm font-extrabold text-foreground line-clamp-2 leading-snug">
+                    <h3 className="text-sm font-bold text-foreground line-clamp-2 leading-snug">
                       {template.name}
                     </h3>
                     
@@ -198,7 +191,7 @@ export default function AdminCertificatesPage() {
                   <div className="flex gap-2.5">
                     <Link
                       href={`/admin/certificates/${template.id}/edit`}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm font-medium transition-all shadow-sm"
                     >
                       <Award className="w-4 h-4" />
                       Issue & Manage
