@@ -66,3 +66,77 @@ describe('the leaderboard ranks the progress score, not points', () => {
     expect(stats.progressScore == null || typeof stats.progressScore === 'number').toBe(true);
   });
 });
+
+/**
+ * The board has to arrive populated for a signed-in mentee.
+ *
+ * It did not. The score ranks within a peer group — two of its dimensions are
+ * percentiles — so the service resolves that group from the caller. But
+ * `/gamification/leaderboard` is a PUBLIC route with no `authenticate`, so
+ * `req.user` was undefined, no programme could be resolved, and every signed-in
+ * mentee got an empty board in production.
+ *
+ * These pin the resolution itself rather than the middleware, so the same
+ * mistake cannot be made again from a different caller.
+ */
+describe('the board finds the right peer group', () => {
+  const clanService = require('../../src/services/clanService');
+  const {
+    createAdmin, createMentor, createProgram, createEnrollment, createRoadmap, createRoadmapTask,
+  } = require('../helpers/seed');
+
+  let admin, mentor, mentee, program, clan;
+
+  beforeEach(async () => {
+    await cleanDb();
+    admin = await createAdmin({ email: 'pg-admin@test.com' });
+    mentor = await createMentor({ email: 'pg-mentor@test.com' });
+    mentee = await createMentee({ email: 'pg-mentee@test.com' });
+    await models.MenteeProfile.findOrCreate({ where: { userId: mentee.id } });
+
+    program = await createProgram({ createdBy: admin.id });
+    clan = await models.Clan.create({
+      programId: program.id, name: 'Viral Loop', leadMentorId: mentor.id, createdBy: admin.id,
+    });
+    await clanService.addMember(clan.id, { userId: mentor.id, role: 'lead_mentor' });
+    await clanService.addMember(clan.id, { userId: mentee.id, role: 'mentee' });
+
+    const roadmap = await createRoadmap({ programId: program.id, createdBy: admin.id });
+    const enrollment = await createEnrollment({ menteeId: mentee.id, programId: program.id, status: 'active' });
+    await enrollment.update({ overallProgressPercentage: 70, currentWeek: 4 });
+
+    for (let i = 1; i <= 5; i += 1) {
+      const task = await createRoadmapTask({ roadmapId: roadmap.id, title: `T${i}`, taskOrder: i });
+      await models.AssignedTask.create({
+        roadmapTaskId: task.id, menteeId: mentee.id, mentorId: mentor.id,
+        enrollmentId: enrollment.id, status: 'completed', isCustomTask: false, isLate: false,
+        completedAt: new Date(), finalRating: 4.5,
+        dueDate: new Date(Date.now() + 7 * 86400000), pointsAwarded: 10, pointsBase: 10,
+      });
+    }
+  });
+
+  it('gives a signed-in mentee their own programme, not an empty board', async () => {
+    const board = await gamificationService.getLeaderboard({ user: mentee, limit: 10 });
+
+    expect(board.length).toBeGreaterThan(0);
+    expect(board[0].userId).toBe(mentee.id);
+    expect(board[0].score).toBeGreaterThan(0);
+  });
+
+  it('works for a mentor too, who has no mentee membership to find', async () => {
+    const board = await gamificationService.getLeaderboard({ user: mentor, limit: 10 });
+    expect(board.length).toBeGreaterThan(0);
+  });
+
+  it('honours an explicit programme over the caller', async () => {
+    const board = await gamificationService.getLeaderboard({ user: null, programId: program.id, limit: 10 });
+    expect(board.length).toBeGreaterThan(0);
+  });
+
+  /** No caller and no programme is no peer group, and an invented order is worse. */
+  it('returns nothing when there is nobody to compare against', async () => {
+    const board = await gamificationService.getLeaderboard({ user: null, programId: null });
+    expect(board).toEqual([]);
+  });
+});
