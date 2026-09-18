@@ -488,6 +488,11 @@ class AuthService {
     userResponse.permissions = await authzService.getPermissionUnion(user);
     userResponse.canAccessAdmin = await authzService.hasAdminAccess(user, { assignments });
 
+    if (user.role === 'mentee') {
+      const gamificationService = require('./gamificationService');
+      gamificationService.awardDailyLoginPoint(user.id).catch(() => {});
+    }
+
     return {
       user: userResponse,
       accessToken,
