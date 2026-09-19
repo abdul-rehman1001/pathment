@@ -61,7 +61,4 @@ async function down() {
   console.log('Rollback complete');
 }
 
-const isRollback = process.argv.includes('--rollback');
-(isRollback ? down : up)()
-  .then(() => { console.log('Done'); process.exit(0); })
-  .catch((e) => { console.error(e); process.exit(1); });
+module.exports = { up, down };
