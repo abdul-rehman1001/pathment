@@ -49,7 +49,10 @@ class PerformanceNominationService {
     // leaderboard ranks by. A third definition of "doing well" is how a mentor
     // and an admin end up arguing about whose number is right instead of about
     // the mentee.
-    const { ranked, notRanked } = await performanceService.leaderboard(menteeIds, { clanId, limit });
+    // `counted` is how many are rankable in total; `ranked` has already been cut
+    // to the limit. Using the cut length made "ranked 3 of 5" out of a clan of
+    // thirty-eight — the denominator has to be the whole field, not the page.
+    const { ranked, notRanked, counted } = await performanceService.leaderboard(menteeIds, { clanId, limit });
 
     const shape = (row) => ({
       menteeId: row.id,
@@ -97,7 +100,7 @@ class PerformanceNominationService {
       notRanked: notRanked.map((row) => ({
         ...shape(row), rank: null, notRankedBecause: row.notRankedBecause
       })),
-      rankedCount: ranked.length
+      rankedCount: counted
     };
   }
 

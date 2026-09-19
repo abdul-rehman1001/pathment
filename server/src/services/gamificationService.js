@@ -538,12 +538,19 @@ class GamificationService {
     let targetProgramId = programId;
 
     if (!targetProgramId && user?.id) {
+      // Any clan the asker belongs to will do, in any role. A mentee is the
+      // usual case, but a mentor or an admin opening the board should see their
+      // own programme rather than an empty list — and the row that answers this
+      // for them is a mentor membership, not a mentee one.
       const membership = await models.ClanMembership.findOne({
-        where: { userId: user.id, role: 'mentee' },
-        include: [{ model: models.Clan, as: 'clan', attributes: ['programId'], required: true }]
+        where: { userId: user.id },
+        include: [{ model: models.Clan, as: 'clan', attributes: ['programId'], required: true }],
+        order: [['role', 'ASC']]
       });
       targetProgramId = membership?.clan?.programId ?? null;
     }
+    // No peer group, no ranking. Two of the score's dimensions are percentiles,
+    // so a board with nobody to compare against would be a made-up order.
     if (!targetProgramId) return [];
 
     const memberships = await models.ClanMembership.findAll({
@@ -774,6 +781,24 @@ class GamificationService {
 
     const count = await models.Badge.count();
     return count;
+  }
+
+  async awardDailyLoginPoint(userId) {
+    const profile = await models.MenteeProfile.findOne({ where: { userId } });
+    if (!profile) return;
+
+    const today = todayInZone();
+    const existing = await models.PointsHistory.findOne({
+      where: {
+        userId,
+        sourceType: 'daily_login',
+        createdAt: { [Sequelize.Op.gte]: new Date(today) }
+      }
+    });
+
+    if (existing) return;
+
+    await this.awardPoints(userId, 1, 'daily_login', null, 'Daily login bonus');
   }
 }
 
