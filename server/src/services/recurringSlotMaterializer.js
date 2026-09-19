@@ -34,7 +34,7 @@ class RecurringSlotMaterializer {
             // so the "materialized N task(s)" line never printed however much
             // work the tick actually did, and any caller reading the count got
             // a string. `activateSlotForMentor` already unwraps it this way.
-            const result = await this._processSlotForMentee(ms.menteeId, mentorId, slot.id, rec);
+            const result = await this._processSlotForMentee(ms.menteeId, mentorId, slot.id, rec, ms.clanId);
             createdCount += Number(result?.createdForSlot) || 0;
             updatedCount += Number(result?.updatedForSlot) || 0;
           } catch (err) {
@@ -81,7 +81,7 @@ class RecurringSlotMaterializer {
       if (!rec.title || !rec.startsOn || rec.dayOfWeek == null || !rec.timeLocal) continue;
 
       appliedMentees++;
-      const res = await this._processSlotForMentee(ms.menteeId, mentorId, slot.id || slotId, rec);
+      const res = await this._processSlotForMentee(ms.menteeId, mentorId, slot.id || slotId, rec, ms.clanId);
       createdTasks += (res?.createdForSlot || 0);
       updatedTasks += (res?.updatedForSlot || 0);
     }
@@ -92,7 +92,7 @@ class RecurringSlotMaterializer {
   /**
    * Process a single recurring slot for a mentee and create missing occurrence tasks.
    */
-  async _processSlotForMentee(menteeId, mentorId, slotId, recConfig) {
+  async _processSlotForMentee(menteeId, mentorId, slotId, recConfig, clanId = null) {
     const now = new Date();
     const horizon = new Date(now.getTime() + HORIZON_DAYS * 86400000);
     const targetDays = Array.isArray(recConfig.daysOfWeek) && recConfig.daysOfWeek.length > 0
@@ -137,6 +137,7 @@ class RecurringSlotMaterializer {
           menteeId,
           scheduleSlotId: slotId,
           occurrenceDate,
+          ...(clanId ? { clanId } : {}),
         },
       });
 
@@ -164,6 +165,7 @@ class RecurringSlotMaterializer {
             dueDate,
             scheduleSlotId: slotId,
             occurrenceDate,
+            clanId: clanId || undefined,
           },
           mentorId
         );
