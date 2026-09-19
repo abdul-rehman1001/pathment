@@ -39,4 +39,34 @@ async function findOrCreate({ name, url, userId }) {
   return { org, created: true };
 }
 
-module.exports = { list, findOrCreate };
+async function searchGithubOrgs(query) {
+  if (!query || !query.trim()) return [];
+  const token = process.env.GITHUB_TOKEN;
+  const headers = {
+    'User-Agent': 'Pathment-App',
+    'Accept': 'application/vnd.github+json'
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  try {
+    const res = await fetch(
+      `https://api.github.com/search/users?q=${encodeURIComponent(query.trim())}+type:org&per_page=8`,
+      { headers }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.items || []).map((g) => ({
+      id: null,
+      name: g.login,
+      url: g.html_url,
+      avatar: g.avatar_url,
+      source: 'github'
+    }));
+  } catch {
+    return [];
+  }
+}
+
+module.exports = { list, findOrCreate, searchGithubOrgs };
+

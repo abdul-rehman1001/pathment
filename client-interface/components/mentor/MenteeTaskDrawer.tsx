@@ -6,6 +6,8 @@ import { toast } from 'sonner';
 import { CheckCircle2, Clock, Award, Pencil, RotateCcw, Trash2, Loader2, StickyNote, ClipboardCheck, Code2, ExternalLink } from 'lucide-react';
 import { Drawer } from '@/components/shared/Drawer';
 import { ResourceLink } from '@/components/shared/ResourceLink';
+import { OpenSourceOrgAvatar } from '@/components/shared/OpenSourceOrgAvatar';
+
 import { TaskEditDrawer } from '@/components/mentor/TaskEditDrawer';
 import taskApi from '@/lib/services/task-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
@@ -149,6 +151,7 @@ export function MenteeTaskDrawer({ task, onClose, onChanged }: { task: any; onCl
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-brand-200 dark:border-brand-500/30 bg-white dark:bg-slate-900 text-xs font-medium text-slate-900 dark:text-slate-100 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
                   >
+                    <OpenSourceOrgAvatar name={org.name} url={org.url} avatar={org.avatar} className="w-3.5 h-3.5 rounded-full object-cover shrink-0 border border-slate-200 dark:border-slate-700" />
                     <span>{org.name}</span>
                     <ExternalLink className="w-3 h-3 text-brand-600 dark:text-brand-400" />
                   </a>

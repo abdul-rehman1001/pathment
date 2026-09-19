@@ -9,6 +9,8 @@ import { RoadmapEditorDrawer } from '@/components/mentor/RoadmapEditorDrawer';
 import { downloadRoadmapJson } from '@/lib/utils/roadmap-json';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 
+import { OpenSourceOrgAvatar } from '@/components/shared/OpenSourceOrgAvatar';
+
 const TYPE_LABEL: Record<string, string> = { assignment: 'Assignment', project: 'Project', quiz: 'Quiz', reading: 'Reading', video: 'Video', discussion: 'Discussion', custom: 'Custom', practical: 'Practical', assessment: 'Assessment', open_source: 'Open Source' };
 
 interface ProgramOpt { id: string; name: string }
@@ -24,9 +26,10 @@ function StepLine({ step, n }: { step: OrgRoadmapStep; n: number }) {
       {step.dueOffsetDays != null && <span className="text-[11px] text-slate-400 shrink-0">+{step.dueOffsetDays}d</span>}
       {step.type === 'open_source' && Array.isArray(step.openSourceOrgs) && step.openSourceOrgs.map((org) => (
         <a key={org.id} href={org.url} target="_blank" rel="noopener noreferrer"
-          className="text-[11px] px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200 shrink-0 hover:text-teal-900 truncate max-w-[120px]"
+          className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200 shrink-0 hover:text-teal-900 truncate max-w-[130px]"
           title={org.name}>
-          {org.name}
+          <OpenSourceOrgAvatar name={org.name} url={org.url} className="w-3.5 h-3.5 rounded-full object-cover shrink-0 border border-teal-300" />
+          <span className="truncate">{org.name}</span>
         </a>
       ))}
     </div>

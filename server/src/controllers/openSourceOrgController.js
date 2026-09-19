@@ -16,3 +16,9 @@ exports.create = catchAsync(async (req, res) => {
     successResponse(created ? 'Organization created' : 'Organization already exists', { org })
   );
 });
+
+exports.searchGithub = catchAsync(async (req, res) => {
+  const orgs = await openSourceOrgService.searchGithubOrgs(req.query.q || '');
+  res.json(successResponse('GitHub orgs retrieved', { orgs }));
+});
+

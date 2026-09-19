@@ -5,6 +5,8 @@ import { Check, ExternalLink, Loader2, Plus, Search, X } from 'lucide-react';
 import { openSourceOrgsApi, type OpenSourceOrg } from '@/lib/services/open-source-orgs-api';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
+import { OpenSourceOrgAvatar } from '@/components/shared/OpenSourceOrgAvatar';
+
 
 interface GithubOrg {
   login: string;
@@ -28,19 +30,31 @@ export interface OpenSourceOrgPickerProps {
 
 async function fetchGithubOrgs(query: string): Promise<CombinedOrg[]> {
   if (!query.trim()) return [];
-  const res = await fetch(
-    `https://api.github.com/search/users?q=${encodeURIComponent(query)}+type:org&per_page=8`,
-    { headers: { Accept: 'application/vnd.github+json' } }
-  );
-  if (!res.ok) return [];
-  const data = await res.json();
-  return (data.items || []).map((g: GithubOrg) => ({
-    id: null,
-    name: g.login,
-    url: g.html_url,
-    avatar: g.avatar_url,
-    source: 'github' as const,
-  }));
+  try {
+    const res: any = await openSourceOrgsApi.searchGithub(query);
+    const orgs = res?.data?.orgs ?? [];
+    if (Array.isArray(orgs) && orgs.length > 0) return orgs;
+  } catch {
+    // Fallback to client fetch if backend search fails
+  }
+
+  try {
+    const res = await fetch(
+      `https://api.github.com/search/users?q=${encodeURIComponent(query)}+type:org&per_page=8`,
+      { headers: { Accept: 'application/vnd.github+json' } }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.items || []).map((g: GithubOrg) => ({
+      id: null,
+      name: g.login,
+      url: g.html_url,
+      avatar: g.avatar_url,
+      source: 'github' as const,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 function mergeResults(local: OpenSourceOrg[], github: CombinedOrg[]): CombinedOrg[] {
@@ -172,9 +186,11 @@ export function OpenSourceOrgPicker({ value, onChange, multiple = false }: OpenS
             {selectedList.map((org, idx) => (
               <div
                 key={org.id ? `${org.id}-${idx}` : `${org.name.toLowerCase()}-${idx}`}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 text-xs font-medium shadow-xs"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-2 py-1 text-xs font-medium shadow-xs"
               >
+                <OpenSourceOrgAvatar name={org.name} url={org.url} avatar={(org as any).avatar} className="w-4 h-4 rounded-full object-cover shrink-0 border border-slate-200 dark:border-slate-700" />
                 <span className="truncate max-w-[140px] font-semibold text-slate-900 dark:text-slate-100">{org.name}</span>
+
                 <a
                   href={org.url}
                   target="_blank"
@@ -241,13 +257,8 @@ export function OpenSourceOrgPicker({ value, onChange, multiple = false }: OpenS
                   {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
                 </div>
 
-                {org.avatar ? (
-                  <img src={org.avatar} alt={org.name} className="w-6 h-6 rounded-full shrink-0 object-cover border border-slate-200 dark:border-slate-700" />
-                ) : (
-                  <div className="w-6 h-6 rounded-full bg-brand-100 dark:bg-brand-900 shrink-0 flex items-center justify-center text-[10px] font-bold text-brand-700 dark:text-brand-200">
-                    {org.name.charAt(0).toUpperCase()}
-                  </div>
-                )}
+                <OpenSourceOrgAvatar name={org.name} url={org.url} avatar={org.avatar} className="w-6 h-6 rounded-full shrink-0 object-cover border border-slate-200 dark:border-slate-700" />
+
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     <p className={`text-sm font-medium truncate ${isSelected ? 'text-brand-950 dark:text-brand-100 font-semibold' : 'text-slate-900 dark:text-slate-100'}`}>

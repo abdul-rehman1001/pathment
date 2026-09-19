@@ -15,5 +15,10 @@ export const openSourceOrgsApi = {
     }),
 
   create: (data: { name: string; url: string }) =>
-    apiClient.post<{ org: OpenSourceOrg }>('/open-source-orgs', data)
+    apiClient.post<{ org: OpenSourceOrg }>('/open-source-orgs', data),
+
+  searchGithub: (query: string) =>
+    apiClient.get<{ orgs: any[] }>('/open-source-orgs/github-search', {
+      params: { q: query }
+    })
 };

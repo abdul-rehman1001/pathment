@@ -34,3 +34,5 @@ export { MultiDaySelectDropdown, DAYS_LIST } from './MultiDaySelectDropdown';
 export { default as ConfirmModal } from './ConfirmModal';
 export { default as DuplicateWarnModal } from './DuplicateWarnModal';
 export { OpenSourceOrgPicker } from './OpenSourceOrgPicker';
+export { OpenSourceOrgAvatar, getOrgAvatarUrl } from './OpenSourceOrgAvatar';
+

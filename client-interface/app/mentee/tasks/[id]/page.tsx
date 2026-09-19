@@ -1,5 +1,6 @@
 'use client';
 
+import { OpenSourceOrgAvatar } from '@/components/shared/OpenSourceOrgAvatar';
 import { use, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -257,6 +258,7 @@ export default function TaskDetailsPage({ params }: PageProps) {
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-brand-200 dark:border-brand-500/30 bg-white dark:bg-slate-900 hover:bg-brand-50 dark:hover:bg-slate-800 text-sm font-medium text-slate-900 dark:text-slate-100 shadow-xs transition-colors group"
                 >
+                  <OpenSourceOrgAvatar name={org.name} url={org.url} avatar={org.avatar} className="w-4 h-4 rounded-full object-cover shrink-0 border border-slate-200 dark:border-slate-700" />
                   <span>{org.name}</span>
                   <ExternalLink className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400 group-hover:underline" />
                 </a>
