@@ -4,3 +4,5 @@ export { useDebounce } from './useDebounce';
 export { useFormDraft, clearFormDraft } from './useFormDraft';
 export { useActivityTracker } from './useActivityTracker';
 export { useNavPreferences } from './useNavPreferences';
+export { useAIConnections, useAIQuota } from './useAIConnections';
+export { useAIConnectionsTab } from './useAIConnectionsTab';

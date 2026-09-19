@@ -1,20 +1,10 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useRef } from 'react';
 import { UploadCloud, FileText, Trash2, Loader2, CheckCircle2, AlertCircle, Bot, BookOpenCheck, HelpCircle, Lightbulb, Circle, KeyRound, Sparkles, Lock } from 'lucide-react';
-import { useAutoReply } from '@/lib/hooks/mentor';
-import { qk, useApiQuery, STALE } from '@/lib/query';
-import { messagingApi } from '@/lib/services/messaging-api';
-import { toast } from 'sonner';
+import { useDocumentsTab } from '@/lib/hooks/mentor';
+import { AutoReplyQuotaCard } from './AutoReplyQuotaCard';
 import { ConfirmDialog } from '@/components/admin/ui';
-
-interface Document {
-  id: string;
-  fileName: string;
-  status: 'processing' | 'completed' | 'failed';
-  errorMessage?: string;
-  createdAt: string;
-}
 
 interface DocumentsTabProps {
   autoReplyEnabled?: boolean;
@@ -28,50 +18,24 @@ const STEP_ICON: Record<string, typeof KeyRound> = {
   style: Sparkles,
 };
 
-const NO_DOCUMENTS: Document[] = [];
+export function DocumentsTab(props: DocumentsTabProps = {}) {
+  const { autoReplyEnabled = false } = props;
+  const {
+    documents,
+    loading,
+    canEnable,
+    steps,
+    uploading,
+    deleting,
+    toggling,
+    deleteDocumentId,
+    setDeleteDocumentId,
+    handleToggleAutoReply,
+    uploadFile,
+    handleDeleteConfirm,
+  } = useDocumentsTab(props);
 
-export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: DocumentsTabProps = {}) {
-  // Readiness comes from the server, which also enforces it. The toggle is not
-  // a toggle until auto reply would actually work: switching it on early would
-  // leave a mentee answered out of an empty knowledge base, under a name they
-  // trust.
-  const { status, refetch: refetchStatus } = useAutoReply();
-  const canEnable = status?.canEnable ?? false;
-  const steps = status?.steps ?? [];
-  const [uploading, setUploading] = useState(false);
-  const [deleteDocumentId, setDeleteDocumentId] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const [toggling, setToggling] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleToggleAutoReply = async () => {
-    if (!onAutoReplyChange) return;
-
-    // Turning it ON needs the prerequisites. Turning it OFF is always allowed:
-    // somebody must be able to stop it whatever state their setup is in.
-    if (!autoReplyEnabled && !canEnable) {
-      toast.error('Finish the setup below first');
-      return;
-    }
-
-    setToggling(true);
-    try {
-      await onAutoReplyChange(!autoReplyEnabled);
-      await refetchStatus();
-    } finally {
-      setToggling(false);
-    }
-  };
-
-  // Poll only while something is still processing, and let a 429 pause it
-  // rather than being ignored (the old setInterval swallowed every error).
-  const { data: documents = NO_DOCUMENTS, loading, refetch: fetchDocuments } = useApiQuery<Document[]>({
-    queryKey: qk.messaging.mentorDocuments,
-    queryFn: () => messagingApi.getMentorDocuments(),
-    staleTime: STALE.short,
-    refetchInterval: (docs) => (docs?.some((d) => d.status === 'processing') ? 10_000 : false),
-    errorMessage: 'Failed to load documents',
-  });
 
   const handleFileDrop = async (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -82,43 +46,10 @@ export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: Do
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      await uploadFile(e.target.files[0]);
-    }
-  };
-
-  const uploadFile = async (file: File) => {
-    if (file.type !== 'application/pdf') {
-      toast.error('Only PDF files are supported.');
-      return;
-    }
-
-    setUploading(true);
-    try {
-      await messagingApi.uploadMentorDocument(file);
-      toast.success('Document uploaded successfully. It is now processing.');
-      await fetchDocuments();
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Failed to upload document.');
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) {
+      const ok = await uploadFile(e.target.files[0]);
+      if (ok && fileInputRef.current) {
         fileInputRef.current.value = '';
       }
-    }
-  };
-
-  const handleDeleteConfirm = async () => {
-    if (!deleteDocumentId) return;
-    setDeleting(true);
-    try {
-      await messagingApi.deleteMentorDocument(deleteDocumentId);
-      toast.success('Document deleted');
-      await fetchDocuments();
-    } catch (err) {
-      toast.error('Failed to delete document');
-    } finally {
-      setDeleting(false);
-      setDeleteDocumentId(null);
     }
   };
 
@@ -181,6 +112,9 @@ export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: Do
           </button>
         </div>
       </div>
+
+      {/* Monthly AI Auto-Reply Quota Card */}
+      <AutoReplyQuotaCard />
 
 
       {/* What auto reply needs, in the order it has to happen. Shown while

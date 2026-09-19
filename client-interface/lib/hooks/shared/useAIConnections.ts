@@ -76,3 +76,8 @@ export function useAIConnections() {
 
   return { connections, routing, quota, loading, busyId, refetch, addKey, removeKey, testKey, setRoute, setQuotaLimit };
 }
+
+export function useAIQuota() {
+  const { quota, loading, setQuotaLimit, refetch } = useAIConnections();
+  return { quota, loading, setQuotaLimit, refetch };
+}
