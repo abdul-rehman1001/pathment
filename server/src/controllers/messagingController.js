@@ -192,7 +192,7 @@ exports.deleteNotification = catchAsync(async (req, res) => {
 exports.searchUsers = catchAsync(async (req, res) => {
   const users = await messagingService.searchUsers(req.user.id, req.query.q, {
     role: req.query.role,
-    limit: req.query.limit
+    limit: req.query.limit ? parseInt(req.query.limit, 10) : undefined
   });
 
   res.status(200).json(successResponse('Users fetched successfully', { users }));
