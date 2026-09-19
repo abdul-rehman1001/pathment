@@ -17,13 +17,15 @@ import { useFormDraft, clearFormDraft } from '@/lib/hooks/shared/useFormDraft';
 import { interviewApi, type InterviewKitSummary } from '@/lib/services/interview-api';
 import { quizApi, type QuizKitSummary } from '@/lib/services/quiz-api';
 import Link from 'next/link';
-import { Mic, ListChecks } from 'lucide-react';
+import { Mic, ListChecks, Code2 } from 'lucide-react';
+import { OpenSourceOrgPicker } from '@/components/shared/OpenSourceOrgPicker';
+import type { OpenSourceOrg } from '@/lib/services/open-source-orgs-api';
 
 type AssignSource = 'custom' | 'roadmap';
 
-const TYPES = ['assignment', 'project', 'quiz', 'reading', 'video', 'discussion', 'interview'] as const;
+const TYPES = ['assignment', 'project', 'quiz', 'reading', 'video', 'discussion', 'interview', 'open_source'] as const;
 const TYPE_LABEL: Record<string, string> = {
-  assignment: 'Assignment', project: 'Project', quiz: 'Quiz', reading: 'Reading', video: 'Video', discussion: 'Discussion', interview: 'Interview',
+  assignment: 'Assignment', project: 'Project', quiz: 'Quiz', reading: 'Reading', video: 'Video', discussion: 'Discussion', interview: 'Interview', open_source: 'Open Source',
 };
 const DIFFICULTIES = ['easy', 'medium', 'hard', 'expert'] as const;
 const DUE_PRESETS: { label: string; days: number }[] = [
@@ -89,6 +91,7 @@ export function AssignTaskDrawer({
   const [resources, setResources] = useState<{ title: string; url: string }[]>([]);
   const [trackId, setTrackId] = useState<string>('');
   const [tracks, setTracks] = useState<Track[]>([]);
+  const [openSourceOrgs, setOpenSourceOrgs] = useState<OpenSourceOrg[]>([]);
 
   // Interview type: pick a kit + per-assignment options (retake / camera / AI).
   const [kits, setKits] = useState<InterviewKitSummary[]>([]);
@@ -348,13 +351,14 @@ export function AssignTaskDrawer({
         deliverable: deliverable.trim() || undefined,
         acceptanceCriteria: cleanCriteria,
         resources: cleanResources.length ? cleanResources : undefined,
-        // Interview tasks carry the kit + options; the runner/grading use these.
         ...(type === 'interview' && kitId
           ? { interview: { kitId, allowRetake, cameraRequired, aiGradingEnabled: aiGrading } }
           : {}),
-        // Quiz tasks carry the kit + options (evaluation mode / retake).
         ...(type === 'quiz' && quizKitId
           ? { quiz: { kitId: quizKitId, evaluationMode: quizEvalMode, allowRetake: quizAllowRetake } }
+          : {}),
+        ...(type === 'open_source' && openSourceOrgs.length > 0
+          ? { openSourceOrgIds: openSourceOrgs.map((o) => o.id) }
           : {}),
       };
       if (mode === 'bulk') {
@@ -546,6 +550,15 @@ export function AssignTaskDrawer({
                       <Link href="/mentor/quizzes" className="inline-block text-xs text-brand-600 hover:text-brand-700">Manage quizzes →</Link>
                     </>
                   )}
+                </div>
+              )}
+
+              {type === 'open_source' && (
+                <div className="rounded-xl border border-brand-200 bg-brand-50/50 dark:border-brand-500/20 dark:bg-brand-500/5 p-4 space-y-3">
+                  <div className="flex items-center gap-2 text-sm font-medium text-slate-800 dark:text-slate-200">
+                    <Code2 className="w-4 h-4 text-brand-600 dark:text-brand-400" /> Organization <span className="text-red-500">*</span>
+                  </div>
+                  <OpenSourceOrgPicker multiple value={openSourceOrgs} onChange={setOpenSourceOrgs} />
                 </div>
               )}
 

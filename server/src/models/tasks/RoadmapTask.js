@@ -27,7 +27,7 @@ module.exports = (sequelize, DataTypes) => {
         // 'assignment' added to match the new-design TaskType
         // (assignment/project/quiz/reading/video/discussion). 'interview' =
         // structured voice/code/text interview backed by an InterviewKit.
-        isIn: [['reading', 'video', 'exercise', 'project', 'quiz', 'discussion', 'practical', 'assessment', 'custom', 'assignment', 'interview']]
+        isIn: [['reading', 'video', 'exercise', 'project', 'quiz', 'discussion', 'practical', 'assessment', 'custom', 'assignment', 'interview', 'open_source']]
       }
     },
     difficulty: {
