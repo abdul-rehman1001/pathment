@@ -426,7 +426,9 @@ class AuthService {
     }
 
     // Check if account is active
-    if (user.status !== 'active') {
+    if (user.status === 'suspended') {
+      throw new AuthenticationError('Your account has been blocked. Please contact an administrator.');
+    } else if (user.status !== 'active') {
       throw new AuthenticationError(AUTH_MESSAGES.ACCOUNT_DISABLED);
     }
 
@@ -487,6 +489,11 @@ class AuthService {
     userResponse.capabilities = await authzService.getCapabilities(user, { assignments });
     userResponse.permissions = await authzService.getPermissionUnion(user);
     userResponse.canAccessAdmin = await authzService.hasAdminAccess(user, { assignments });
+
+    if (user.role === 'mentee') {
+      const gamificationService = require('./gamificationService');
+      gamificationService.awardDailyLoginPoint(user.id).catch(() => {});
+    }
 
     return {
       user: userResponse,

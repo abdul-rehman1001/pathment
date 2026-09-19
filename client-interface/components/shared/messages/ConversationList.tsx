@@ -103,20 +103,21 @@ export default function ConversationList({
   }, [conversations, activeTab, searchQuery]);
 
   return (
-    <div className="flex flex-col h-full bg-card rounded-2xl border border-slate-200/90 dark:border-slate-800 overflow-hidden shadow-xs">
+    <div className="flex flex-col h-full bg-card rounded-2xl border border-border overflow-hidden shadow-xs">
       {/* Sidebar Header */}
-      <div className="p-3 sm:p-4 border-b border-slate-200/80 dark:border-slate-800 space-y-3">
+      <div className="p-3 sm:p-4 border-b border-border space-y-3">
         <div className="flex items-center justify-between gap-2">
-          <div>
-            <h1 className="text-lg font-bold text-slate-900 dark:text-slate-100">Messages</h1>
-            <p className="text-xs text-slate-500 capitalize">{role} workspace</p>
+          <div className="min-w-0">
+            <h1 className="text-lg font-bold text-foreground truncate">Messages</h1>
+            <p className="text-xs text-muted-foreground capitalize">{role} workspace</p>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 shrink-0">
             <UserSearchCombobox onSelect={onStartConversation} />
             <button
               onClick={onRefresh}
               title="Refresh conversations"
-              className="p-2 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              className="h-9 w-9 flex items-center justify-center border border-border rounded-xl text-muted-foreground hover:text-foreground hover:bg-slate-100 dark:hover:bg-white/5 transition-colors shrink-0"
+              aria-label="Refresh conversations"
             >
               <RefreshCw className="w-4 h-4" />
             </button>
@@ -125,24 +126,24 @@ export default function ConversationList({
 
         {/* Search input */}
         <div className="relative">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search conversations..."
-            className="w-full pl-9 pr-3 py-1.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800 rounded-xl text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
+            className="w-full pl-9 pr-3 py-1.5 bg-slate-100/70 dark:bg-black/30 border border-border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
           />
         </div>
 
         {/* Filter tabs */}
-        <div className="flex items-center gap-1 p-0.5 bg-slate-100 dark:bg-slate-900/80 rounded-xl">
+        <div className="flex items-center gap-1 p-0.5 bg-slate-100/80 dark:bg-black/40 border border-transparent dark:border-border/60 rounded-xl">
           <button
             onClick={() => onTabChange('all')}
             className={`flex-1 py-1 px-2.5 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-1 ${
               activeTab === 'all'
-                ? 'bg-card text-slate-900 dark:text-slate-100 shadow-2xs'
-                : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                ? 'bg-card text-foreground shadow-2xs font-semibold'
+                : 'text-muted-foreground hover:text-foreground'
             }`}
           >
             All {allCount !== undefined ? `(${allCount})` : ''}
@@ -151,8 +152,8 @@ export default function ConversationList({
             onClick={() => onTabChange('unread')}
             className={`flex-1 py-1 px-2.5 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-1 ${
               activeTab === 'unread'
-                ? 'bg-card text-slate-900 dark:text-slate-100 shadow-2xs'
-                : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                ? 'bg-card text-foreground shadow-2xs font-semibold'
+                : 'text-muted-foreground hover:text-foreground'
             }`}
           >
             Unread
@@ -166,8 +167,8 @@ export default function ConversationList({
             onClick={() => onTabChange('archived')}
             className={`flex-1 py-1 px-2.5 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-1 ${
               activeTab === 'archived'
-                ? 'bg-card text-slate-900 dark:text-slate-100 shadow-2xs'
-                : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                ? 'bg-card text-foreground shadow-2xs font-semibold'
+                : 'text-muted-foreground hover:text-foreground'
             }`}
           >
             Archived {archivedCount !== undefined ? `(${archivedCount})` : ''}
@@ -176,30 +177,30 @@ export default function ConversationList({
       </div>
 
       {/* Conversations list stream */}
-      <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/60">
+      <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-border/60">
         {isBootstrapping ? (
           <div className="p-3 space-y-3">
             {[1, 2, 3, 4].map((i) => (
               <div key={i} className="flex items-center gap-3 p-2 animate-pulse">
-                <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-800 shrink-0" />
+                <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-white/10 shrink-0" />
                 <div className="flex-1 space-y-2">
-                  <div className="h-3.5 bg-slate-200 dark:bg-slate-800 rounded w-2/3" />
-                  <div className="h-3 bg-slate-100 dark:bg-slate-800/60 rounded w-4/5" />
+                  <div className="h-3.5 bg-slate-200 dark:bg-white/10 rounded w-2/3" />
+                  <div className="h-3 bg-slate-100 dark:bg-white/5 rounded w-4/5" />
                 </div>
               </div>
             ))}
           </div>
         ) : filteredConversations.length === 0 ? (
-          <div className="p-8 text-center text-slate-500">
-            <MessageSquare className="w-8 h-8 text-slate-300 dark:text-slate-700 mx-auto mb-2" />
+          <div className="p-8 text-center text-muted-foreground">
+            <MessageSquare className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
             {/* A list emptied by the clan picker is not an empty inbox. Name the
                 filter, count what it is holding back, and offer the way out. */}
             {!searchQuery && activeTab !== 'unread' && hiddenByClan > 0 ? (
               <>
-                <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                <p className="text-sm font-medium text-foreground">
                   No conversations in {activeClanName || 'this clan'}
                 </p>
-                <p className="text-xs text-slate-400 mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   {hiddenByClan} conversation{hiddenByClan === 1 ? ' is' : 's are'} in your other clans.
                 </p>
                 {onShowAllClans && (
@@ -214,10 +215,10 @@ export default function ConversationList({
               </>
             ) : (
               <>
-                <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                <p className="text-sm font-medium text-foreground">
                   {searchQuery ? 'No matching chats' : activeTab === 'unread' ? 'No unread messages' : 'No conversations yet'}
                 </p>
-                <p className="text-xs text-slate-400 mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   {searchQuery ? 'Try searching another name' : 'Click "New Chat" to message someone'}
                 </p>
               </>
@@ -237,8 +238,8 @@ export default function ConversationList({
                 onClick={() => onSelectConversation(conversation.id)}
                 className={`w-full text-left p-3.5 transition-all flex items-start gap-3 relative cursor-pointer group ${
                   isSelected
-                    ? 'bg-brand-50/80 dark:bg-brand-500/10'
-                    : 'hover:bg-slate-50 dark:hover:bg-slate-900/40'
+                    ? 'bg-brand-500/10'
+                    : 'hover:bg-slate-100/60 dark:hover:bg-white/5'
                 }`}
               >
                 {/* Active Indicator Bar */}
@@ -253,10 +254,10 @@ export default function ConversationList({
                     alt={title}
                     width={40}
                     height={40}
-                    className="w-10 h-10 rounded-full object-cover shrink-0 border border-slate-200 dark:border-slate-800 mt-0.5"
+                    className="w-10 h-10 rounded-full object-cover shrink-0 border border-border mt-0.5"
                   />
                 ) : (
-                  <div className="w-10 h-10 rounded-full bg-brand-100 dark:bg-brand-500/20 text-brand-700 dark:text-brand-300 flex items-center justify-center font-bold text-sm shrink-0 border border-brand-200/50 mt-0.5">
+                  <div className="w-10 h-10 rounded-full bg-brand-500/15 text-brand-600 dark:text-brand-400 flex items-center justify-center font-bold text-sm shrink-0 border border-brand-500/30 mt-0.5">
                     {(participant?.firstName?.[0] || title[0] || 'C').toUpperCase()}
                   </div>
                 )}

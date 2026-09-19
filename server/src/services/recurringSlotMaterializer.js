@@ -1,7 +1,5 @@
-const { Op } = require('sequelize');
 const { models } = require('../db');
 const { nextOccurrences } = require('../utils/reviewRecurrence');
-const taskService = require('./taskService');
 
 const HORIZON_DAYS = 14;
 
@@ -55,7 +53,7 @@ class RecurringSlotMaterializer {
 
   /**
    * Materialize occurrences for a specific slot across all mentees assigned by mentorId.
-   * Driven by mentor's "Activate now" button.
+   * Driven by mentor's "Activate now" button or fire-and-forget after slot creation.
    */
   async activateSlotForMentor(mentorId, slotId, menteeIds = null) {
     const slug = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'slot';
@@ -91,8 +89,10 @@ class RecurringSlotMaterializer {
 
   /**
    * Process a single recurring slot for a mentee and create missing occurrence tasks.
+   * Uses a batch query for existing tasks to minimise DB round-trips.
    */
   async _processSlotForMentee(menteeId, mentorId, slotId, recConfig) {
+    const taskService = require('./taskService');
     const now = new Date();
     const horizon = new Date(now.getTime() + HORIZON_DAYS * 86400000);
     const targetDays = Array.isArray(recConfig.daysOfWeek) && recConfig.daysOfWeek.length > 0
@@ -113,13 +113,30 @@ class RecurringSlotMaterializer {
       rawOccurrences.push(...occs);
     }
 
+    // Deduplicate by date string
     const occMap = new Map();
     for (const o of rawOccurrences) {
       if (!occMap.has(o.dateStr)) occMap.set(o.dateStr, o);
     }
     const occurrences = [...occMap.values()].sort((a, b) => a.start.getTime() - b.start.getTime());
+
     let createdForSlot = 0;
     let updatedForSlot = 0;
+
+    if (occurrences.length === 0) {
+      return { createdForSlot, updatedForSlot };
+    }
+
+    // Batch-fetch all existing tasks for this slot + occurrence dates
+    const existings = await models.AssignedTask.findAll({
+      where: {
+        menteeId,
+        scheduleSlotId: slotId,
+        occurrenceDate: occurrences.map((o) => o.dateStr)
+      },
+      include: [{ model: models.RoadmapTask, as: 'roadmapTask' }]
+    });
+    const existingMap = new Map(existings.map((e) => [e.occurrenceDate, e]));
 
     for (const occ of occurrences) {
       const occurrenceDate = occ.dateStr;
@@ -132,25 +149,32 @@ class RecurringSlotMaterializer {
       const rawType = String(recConfig.type || 'discussion').toLowerCase();
       const type = ['discussion', 'project', 'reading', 'exercise'].includes(rawType) ? rawType : 'discussion';
 
-      const existing = await models.AssignedTask.findOne({
-        where: {
-          menteeId,
-          scheduleSlotId: slotId,
-          occurrenceDate,
-        },
-      });
-
+      const existing = existingMap.get(occurrenceDate);
       if (existing) {
         try {
-          if (existing.roadmapTaskId) {
-            await models.RoadmapTask.update(
-              { title, type, description: `Recurring task (${title}) for ${occurrenceDate}` },
-              { where: { id: existing.roadmapTaskId } }
-            );
+          let updatedAny = false;
+          const expectedDesc = `Recurring task (${title}) for ${occurrenceDate}`;
+
+          // Update RoadmapTask only if fields actually differ
+          if (existing.roadmapTask) {
+            const rt = existing.roadmapTask;
+            if (rt.title !== title || rt.type !== type || rt.description !== expectedDesc) {
+              await rt.update({ title, type, description: expectedDesc });
+              updatedAny = true;
+            }
           }
-          await existing.update({ dueDate });
-          updatedForSlot++;
-        } catch (_) {}
+
+          // Update AssignedTask only if the due date actually differs
+          const existingDueDateStr = existing.dueDate ? new Date(existing.dueDate).toISOString().split('T')[0] : null;
+          if (existingDueDateStr !== dueDate) {
+            await existing.update({ dueDate });
+            updatedAny = true;
+          }
+
+          if (updatedAny) updatedForSlot++;
+        } catch (err) {
+          console.error(`[recurringSlotMaterializer] Error updating occurrence ${occurrenceDate}:`, err.message);
+        }
         continue;
       }
 
@@ -164,6 +188,7 @@ class RecurringSlotMaterializer {
             dueDate,
             scheduleSlotId: slotId,
             occurrenceDate,
+            skipNotification: true,
           },
           mentorId
         );

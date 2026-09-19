@@ -782,6 +782,24 @@ class GamificationService {
     const count = await models.Badge.count();
     return count;
   }
+
+  async awardDailyLoginPoint(userId) {
+    const profile = await models.MenteeProfile.findOne({ where: { userId } });
+    if (!profile) return;
+
+    const today = todayInZone();
+    const existing = await models.PointsHistory.findOne({
+      where: {
+        userId,
+        sourceType: 'daily_login',
+        createdAt: { [Sequelize.Op.gte]: new Date(today) }
+      }
+    });
+
+    if (existing) return;
+
+    await this.awardPoints(userId, 1, 'daily_login', null, 'Daily login bonus');
+  }
 }
 
 module.exports = new GamificationService();

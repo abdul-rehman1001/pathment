@@ -748,40 +748,42 @@ export default function MessageCenter({ role }: MessageCenterProps) {
             const draftCount = conversationDrafts.length;
 
             return isDraftsExpanded ? (
-              <div className="absolute bottom-20 right-6 z-20 w-[420px] bg-white/80 backdrop-blur-xl border border-brand-200 shadow-2xl rounded-2xl p-4 overflow-y-auto max-h-[50vh] transition-all animate-in slide-in-from-right-4">
+              <div className="absolute bottom-20 right-6 z-20 w-[420px] max-w-[calc(100%-3rem)] bg-card/95 backdrop-blur-xl border border-border shadow-2xl rounded-2xl p-4 overflow-y-auto max-h-[50vh] transition-all animate-in slide-in-from-right-4">
                 <div className="flex items-center justify-between mb-3 px-1">
                   <div className="flex items-center gap-2">
-                    <div className="p-1.5 bg-brand-100 rounded-lg">
-                      <Wand2 className="w-4 h-4 text-brand-600" />
+                    <div className="p-1.5 bg-brand-500/15 text-brand-600 dark:text-brand-400 rounded-lg border border-brand-500/20">
+                      <Wand2 className="w-4 h-4" />
                     </div>
-                    <h3 className="text-sm font-bold text-slate-800">AI Drafts</h3>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-brand-100 text-brand-700 font-semibold">
+                    <h3 className="text-sm font-bold text-foreground">AI Drafts</h3>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-brand-500/15 text-brand-600 dark:text-brand-400 font-semibold border border-brand-500/20">
                       {draftCount}
                     </span>
                   </div>
-                  <button onClick={() => setIsDraftsExpanded(false)} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors">
+                  <button onClick={() => setIsDraftsExpanded(false)} className="p-1.5 hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg text-muted-foreground hover:text-foreground transition-colors" aria-label="Collapse AI drafts">
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
                 <div className="space-y-3">
                   {draftCount === 0 && !isGenerating && (
-                    <p className="text-xs text-center text-slate-400 py-3">No pending drafts for this conversation.</p>
+                    <div className="py-4 text-center">
+                      <p className="text-xs text-muted-foreground">No pending drafts for this conversation.</p>
+                    </div>
                   )}
                   {conversationDrafts.map(draft => {
                     const isEditing = editingDraftId === draft.id;
-                    const confidenceColor = draft.confidenceScore >= 0.8 ? 'text-emerald-700 bg-emerald-100/50' : 'text-amber-700 bg-amber-100/50';
+                    const confidenceColor = draft.confidenceScore >= 0.8 ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/15 border-emerald-500/20' : 'text-amber-600 dark:text-amber-400 bg-amber-500/15 border-amber-500/20';
                     return (
-                      <div key={draft.id} className="bg-white border border-brand-200 rounded-xl p-3 shadow-sm">
+                      <div key={draft.id} className="bg-slate-100/60 dark:bg-black/30 border border-border rounded-xl p-3 shadow-xs">
                         <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs font-medium text-slate-500">
-                            Replying to: <span className="text-slate-700 italic">"{draft.originalMessage?.messageText}"</span>
+                          <span className="text-xs font-medium text-muted-foreground truncate max-w-[200px]">
+                            Replying to: <span className="text-foreground italic">"{draft.originalMessage?.messageText}"</span>
                           </span>
-                          <div className="flex gap-2 items-center">
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${confidenceColor}`}>
+                          <div className="flex gap-1.5 items-center shrink-0">
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium border ${confidenceColor}`}>
                               {Math.round(draft.confidenceScore * 100)}% Confidence
                             </span>
                             {draft.groundingScore !== undefined && (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-indigo-100 text-indigo-700">
+                              <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
                                 {Math.round(draft.groundingScore * 100)}% Grounded
                               </span>
                             )}
@@ -792,13 +794,13 @@ export default function MessageCenter({ role }: MessageCenterProps) {
                             <textarea
                               value={draftEditorText}
                               onChange={(e) => setDraftEditorText(e.target.value)}
-                              className="w-full text-sm resize-none border border-brand-300 rounded-lg p-2 focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                              className="w-full text-sm resize-none bg-card border border-border text-foreground rounded-lg p-2 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 focus:outline-none"
                               rows={3}
                             />
                             <div className="flex items-center gap-2 mt-2 justify-end">
                               <button
                                 onClick={() => { setEditingDraftId(null); setDraftEditorText(''); }}
-                                className="text-xs px-3 py-1.5 text-slate-600 hover:bg-slate-100 rounded-md font-medium"
+                                className="text-xs px-3 py-1.5 text-muted-foreground hover:text-foreground hover:bg-slate-100 dark:hover:bg-white/5 rounded-md font-medium transition-colors"
                                 disabled={isApprovingDraft}
                               >
                                 Cancel
@@ -806,7 +808,7 @@ export default function MessageCenter({ role }: MessageCenterProps) {
                               <button
                                 onClick={() => handleApproveDraft(draft.id)}
                                 disabled={!draftEditorText.trim() || isApprovingDraft}
-                                className="text-xs px-3 py-1.5 bg-brand-600 text-white hover:bg-brand-700 rounded-md font-medium inline-flex items-center gap-1.5"
+                                className="text-xs px-3 py-1.5 bg-brand-600 text-white hover:bg-brand-700 rounded-md font-medium inline-flex items-center gap-1.5 transition-colors"
                               >
                                 {isApprovingDraft ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
                                 Approve & Send
@@ -815,18 +817,18 @@ export default function MessageCenter({ role }: MessageCenterProps) {
                           </div>
                         ) : (
                           <div className="mt-1">
-                            <p className="text-sm text-slate-800 whitespace-pre-wrap">{draft.draftContent}</p>
+                            <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{draft.draftContent}</p>
                             <div className="flex justify-end gap-2 mt-2">
                               <button
                                 onClick={() => handleRejectDraft(draft.id)}
                                 disabled={isRejectingDraft}
-                                className="text-xs font-medium text-slate-500 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded-md transition-colors"
+                                className="text-xs font-medium text-muted-foreground hover:text-red-500 hover:bg-red-500/10 px-2 py-1 rounded-md transition-colors"
                               >
                                 Reject
                               </button>
                               <button
                                 onClick={() => { setEditingDraftId(draft.id); setDraftEditorText(draft.draftContent); }}
-                                className="text-xs font-medium text-brand-600 hover:text-brand-700 hover:bg-brand-50 px-2 py-1 rounded-md transition-colors"
+                                className="text-xs font-medium text-brand-600 dark:text-brand-400 hover:bg-brand-500/10 px-2 py-1 rounded-md transition-colors"
                               >
                                 Review & Edit
                               </button>
@@ -838,9 +840,9 @@ export default function MessageCenter({ role }: MessageCenterProps) {
                   })}
                   {/* Generating loader row — appears while RAG pipeline is running */}
                   {isGenerating && (
-                    <div className="flex items-center gap-2.5 bg-brand-50 border border-brand-200 rounded-xl px-3 py-2.5">
+                    <div className="flex items-center gap-2.5 bg-brand-500/10 border border-brand-500/20 rounded-xl px-3 py-2.5">
                       <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-500 shrink-0" />
-                      <span className="text-xs text-brand-700 font-medium">Generating new draft…</span>
+                      <span className="text-xs text-brand-600 dark:text-brand-400 font-medium">Generating new draft…</span>
                     </div>
                   )}
                 </div>
@@ -848,7 +850,7 @@ export default function MessageCenter({ role }: MessageCenterProps) {
             ) : (
               <button
                 onClick={() => setIsDraftsExpanded(true)}
-                className="absolute bottom-20 right-6 z-20 flex items-center gap-2 bg-brand-600 text-white px-3 py-2 rounded-xl shadow-xl hover:bg-brand-700 transition-all animate-in fade-in zoom-in-95"
+                className="absolute bottom-20 right-6 z-20 flex items-center gap-2 bg-brand-600 text-white px-3 py-2 rounded-xl shadow-xl hover:bg-brand-700 active:scale-95 transition-all animate-in fade-in zoom-in-95"
               >
                 <ChevronLeft className="w-4 h-4" />
                 <span className="text-xs font-semibold">
