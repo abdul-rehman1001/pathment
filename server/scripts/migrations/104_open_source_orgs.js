@@ -42,6 +42,11 @@ async function up() {
     console.log(`Added column assigned_tasks.${TASK_COL}`);
   }
 
+  if (!await columnExists('roadmap_tasks', TASK_COL)) {
+    await sequelize.query(`ALTER TABLE roadmap_tasks ADD COLUMN ${TASK_COL} UUID[] DEFAULT '{}'`);
+    console.log(`Added column roadmap_tasks.${TASK_COL}`);
+  }
+
   await sequelize.query(`
     ALTER TABLE roadmap_tasks DROP CONSTRAINT IF EXISTS "roadmap_tasks_type_check";
     ALTER TABLE roadmap_tasks ADD CONSTRAINT "roadmap_tasks_type_check"
@@ -52,6 +57,7 @@ async function up() {
 
 async function down() {
   await sequelize.query(`ALTER TABLE assigned_tasks DROP COLUMN IF EXISTS ${TASK_COL}`);
+  await sequelize.query(`ALTER TABLE roadmap_tasks DROP COLUMN IF EXISTS ${TASK_COL}`);
   await sequelize.query(`DROP TABLE IF EXISTS ${TABLE}`);
   await sequelize.query(`
     ALTER TABLE roadmap_tasks DROP CONSTRAINT IF EXISTS "roadmap_tasks_type_check";

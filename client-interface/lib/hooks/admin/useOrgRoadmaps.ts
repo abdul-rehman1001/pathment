@@ -17,6 +17,7 @@ export interface OrgRoadmapStep {
   deliverable?: string | null;
   pointsBase?: number | null;
   resources?: { id?: string; title: string; url: string; resourceType?: string | null }[];
+  openSourceOrgs?: { id: string; name: string; url: string }[];
 }
 
 export interface OrgRoadmap {
