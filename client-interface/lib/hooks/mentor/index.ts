@@ -86,10 +86,10 @@ export type {
   MentorAvailabilitySettings,
 } from './useMentorSettings';
 
-export {
-  useClanPublicJoin,
-  publicJoinRequestLabel,
-  publicJoinBlockedMessage,
-  publicJoinRequesterLocation,
-} from './useClanPublicJoin';
+export { useClanPublicJoin, publicJoinRequestLabel, publicJoinBlockedMessage, publicJoinRequesterLocation } from './useClanPublicJoin';
 export type { UseClanPublicJoinReturn, PublicJoinWindowDraft } from './useClanPublicJoin';
+
+export { useAIConnections, useAIQuota } from '../shared/useAIConnections';
+export { useAIConnectionsTab } from '../shared/useAIConnectionsTab';
+export { useDocumentsTab } from './useDocumentsTab';
+export type { Document } from './useDocumentsTab';
