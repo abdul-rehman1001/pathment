@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef } from 'react';
 import Image from 'next/image';
-import { Archive, ArrowLeft, Loader2, MessageSquare, MoreVertical, ShieldCheck, Trash2, UserCheck } from 'lucide-react';
+import { Archive, ArrowLeft, Loader2, MessageSquare, MoreVertical, ShieldCheck, Trash2, User, UserCheck } from 'lucide-react';
 
 import type { ChatMessage, ConversationSummary } from '@/lib/types/messaging';
 import MessageItem from './MessageItem';
@@ -155,15 +155,15 @@ export default function ChatWindow({
   const recipient = selectedConversation?.participants?.[0];
 
   return (
-    <div className="flex flex-col h-full bg-card rounded-2xl border border-slate-200/90 dark:border-slate-800 overflow-hidden shadow-xs">
+    <div className="flex flex-col h-full bg-card rounded-2xl border border-border overflow-hidden shadow-xs">
       {/* Header */}
-      <div className="p-3 sm:p-4 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between bg-card/80 backdrop-blur-sm z-10">
+      <div className="p-3 sm:p-4 border-b border-border flex items-center justify-between bg-card/90 backdrop-blur-sm z-10">
         <div className="flex items-center gap-3 min-w-0">
           {/* Mobile back button */}
           {onBackToList && (
             <button
               onClick={onBackToList}
-              className="xl:hidden p-2 -ml-1 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors shrink-0"
+              className="xl:hidden p-2 -ml-1 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 rounded-xl transition-colors shrink-0"
               aria-label="Back to conversation list"
             >
               <ArrowLeft className="w-5 h-5" />
@@ -178,38 +178,43 @@ export default function ChatWindow({
                   alt={selectedTitle}
                   width={40}
                   height={40}
-                  className="w-10 h-10 rounded-full object-cover shrink-0 border border-slate-200 dark:border-slate-800"
+                  className="w-10 h-10 rounded-full object-cover shrink-0 border border-border"
                 />
               ) : (
-                <div className="w-10 h-10 rounded-full bg-brand-100 dark:bg-brand-500/20 text-brand-700 dark:text-brand-300 flex items-center justify-center font-bold text-sm shrink-0 border border-brand-200/50">
+                <div className="w-10 h-10 rounded-full bg-brand-500/15 text-brand-600 dark:text-brand-400 flex items-center justify-center font-bold text-sm shrink-0 border border-brand-500/30">
                   {(recipient?.firstName?.[0] || selectedTitle[0] || 'C').toUpperCase()}
                 </div>
               )}
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <h2 className="text-slate-900 dark:text-slate-100 font-semibold text-base truncate">
+                  <h2 className="text-foreground font-semibold text-base truncate">
                     {selectedTitle}
                   </h2>
                   {recipient?.role === 'mentor' && (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-brand-50 dark:bg-brand-500/20 text-brand-700 dark:text-brand-300 px-1.5 py-0.5 rounded-full border border-brand-200/50">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-brand-500/15 text-brand-700 dark:text-brand-300 px-1.5 py-0.5 rounded-full border border-brand-500/30">
                       <UserCheck className="w-3 h-3" /> Mentor
                     </span>
                   )}
+                  {recipient?.role === 'mentee' && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.5 rounded-full border border-emerald-500/30">
+                      <User className="w-3 h-3" /> Mentee
+                    </span>
+                  )}
                   {recipient?.role === 'admin' && (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-amber-50 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded-full border border-amber-200/50">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-amber-500/15 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded-full border border-amber-500/30">
                       <ShieldCheck className="w-3 h-3" /> Admin
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                <p className="text-xs text-muted-foreground truncate">
                   {recipient?.email || 'Direct message'}
                 </p>
               </div>
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              <MessageSquare className="w-5 h-5 text-brand-600" />
-              <h2 className="text-slate-900 dark:text-slate-100 font-semibold">Select a conversation</h2>
+              <MessageSquare className="w-5 h-5 text-brand-500" />
+              <h2 className="text-foreground font-semibold">Select a conversation</h2>
             </div>
           )}
         </div>
@@ -219,7 +224,7 @@ export default function ChatWindow({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
-                className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors shrink-0"
+                className="p-2 text-muted-foreground hover:text-foreground hover:bg-slate-100 dark:hover:bg-white/5 rounded-xl transition-colors shrink-0"
                 aria-label="Chat options"
               >
                 <MoreVertical className="w-5 h-5" />
@@ -249,17 +254,17 @@ export default function ChatWindow({
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
-        className="flex-1 min-h-0 p-4 overflow-y-auto bg-slate-50/60 dark:bg-slate-950/40 space-y-1"
+        className="flex-1 min-h-0 p-4 overflow-y-auto bg-slate-100/30 dark:bg-black/25 space-y-1"
       >
         {!selectedConversation ? (
-          <div className="h-full flex flex-col items-center justify-center p-6 text-center text-slate-500">
-            <div className="w-16 h-16 rounded-full bg-brand-50 dark:bg-brand-500/10 text-brand-600 flex items-center justify-center mb-3">
+          <div className="h-full flex flex-col items-center justify-center p-6 text-center text-muted-foreground">
+            <div className="w-16 h-16 rounded-2xl bg-brand-500/10 text-brand-500 flex items-center justify-center mb-3 border border-brand-500/20 shadow-xs">
               <MessageSquare className="w-8 h-8" />
             </div>
-            <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200 mb-1">
+            <h3 className="text-base font-semibold text-foreground mb-1">
               Your Messages
             </h3>
-            <p className="text-sm text-slate-500 max-w-sm">
+            <p className="text-sm text-muted-foreground max-w-sm">
               Select a conversation from the sidebar or start a new message to chat with your mentors, mentees, or clan members.
             </p>
           </div>
@@ -267,23 +272,26 @@ export default function ChatWindow({
           <div className="space-y-4 py-4">
             {/* Skeletons simulating messages loading */}
             <div className="flex items-start gap-2 max-w-[60%]">
-              <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-800 animate-pulse shrink-0" />
-              <div className="h-12 bg-slate-200 dark:bg-slate-800 rounded-2xl animate-pulse flex-1" />
+              <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-white/10 animate-pulse shrink-0" />
+              <div className="h-12 bg-slate-200 dark:bg-white/10 rounded-2xl animate-pulse flex-1" />
             </div>
             <div className="flex items-end justify-end gap-2 max-w-[60%] ml-auto">
-              <div className="h-14 bg-brand-200/40 dark:bg-brand-900/30 rounded-2xl animate-pulse flex-1" />
+              <div className="h-14 bg-brand-500/20 rounded-2xl animate-pulse flex-1" />
             </div>
             <div className="flex items-start gap-2 max-w-[50%]">
-              <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-800 animate-pulse shrink-0" />
-              <div className="h-10 bg-slate-200 dark:bg-slate-800 rounded-2xl animate-pulse flex-1" />
+              <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-white/10 animate-pulse shrink-0" />
+              <div className="h-10 bg-slate-200 dark:bg-white/10 rounded-2xl animate-pulse flex-1" />
             </div>
           </div>
         ) : messages.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-500">
-            <p className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">
+          <div className="h-full flex flex-col items-center justify-center text-center p-6">
+            <div className="w-12 h-12 rounded-2xl bg-brand-500/10 text-brand-500 flex items-center justify-center mb-3 border border-brand-500/20">
+              <MessageSquare className="w-6 h-6" />
+            </div>
+            <p className="text-sm font-semibold text-foreground mb-1">
               No messages in this chat yet.
             </p>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-muted-foreground">
               Say hi to break the ice! 👋
             </p>
           </div>
@@ -291,7 +299,7 @@ export default function ChatWindow({
           <>
             {isLoadingMore && (
               <div className="flex justify-center py-2 shrink-0">
-                <Loader2 className="w-5 h-5 animate-spin text-brand-600" />
+                <Loader2 className="w-5 h-5 animate-spin text-brand-500" />
               </div>
             )}
             {messages.map((message, index) => {
@@ -304,18 +312,18 @@ export default function ChatWindow({
                 <Fragment key={message.id}>
                   {showDateSeparator && (
                     <div className="flex justify-center py-3">
-                      <span className="rounded-full bg-slate-200/80 dark:bg-slate-800/80 backdrop-blur-xs px-3 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-400 shadow-2xs">
+                      <span className="rounded-full bg-card border border-border backdrop-blur-xs px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-2xs">
                         {dayLabel(message.createdAt)}
                       </span>
                     </div>
                   )}
                   {index === firstUnreadIdx && (
                     <div id="unread-banner" className="flex items-center gap-4 py-4 shrink-0">
-                      <div className="flex-1 h-px bg-red-200 dark:bg-red-900/40" />
-                      <span className="text-[10px] font-bold text-red-500 uppercase tracking-wider bg-red-50 dark:bg-red-950/40 px-2 py-0.5 rounded-md border border-red-100 dark:border-red-900/30">
+                      <div className="flex-1 h-px bg-red-500/30" />
+                      <span className="text-[10px] font-bold text-red-500 uppercase tracking-wider bg-red-500/10 px-2 py-0.5 rounded-md border border-red-500/30">
                         Unread Messages
                       </span>
-                      <div className="flex-1 h-px bg-red-200 dark:bg-red-900/40" />
+                      <div className="flex-1 h-px bg-red-500/30" />
                     </div>
                   )}
                   <MessageItem
