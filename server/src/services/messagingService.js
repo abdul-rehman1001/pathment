@@ -40,7 +40,8 @@ class MessagingService {
     const clanIds = myClans.map((c) => c.clanId);
     if (clanIds.length) {
       const members = await models.ClanMembership.findAll({
-        where: { clanId: { [Op.in]: clanIds }, status: 'active' }, attributes: ['userId']
+        where: { clanId: { [Op.in]: clanIds }, status: { [Op.in]: VISIBLE_MEMBERSHIP_STATUSES } },
+        attributes: ['userId']
       });
       members.forEach((m) => allowed.add(m.userId));
     }
@@ -962,44 +963,131 @@ class MessagingService {
     };
   }
 
-  async searchUsers(currentUserId, query = '', options = {}) {
-    const limit = Math.min(Math.max(Number(options.limit || 10), 1), 25);
-    const roleFilter = options.role;
+  async getClanMemberUserIds(userId) {
+    const myClans = await models.ClanMembership.findAll({
+      where: { userId, status: { [Op.in]: VISIBLE_MEMBERSHIP_STATUSES } },
+      attributes: ['clanId']
+    });
+    const clanIds = myClans.map((c) => c.clanId);
+    if (!clanIds.length) return [];
+    const members = await models.ClanMembership.findAll({
+      where: { clanId: { [Op.in]: clanIds }, status: { [Op.in]: VISIBLE_MEMBERSHIP_STATUSES } },
+      attributes: ['userId']
+    });
+    const set = new Set(members.map((m) => m.userId));
+    set.delete(userId);
+    return [...set];
+  }
 
-    const where = {
+  async searchUsers(currentUserId, query = '', options = {}) {
+    const roleFilter = options.role;
+    const requestedLimit = options.limit ? Number(options.limit) : null;
+    const isSearchMode = Boolean(query && query.trim());
+
+    // Mentee allowed set (null for unrestricted mentor/admin)
+    const allowed = await this.getAllowedRecipientIds(currentUserId);
+    const clanMemberIds = await this.getClanMemberUserIds(currentUserId);
+
+    const baseWhere = {
       id: { [Op.ne]: currentUserId },
       status: 'active',
       deletedAt: null
     };
 
     if (roleFilter && ['admin', 'mentor', 'mentee'].includes(roleFilter)) {
-      where.role = roleFilter;
+      baseWhere.role = roleFilter;
     }
 
-    // Restrict a mentee's recipient picker to their mentor(s) + clan members.
-    const allowed = await this.getAllowedRecipientIds(currentUserId);
+    // Mentee scope check
     if (allowed !== null) {
       if (!allowed.length) return [];
-      where.id = { [Op.ne]: currentUserId, [Op.in]: allowed };
+      baseWhere.id = { [Op.ne]: currentUserId, [Op.in]: allowed };
     }
 
-    if (query.trim()) {
-      const term = `%${query.trim()}%`;
-      where[Op.or] = [
+    const userAttributes = ['id', 'firstName', 'lastName', 'email', 'role', 'profilePictureUrl'];
+
+    // CASE 1: Initial load (query is empty)
+    if (!isSearchMode) {
+      if (allowed !== null) {
+        // Mentee: fetch ALL allowed recipients (clan members + mentors) without artificial limit truncation
+        const users = await models.User.findAll({
+          attributes: userAttributes,
+          where: baseWhere,
+          order: [['firstName', 'ASC'], ['lastName', 'ASC']]
+        });
+        return users.map((u) => u.toJSON());
+      } else {
+        // Mentor / Admin: Always include ALL clan members first, plus general users up to limit
+        const limit = requestedLimit ? Math.min(Math.max(requestedLimit, 1), 200) : 100;
+        
+        // 1. Fetch all clan members for this mentor/admin
+        let clanUsers = [];
+        if (clanMemberIds.length) {
+          const clanWhere = { ...baseWhere, id: { [Op.in]: clanMemberIds } };
+          const foundClanUsers = await models.User.findAll({
+            attributes: userAttributes,
+            where: clanWhere,
+            order: [['firstName', 'ASC'], ['lastName', 'ASC']]
+          });
+          clanUsers = foundClanUsers.map((u) => u.toJSON());
+        }
+
+        // 2. Fetch non-clan users up to limit
+        const fetchedClanIds = new Set(clanUsers.map((u) => u.id));
+        const remainingLimit = Math.max(0, limit - clanUsers.length);
+
+        let otherUsers = [];
+        if (remainingLimit > 0) {
+          const otherWhere = { ...baseWhere };
+          if (fetchedClanIds.size > 0) {
+            otherWhere.id = { [Op.ne]: currentUserId, [Op.notIn]: [...fetchedClanIds] };
+          }
+          const foundOther = await models.User.findAll({
+            attributes: userAttributes,
+            where: otherWhere,
+            order: [['firstName', 'ASC'], ['lastName', 'ASC']],
+            limit: remainingLimit
+          });
+          otherUsers = foundOther.map((u) => u.toJSON());
+        }
+
+        return [...clanUsers, ...otherUsers];
+      }
+    }
+
+    // CASE 2: Active Search Mode (query is provided)
+    const limit = requestedLimit ? Math.min(Math.max(requestedLimit, 1), 200) : 100;
+    const term = `%${query.trim()}%`;
+    const searchWhere = {
+      ...baseWhere,
+      [Op.or]: [
         { firstName: { [Op.iLike]: term } },
         { lastName: { [Op.iLike]: term } },
         { email: { [Op.iLike]: term } }
-      ];
-    }
+      ]
+    };
 
     const users = await models.User.findAll({
-      attributes: ['id', 'firstName', 'lastName', 'email', 'role', 'profilePictureUrl'],
-      where,
+      attributes: userAttributes,
+      where: searchWhere,
       order: [['firstName', 'ASC'], ['lastName', 'ASC']],
       limit
     });
 
-    return users.map((u) => u.toJSON());
+    const userList = users.map((u) => u.toJSON());
+
+    // Prioritize clan members in search results
+    if (clanMemberIds.length > 0) {
+      const clanSet = new Set(clanMemberIds);
+      userList.sort((a, b) => {
+        const aIsClan = clanSet.has(a.id) ? 0 : 1;
+        const bIsClan = clanSet.has(b.id) ? 0 : 1;
+        if (aIsClan !== bIsClan) return aIsClan - bIsClan;
+        return (a.firstName || '').localeCompare(b.firstName || '');
+      });
+    }
+
+    return userList;
   }
 
   async assertUserInConversation(userId, conversationId) {

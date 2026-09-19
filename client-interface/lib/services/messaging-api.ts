@@ -93,14 +93,23 @@ export const messagingApi = {
     return response.data;
   },
 
-  async searchUsers(query: string, role?: string): Promise<SearchableUser[]> {
-    const params = new URLSearchParams({ q: query, limit: '10' });
-    if (role) {
-      params.set('role', role);
-    }
+  async searchUsers(query: string, role?: string, limit?: number): Promise<SearchableUser[]> {
+    const params = new URLSearchParams();
+    if (query) params.set('q', query);
+    if (role) params.set('role', role);
+    if (limit) params.set('limit', String(limit));
 
     const response = await apiClient.get<any>(`/messaging/users/search?${params.toString()}`);
-    return response.data?.users || [];
+    if (Array.isArray(response?.data)) {
+      return response.data;
+    }
+    if (Array.isArray(response?.users)) {
+      return response.users;
+    }
+    if (Array.isArray(response)) {
+      return response;
+    }
+    return response?.data?.users || [];
   },
 
   async listPendingDrafts(): Promise<any[]> {

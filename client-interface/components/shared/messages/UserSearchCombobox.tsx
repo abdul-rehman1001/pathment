@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Loader2, Search, UserPlus } from 'lucide-react';
 import Image from 'next/image';
 
@@ -32,49 +33,24 @@ interface UserSearchComboboxProps {
 export default function UserSearchCombobox({ onSelect }: UserSearchComboboxProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<string | undefined>();
-  const [results, setResults] = useState<SearchableUser[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
 
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const fetchUsers = useCallback(async (searchTerm: string, role?: string) => {
-    setIsLoading(true);
-    try {
-      const users = await messagingApi.searchUsers(searchTerm, role);
-      setResults(users);
-    } catch {
-      setResults([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  // Debounced search when query or role changes
+  // Debounce user search input
   useEffect(() => {
-    if (!open) return;
-
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-    }
-
-    debounceRef.current = setTimeout(() => {
-      fetchUsers(query, roleFilter);
+    const timer = setTimeout(() => {
+      setDebouncedQuery(query);
     }, DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [query]);
 
-    return () => {
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-      }
-    };
-  }, [query, roleFilter, open, fetchUsers]);
-
-  // Load initial results when popover opens
-  useEffect(() => {
-    if (open) {
-      fetchUsers('', roleFilter);
-    }
-  }, [open, fetchUsers, roleFilter]);
+  // TanStack Query for user search caching & reactive state management
+  const { data: results = [], isLoading } = useQuery({
+    queryKey: ['messaging', 'user-search', debouncedQuery, roleFilter],
+    queryFn: () => messagingApi.searchUsers(debouncedQuery, roleFilter),
+    enabled: open,
+    staleTime: 30 * 1000,
+  });
 
   const handleSelect = (user: SearchableUser) => {
     onSelect(user);
