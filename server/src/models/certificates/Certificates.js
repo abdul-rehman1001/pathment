@@ -74,6 +74,11 @@ module.exports = (sequelize, DataTypes) => {
     aiMatchScore: { type: DataTypes.DECIMAL(5, 2), field: 'ai_match_score' },
     /** What will actually be issued. */
     finalTier: { type: DataTypes.STRING(50), field: 'final_tier' },
+    decision: { type: DataTypes.STRING(20), defaultValue: 'undecided', allowNull: false,
+      validate: { isIn: [['award', 'no_certificate', 'undecided']] } },
+    aiDecision: { type: DataTypes.STRING(20), field: 'ai_decision', defaultValue: 'undecided', allowNull: false,
+      validate: { isIn: [['award', 'no_certificate', 'undecided']] } },
+    decisionHistory: { type: DataTypes.JSONB, field: 'decision_history', defaultValue: [], allowNull: false },
     overridden: { type: DataTypes.BOOLEAN, defaultValue: false },
     overrideReason: { type: DataTypes.TEXT, field: 'override_reason' },
     status: {

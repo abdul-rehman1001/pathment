@@ -1,5 +1,7 @@
 'use client';
 
+import { useConfirm } from '@/lib/context/ConfirmContext';
+import { AWARDED_CERTIFICATES, NO_CERTIFICATE, reviewSelection, aiSelection, decisionPayload } from '@/lib/utils/certificate-decision';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -39,6 +41,7 @@ type MenteeRow = {
   totalTasks: number;
   criteriaMatch: number;
   assignedTier?: string;
+  assignedDecision?: string;
   tierMatches?: Record<string, number>;
   issuedTiers?: string[];
 };
@@ -70,6 +73,7 @@ function EligibilityBadge({ match }: { match: number }) {
 
 
 export default function MentorCertificatesPage() {
+  const confirm = useConfirm();
   const { user } = useAuth();
   const searchParams = useSearchParams();
 
@@ -132,7 +136,7 @@ export default function MentorCertificatesPage() {
   const [inspectedRecipient, setInspectedRecipient] = useState<any | null>(null);
 
   const {
-    aiResults, setAiResults, aiRanAt, setAiRanAt, runningAI,
+    aiResults, setAiResults, aiRanAt, setAiRanAt, runningAI, failedCount,
     aiProgressCount, aiTotalCount, runAIEvaluation
   } = useAIEvaluationProgress({
     templateId: activeTemplateId
@@ -141,6 +145,7 @@ export default function MentorCertificatesPage() {
 
 
   const getTierName = (tierId: string) => {
+    if (tierId === NO_CERTIFICATE) return 'No certificate';
     if (!tierId || typeof tierId !== 'string') return '';
     const activeTemplate = templates.find(t => t.id === activeTemplateId);
     const match = activeTemplate?.criteria?.find(c => c.id === tierId);
@@ -369,7 +374,7 @@ export default function MentorCertificatesPage() {
           const autoSelected = new Set<string>();
 
           activeList.forEach(m => {
-            const defTier = criteria.some(c => c.id === m.assignedTier) ? m.assignedTier! : '';
+            const defTier = m.assignedDecision === 'no_certificate' ? NO_CERTIFICATE : (criteria.some(c => c.id === m.assignedTier) ? m.assignedTier! : '');
             initialTiers[m.id] = defTier;
 
             const matchPercent = m.tierMatches?.[defTier] ?? 0;
@@ -383,8 +388,8 @@ export default function MentorCertificatesPage() {
             setAiResults(aiRes);
             setAiRanAt(activeTemplate.aiEvaluation.ranAt ?? null);
             aiRes.forEach((r: any) => {
-              if (r.mentee_id && r.certificate_tier && seenIds.has(r.mentee_id)) {
-                if (!initialTiers[r.mentee_id]) initialTiers[r.mentee_id] = r.certificate_tier;
+              if (r.mentee_id && aiSelection(r) && seenIds.has(r.mentee_id)) {
+                if (!initialTiers[r.mentee_id]) initialTiers[r.mentee_id] = aiSelection(r);
                 autoSelected.add(r.mentee_id);
               }
             });
@@ -436,7 +441,7 @@ export default function MentorCertificatesPage() {
     if (!id) return defaultTier;
 
     if (mentorTiers[id] !== undefined) return mentorTiers[id];
-    if (aiEvalMap[id]?.certificate_tier) return aiEvalMap[id].certificate_tier;
+    if (aiSelection(aiEvalMap[id])) return aiSelection(aiEvalMap[id]);
 
     const m = typeof mOrId === 'object' ? mOrId : activeMentees.find((x: any) => x.id === id);
     if (m?.assignedTier) return m.assignedTier;
@@ -476,7 +481,7 @@ export default function MentorCertificatesPage() {
     if (badgeFilter !== 'all') {
       result = result.filter((m: any) => {
         const assignedTier = getEffectiveTier(m);
-        return assignedTier === badgeFilter;
+        return badgeFilter === AWARDED_CERTIFICATES ? Boolean(assignedTier && assignedTier !== NO_CERTIFICATE) : assignedTier === badgeFilter;
       });
     }
 
@@ -565,8 +570,8 @@ export default function MentorCertificatesPage() {
     const nextSelected = new Set(selectedIds);
     const aiMap: Record<string, string> = {};
     aiResults.forEach(r => {
-      if (r.mentee_id && r.certificate_tier) {
-        aiMap[r.mentee_id] = r.certificate_tier;
+      if (r.mentee_id && aiSelection(r)) {
+        aiMap[r.mentee_id] = aiSelection(r);
       }
     });
 
@@ -596,7 +601,7 @@ export default function MentorCertificatesPage() {
       const match = mentee.tierMatches?.[value] ?? 0;
       setSelectedIds(prev => {
         const next = new Set(prev);
-        if (match >= 90) {
+        if (value === NO_CERTIFICATE || match >= 90) {
           next.add(menteeId);
         } else {
           next.delete(menteeId);
@@ -615,7 +620,7 @@ export default function MentorCertificatesPage() {
     setMentorTiers(prev => {
       const next = { ...prev };
       for (const row of Object.values(reviewRows)) {
-        next[row.menteeId] = row.finalTier ?? row.aiTier ?? '';
+        next[row.menteeId] = reviewSelection(row);
       }
       return next;
     });
@@ -638,7 +643,7 @@ export default function MentorCertificatesPage() {
 
     const changed = decisions.filter(d => {
       const row = reviewRows?.[d.menteeId];
-      return row?.aiTier && d.finalTier !== row.aiTier;
+      return d.finalTier === NO_CERTIFICATE || d.finalTier !== (row?.aiDecision === 'no_certificate' ? NO_CERTIFICATE : row?.aiTier) || (row?.status === 'verified' && d.finalTier !== reviewSelection(row));
     });
 
     if (changed.length) {
@@ -656,14 +661,9 @@ export default function MentorCertificatesPage() {
       setVerifying(true);
       await certificatesApi.verifyMany(
         activeTemplateId!,
-        decisions.map(d => ({ ...d, reason: reasons[d.menteeId]?.trim() || undefined }))
+        decisions.map(d => ({ menteeId: d.menteeId, ...decisionPayload(d.finalTier), reason: reasons[d.menteeId]?.trim() || undefined }))
       );
-      const changedCount = Object.keys(reasons).length;
-      toast.success(
-        changedCount > 0
-          ? `Signed off ${decisions.length} grade(s), ${changedCount} changed — your admin is notified once the clan is complete.`
-          : `Signed off ${decisions.length} grade(s) — your admin is notified once the clan is complete.`
-      );
+      toast.success(`Verified ${decisions.length} decision(s). The admin is notified when the clan review is complete.`);
       setReasonDraft(null);
       await loadReview();
     } catch (err) {
@@ -685,7 +685,7 @@ export default function MentorCertificatesPage() {
       .filter(id => {
         const row = reviewRows[id];
         if (!row) return false;
-        return row.status !== 'verified' || row.finalTier !== getEffectiveTier(id);
+        return row.status !== 'verified' || reviewSelection(row) !== getEffectiveTier(id);
       })
       .map(id => ({ menteeId: id, finalTier: getEffectiveTier(id) }));
   }, [selectedIds, reviewRows, getEffectiveTier]);
@@ -709,12 +709,13 @@ export default function MentorCertificatesPage() {
         // only discovers by counting.
         const issued = res.data?.count ?? recipientsList.length;
         const skipped = res.data?.skipped ?? 0;
-        if (issued === 0) {
+        const excluded = res.data?.skippedNoCertificate ?? 0;
+        if (issued === 0 && !excluded) {
           toast.info(`Everyone selected already has this certificate.`);
         } else {
           toast.success(
             skipped > 0
-              ? `Sent ${issued} certificate(s) — ${skipped} already had one`
+              ? `Sent ${issued} certificate(s) — ${excluded} no certificate, ${skipped - excluded} already issued`
               : `Sent ${issued} certificate(s)`
           );
         }
@@ -747,6 +748,12 @@ export default function MentorCertificatesPage() {
       return;
     }
 
+    if (recipients.some(r => r.tier === NO_CERTIFICATE && reviewRows?.[r.menteeId]?.decision !== 'no_certificate')) {
+      toast.error('Verify your No certificate decisions before issuing.');
+      return;
+    }
+    const excludedCount = recipients.filter(r => reviewRows?.[r.menteeId]?.decision === 'no_certificate').length;
+    if (excludedCount && !(await confirm({ title: 'Exclude recipients with no certificate?', description: `${excludedCount} selected mentee(s) will receive no certificate. Only awarded certificates will be sent.` }))) return;
     const duplicateInstances = recipients.filter(r => {
       const m = activeMentees.find(item => item.id === r.menteeId);
       return m && m.issuedTiers && m.issuedTiers.includes(r.tier);
@@ -1106,6 +1113,7 @@ export default function MentorCertificatesPage() {
         <div className="md:col-span-5 bg-card border border-border/80 rounded-2xl p-5 shadow-2xs flex flex-col justify-between">
           <div>
             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Selected Summary</p>
+            <p className="text-xs text-muted-foreground mb-2">No certificate: {selectedSummary.counts[NO_CERTIFICATE] ?? 0} · excluded from sending</p>
             <div className="flex items-center justify-between p-3 rounded-2xl bg-brand-500/5 border border-brand-500/15 mb-3">
               <span className="text-xs font-bold text-foreground">Total Selected Mentees</span>
               <span className="text-base font-bold text-brand-600 dark:text-brand-400 tabular-nums">{selectedSummary.total}</span>
@@ -1171,6 +1179,7 @@ export default function MentorCertificatesPage() {
 
               {}
                 <AIEvaluationBanner
+                  failedCount={failedCount}
                   count={mentorAIResults.length}
                   ranAt={aiRanAt}
                   runningAI={runningAI}
@@ -1333,7 +1342,7 @@ export default function MentorCertificatesPage() {
                        error rather than an explanation. */
                     <button
                       onClick={handleIssue}
-                      disabled={issuing || selectedIds.size === 0}
+                      disabled={issuing || selectedIds.size === 0 || selectedSummary.counts[NO_CERTIFICATE] === selectedIds.size}
                       className="flex items-center gap-1.5 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed rounded-xl text-sm font-medium transition-all shadow-sm"
                     >
                       {issuing ? <Loader2 className="animate-spin w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />}
@@ -1448,8 +1457,8 @@ export default function MentorCertificatesPage() {
       <Drawer
         open={reasonDraft !== null}
         onClose={() => setReasonDraft(null)}
-        title="Why are these grades changing?"
-        subtitle="The AI graded from the record. Say what it could not see."
+        title="Explain these certificate decisions"
+        subtitle="A reason is required for No certificate and changed decisions."
         width="md"
       >
         {reasonDraft && (
@@ -1465,7 +1474,7 @@ export default function MentorCertificatesPage() {
                       {mentee ? `${mentee.firstName} ${mentee.lastName}` : 'Mentee'}
                     </span>
                     <span className="text-[10px] font-semibold text-muted-foreground line-through">
-                      {getTierName(row?.aiTier || '')}
+                      {getTierName(row?.aiDecision === 'no_certificate' ? NO_CERTIFICATE : row?.aiTier || '')}
                     </span>
                     <span aria-hidden className="text-[10px] font-bold text-amber-500">&rarr;</span>
                     <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-600">

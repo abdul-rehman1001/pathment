@@ -105,14 +105,15 @@ export function VerificationBanner({
           : <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500" />}
         <span className="text-xs font-bold text-foreground">
           {settled
-            ? `All ${summary.total} grades verified and approved`
+            ? `All ${summary.total} decisions verified and approved`
             : summary.awaitingApproval > 0 && outstanding.length === 0
               ? `${summary.awaitingApproval} clan${summary.awaitingApproval === 1 ? '' : 's'} verified — approve to let mentors send`
               : `${outstanding.length} of ${summary.clans.length} clan${summary.clans.length === 1 ? '' : 's'} have not verified yet`}
         </span>
         <span className="text-[11px] text-muted-foreground">
-          · {summary.verified} of {summary.total} grades signed off
+          · {summary.verified} of {summary.total} decisions signed off
           {summary.overridden > 0 && ` · ${summary.overridden} changed`}
+          {!!summary.noCertificate && ` · ${summary.noCertificate} no certificate`}
         </span>
         {summary.overdue && (
           <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-red-600">
@@ -130,6 +131,7 @@ export function VerificationBanner({
                 ? `all ${clan.total} signed off`
                 : `${clan.pending} of ${clan.total} outstanding`}
               {clan.overridden > 0 && ` · ${clan.overridden} changed`}
+              {!!clan.noCertificate && ` · ${clan.noCertificate} no certificate`}
             </span>
 
             {/* Approving is what lets that clan's mentors send. Offered the

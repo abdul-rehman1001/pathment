@@ -1,5 +1,7 @@
 'use client';
 
+import { useConfirm } from '@/lib/context/ConfirmContext';
+import { NO_CERTIFICATE, reviewSelection, aiSelection } from '@/lib/utils/certificate-decision';
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -45,6 +47,7 @@ interface CertificateEditorProps {
 }
 
 export default function CertificateEditor({ templateId }: CertificateEditorProps) {
+  const confirm = useConfirm();
   const router = useRouter();
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -90,12 +93,12 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
   const [expandedAIRows, setExpandedAIRows] = useState<Set<string>>(new Set());
 
   const {
-    aiResults, setAiResults, aiRanAt, setAiRanAt, runningAI,
+    aiResults, setAiResults, aiRanAt, setAiRanAt, runningAI, failedCount,
     aiProgressCount, aiTotalCount, aiEvalMap, runAIEvaluation
   } = useAIEvaluationProgress({
     templateId,
     onSingleProgress: (result) => {
-      if (!reviewRows[result.mentee_id]) setAdminTiers(prev => ({ ...prev, [result.mentee_id]: result.certificate_tier }));
+      if (!reviewRows[result.mentee_id]) setAdminTiers(prev => ({ ...prev, [result.mentee_id]: aiSelection(result) }));
       const menteeObj = [...recipientMenteesList, ...recipientMentorsList, ...recipientPausedList].find(m => m.id === result.mentee_id);
       if (menteeObj && !menteeObj.isPaused) {
         setSelectedMenteeIds(prev => new Set(prev).add(result.mentee_id));
@@ -107,7 +110,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
       const pausedSet = new Set(recipientPausedList.map((m: any) => m.id));
       for (const r of results) {
         if (r.mentee_id) {
-          if (!reviewRows[r.mentee_id]) newTiers[r.mentee_id] = r.certificate_tier;
+          if (!reviewRows[r.mentee_id]) newTiers[r.mentee_id] = aiSelection(r);
           if (!pausedSet.has(r.mentee_id)) {
             autoSelected.add(r.mentee_id);
           }
@@ -166,6 +169,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
   };
 
   const getTierName = (tierId: string) => {
+    if (tierId === NO_CERTIFICATE) return 'No certificate';
     if (!tierId || typeof tierId !== 'string') return '';
     const match = criteria.find(c => c.id === tierId);
     return match ? match.name : tierId.charAt(0).toUpperCase() + tierId.slice(1);
@@ -374,7 +378,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
           const autoSelected = new Set<string>();
 
           activeList.forEach(m => {
-            const defTier = m.assignedTier ?? aiEvalMap[m.id]?.certificate_tier ?? '';
+            const defTier = m.assignedDecision === 'no_certificate' ? NO_CERTIFICATE : m.assignedTier ?? aiSelection(aiEvalMap[m.id]);
             initialTiers[m.id] = defTier;
             if (defTier) autoSelected.add(m.id);
           });
@@ -402,7 +406,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
     if (loadingQualifications) return;
     setAdminTiers(previous => {
       const next = { ...previous };
-      for (const row of Object.values(reviewRows)) next[row.menteeId] = row.finalTier ?? row.aiTier ?? '';
+      for (const row of Object.values(reviewRows)) next[row.menteeId] = reviewSelection(row);
       return next;
     });
   }, [reviewRows, loadingQualifications, setAdminTiers]);
@@ -653,7 +657,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
         recipients: recipientsList
       });
       if (res.success) {
-        toast.success(`Successfully enqueued ${recipientsList.length} certificate(s) for rendering!`);
+        toast.success(`Sent ${res.data?.count ?? 0} certificate(s). ${res.data?.skippedNoCertificate ?? 0} marked No certificate; ${(res.data?.skipped ?? 0) - (res.data?.skippedNoCertificate ?? 0)} already issued.`);
         setSelectedMenteeIds(new Set());
         setRefreshKey(prev => prev + 1);
       }
@@ -680,6 +684,12 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
       return;
     }
 
+    if (recipients.some(r => r.tier === NO_CERTIFICATE && reviewRows[r.menteeId]?.decision !== 'no_certificate')) {
+      toast.error('Save No certificate decisions in the evidence drawer before issuing.');
+      return;
+    }
+    const excludedCount = recipients.filter(r => reviewRows[r.menteeId]?.decision === 'no_certificate').length;
+    if (excludedCount && !(await confirm({ title: 'Confirm certificate recipients', description: `${recipients.length - excludedCount} selected for certificates; ${excludedCount} marked No certificate will be excluded. Already-issued certificates are skipped automatically.` }))) return;
     const allMentees: any[] = [];
     const seenIds = new Set<string>();
     Object.keys(qualifiedData).forEach(key => {
@@ -1549,6 +1559,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
 
 
             <AIEvaluationBanner
+                  failedCount={failedCount}
               count={aiResults.length}
               ranAt={aiRanAt}
               runningAI={runningAI}
@@ -1558,6 +1569,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
 
             {}
             <MenteeEvidenceDrawer
+        initialSelection={inspectedRecipient?.initialSelection}
               templateId={templateId}
               menteeId={inspectedRecipient?.mentee_id ?? null}
               onClose={() => setInspectedRecipient(null)}
@@ -1664,7 +1676,10 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
               toggleAll={toggleAll}
               allSelected={allSelected}
               assignedTiers={adminTiers}
-              handleTierChange={handleTierChange}
+              handleTierChange={(id, tier) => {
+                if (tier === NO_CERTIFICATE) setInspectedRecipient({ mentee_id: id, initialSelection: NO_CERTIFICATE });
+                else handleTierChange(id, tier);
+              }}
               onInspectRecipient={setInspectedRecipient}
               loading={loadingQualifications}
               getTierName={getTierName}
@@ -1677,6 +1692,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
             {}
             {selectedMenteeIds.size > 0 && (
               <div className="bg-muted/20 border border-border rounded-2xl p-4 flex flex-wrap gap-4 text-xs font-semibold text-muted-foreground">
+                <span>No certificate: {selectedSummary[NO_CERTIFICATE] ?? 0}</span>
                 {criteria.map(c => (
                   <div key={c.id} className="flex items-center gap-1">
                     <Award className={`w-3.5 h-3.5 ${getTierIconColor(c.id)}`} />
@@ -1704,7 +1720,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
               <button
                 type="button"
                 onClick={handleIssue}
-                disabled={issuing || selectedMenteeIds.size === 0}
+                disabled={issuing || selectedMenteeIds.size === 0 || selectedSummary[NO_CERTIFICATE] === selectedMenteeIds.size}
                 className="flex items-center gap-1.5 px-6 py-3 bg-brand-600 hover:bg-brand-700 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed text-white rounded-xl font-medium text-sm shadow-sm transition-all"
               >
                 {issuing ? <Loader2 className="animate-spin w-3.5 h-3.5" /> : <Award className="w-3.5 h-3.5" />}

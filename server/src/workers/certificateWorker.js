@@ -100,7 +100,7 @@ async function processBatchJobs(batchJobs) {
 
     for (const job of batchJobs) {
       const result = resultMap.get(job.menteeId) || certificateService.buildFallbackResult(job.menteePayload, job.preCheck);
-      job.status = 'completed';
+      job.status = result._failed ? 'failed' : 'completed';
       job.result = result;
       job.error  = null;
     }

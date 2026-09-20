@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { models } = require('../db');
+const { models, sequelize } = require('../db');
 const { NotFoundError, ValidationError, ForbiddenError } = require('../utils/errors/errorTypes');
 const authzService = require('./authzService');
 const notificationOrchestrator = require('./notificationOrchestrator');
@@ -44,53 +44,73 @@ class CertificateVerificationService {
   async open(templateId, results, { deadline = null, notify = true } = {}) {
     if (!Array.isArray(results) || results.length === 0) return { created: 0, updated: 0, notified: 0 };
 
-    const template = await models.CertificateTemplate.findByPk(templateId);
-    if (!template) throw new NotFoundError('Certificate template not found');
+    const { template, created, updated } = await sequelize.transaction(async transaction => {
+      const template = await models.CertificateTemplate.findByPk(templateId, { transaction, lock: transaction.LOCK.UPDATE });
+      if (!template) throw new NotFoundError('Certificate template not found');
 
-    if (deadline) {
-      template.verificationDeadline = deadline;
-      await template.save();
-    }
-
-    const menteeIds = [...new Set(results.map((r) => r.mentee_id || r.id).filter(Boolean))];
-    const clanByMentee = await this._clanOfMentees(menteeIds, template.programId);
-
-    let created = 0;
-    let updated = 0;
-    for (const result of results) {
-      const menteeId = result.mentee_id || result.id;
-      if (!menteeId) continue;
-
-      const aiTier = result.certificate_tier || null;
-      const aiMatchScore = Number.isFinite(Number(result.match_score)) ? Number(result.match_score) : null;
-      const existing = await models.CertificateVerification.findOne({ where: { templateId, menteeId } });
-
-      if (!existing) {
-        await models.CertificateVerification.create({
-          templateId,
-          menteeId,
-          clanId: clanByMentee.get(menteeId) || null,
-          aiTier,
-          aiMatchScore,
-          finalTier: aiTier,
-          status: 'pending'
-        });
-        created += 1;
-        continue;
+      if (deadline) {
+        template.verificationDeadline = deadline;
+        await template.save({ transaction });
       }
 
-      // A verified row is a human decision. Record what the AI now thinks, but
-      // do not reopen it or move their final tier.
-      existing.aiTier = aiTier;
-      existing.aiMatchScore = aiMatchScore;
-      existing.clanId = clanByMentee.get(menteeId) || existing.clanId;
-      if (existing.status !== 'verified') {
-        existing.finalTier = aiTier;
-        existing.overridden = false;
+      const menteeIds = [...new Set(results.map((r) => r.mentee_id || r.id).filter(Boolean))];
+      const clanByMentee = await this._clanOfMentees(menteeIds, template.programId);
+      const issued = await models.CertificateInstance.findAll({
+        where: { templateId, menteeId: { [Op.in]: menteeIds } }, attributes: ['menteeId'], transaction
+      });
+      const issuedIds = new Set(issued.map(instance => instance.menteeId));
+
+      let created = 0;
+      let updated = 0;
+      for (const result of results) {
+        const menteeId = result.mentee_id || result.id;
+        if (!menteeId || issuedIds.has(menteeId) || result._failed || result.decision === 'undecided') continue;
+
+        const aiDecision = result.decision === 'no_certificate' ? 'no_certificate' : (result.certificate_tier ? 'award' : 'undecided');
+        if (aiDecision === 'undecided') continue;
+        const aiTier = aiDecision === 'award' ? result.certificate_tier : null;
+        const aiMatchScore = result.match_score != null && Number.isFinite(Number(result.match_score)) ? Number(result.match_score) : null;
+        const existing = await models.CertificateVerification.findOne({ where: { templateId, menteeId }, transaction });
+
+        const clanId = clanByMentee.get(menteeId);
+        const pendingGradeChanged = !existing || (existing.status !== 'verified' &&
+          (existing.aiTier !== aiTier || existing.aiDecision !== aiDecision));
+        if (pendingGradeChanged && clanId) {
+          await models.CertificateClanApproval.destroy({ where: { templateId, clanId }, transaction });
+        }
+        if (!existing) {
+          await models.CertificateVerification.create({
+            templateId,
+            menteeId,
+            clanId: clanByMentee.get(menteeId) || null,
+            aiTier,
+            aiDecision,
+            decision: aiDecision,
+            overrideReason: aiDecision === 'no_certificate' ? result.reasoning : null,
+            aiMatchScore,
+            finalTier: aiTier,
+            status: 'pending'
+          }, { transaction });
+          created += 1;
+          continue;
+        }
+
+        // Re-sending must preserve the reviewed decision and its original baseline.
+        existing.clanId = clanByMentee.get(menteeId) || existing.clanId;
+        if (existing.status !== 'verified') {
+          existing.aiTier = aiTier;
+          existing.aiDecision = aiDecision;
+          existing.aiMatchScore = aiMatchScore;
+          existing.finalTier = aiTier;
+          existing.decision = aiDecision;
+          existing.overrideReason = aiDecision === 'no_certificate' ? result.reasoning : null;
+          existing.overridden = false;
+        }
+        await existing.save({ transaction });
+        updated += 1;
       }
-      await existing.save();
-      updated += 1;
-    }
+      return { template, created, updated };
+    });
 
     const notified = notify ? await this._notifyMentors(template) : 0;
     return { created, updated, notified };
@@ -187,39 +207,63 @@ class CertificateVerificationService {
   }
 
   /**
-   * Record a decision for one mentee.
+   * Record an award or explicit No certificate decision for one mentee.
+   * A No certificate decision always needs a reason and never uses a tier.
    *
    * `finalTier` omitted means "the AI had it right". Supplying a different tier
    * is an override: the AI's tier is preserved alongside it so the admin can
    * see what was changed, by whom and why.
    */
-  async verify(templateId, menteeId, { finalTier = null, reason = null } = {}, user, { notify = true } = {}) {
-    const row = await models.CertificateVerification.findOne({ where: { templateId, menteeId } });
-    if (!row) throw new NotFoundError('There is nothing to verify for this mentee');
-    await this._assertCanReview(user, row);
+  async verify(templateId, menteeId, { decision, finalTier, reason = null } = {}, user, { notify = true, transaction: existingTransaction } = {}) {
+    const execute = async transaction => {
+      // Issuance, review, and approval use the same lock so a changed decision
+      // cannot race with sending a certificate under an older approval.
+      const template = await models.CertificateTemplate.findByPk(templateId, { transaction, lock: transaction.LOCK.UPDATE });
+      if (!template) throw new NotFoundError('Certificate template not found');
+      const row = await models.CertificateVerification.findOne({ where: { templateId, menteeId }, transaction, lock: transaction.LOCK.UPDATE });
+      if (!row) throw new NotFoundError('There is nothing to verify for this mentee');
+      await this._assertCanReview(user, row);
 
-    const template = await models.CertificateTemplate.findByPk(templateId);
-    const tier = finalTier || row.aiTier;
-    if (tier) this._assertTierExists(template, tier);
-
-    const overridden = Boolean(tier && row.aiTier && tier !== row.aiTier);
-    if (overridden && !String(reason || '').trim()) {
-      // An override is a mentor disagreeing with the evidence. The admin
-      // reviewing it later needs to know why, and so does the mentor in three
-      // months — so the reason is required rather than merely invited.
-      throw new ValidationError('Tell us why you are changing this grade.');
-    }
-
-    row.finalTier = tier;
-    row.overridden = overridden;
-    row.overrideReason = overridden ? String(reason).trim() : null;
-    row.status = 'verified';
-    row.verifiedBy = user.id;
-    row.verifiedAt = new Date();
-    await row.save();
-
-    if (notify) await this._notifyAdminsIfClanComplete(templateId, row.clanId, user);
-    return this._serialize(row);
+      const aiDecision = row.aiDecision === 'no_certificate' ? 'no_certificate' : (row.aiTier ? 'award' : 'undecided');
+      const nextDecision = decision ?? (finalTier ? 'award' : aiDecision);
+      if (!['award', 'no_certificate'].includes(nextDecision)) throw new ValidationError('Choose a certificate or No certificate before verifying.');
+      if (nextDecision === 'no_certificate' && finalTier) throw new ValidationError('No certificate cannot have a certificate tier.');
+      const tier = nextDecision === 'award' ? (finalTier ?? row.aiTier) : null;
+      if (nextDecision === 'award') this._assertTierExists(template, tier);
+      const overridden = nextDecision !== aiDecision || tier !== row.aiTier;
+      const previousDecision = row.decision === 'no_certificate' ? 'no_certificate' : (row.finalTier ? 'award' : 'undecided');
+      const changed = previousDecision !== nextDecision || row.finalTier !== tier;
+      const reasonRequired = overridden || nextDecision === 'no_certificate' || (row.status === 'verified' && changed);
+      const explanation = String(reason || '').trim();
+      if (reasonRequired && !explanation) {
+        throw new ValidationError('A reason is required: tell us why you are changing this grade or selecting No certificate.');
+      }
+      if (changed && await models.CertificateInstance.count({ where: { templateId, menteeId }, transaction })) {
+        throw new ValidationError('This certificate has already been issued. Revoke it before changing the decision.');
+      }
+      const decisionReason = reasonRequired ? explanation : null;
+      const needsApproval = changed || row.status !== 'verified' || row.overrideReason !== decisionReason;
+      if (needsApproval) {
+        row.decisionHistory = [...(row.decisionHistory || []), {
+          at: new Date().toISOString(), by: user.id, byName: [user.firstName, user.lastName].filter(Boolean).join(' '),
+          from: { decision: previousDecision, tier: row.finalTier },
+          to: { decision: nextDecision, tier }, reason: decisionReason
+        }];
+        if (row.clanId) await models.CertificateClanApproval.destroy({ where: { templateId, clanId: row.clanId }, transaction });
+      }
+      row.decision = nextDecision;
+      row.finalTier = tier;
+      row.overridden = overridden;
+      row.overrideReason = decisionReason;
+      row.status = 'verified';
+      row.verifiedBy = user.id;
+      row.verifiedAt = new Date();
+      await row.save({ transaction });
+      return row;
+    };
+    const saved = existingTransaction ? await execute(existingTransaction) : await sequelize.transaction(execute);
+    if (notify) await this._notifyAdminsIfClanComplete(templateId, saved.clanId, user);
+    return this._serialize(saved);
   }
 
   /**
@@ -234,15 +278,15 @@ class CertificateVerificationService {
     if (!Array.isArray(decisions) || !decisions.length) {
       throw new ValidationError('Nothing to verify');
     }
-    const out = [];
-    for (const decision of decisions) {
-      out.push(await this.verify(
-        templateId, decision.menteeId,
-        { finalTier: decision.finalTier, reason: decision.reason },
-        user,
-        { notify: false }
-      ));
-    }
+    const out = await sequelize.transaction(async transaction => {
+      const rows = [];
+      for (const decision of decisions) {
+        rows.push(await this.verify(templateId, decision.menteeId,
+          { decision: decision.decision, finalTier: decision.finalTier, reason: decision.reason },
+          user, { notify: false, transaction }));
+      }
+      return rows;
+    });
     for (const clanId of new Set(out.map((r) => r.clanId).filter(Boolean))) {
       await this._notifyAdminsIfClanComplete(templateId, clanId, user);
     }
@@ -272,13 +316,14 @@ class CertificateVerificationService {
         byClan.set(key, {
           clanId: row.clanId || null,
           clanName: row.clan?.name || 'No clan',
-          total: 0, verified: 0, pending: 0, overridden: 0
+          total: 0, verified: 0, pending: 0, overridden: 0, noCertificate: 0
         });
       }
       const bucket = byClan.get(key);
       bucket.total += 1;
       if (row.status === 'verified') bucket.verified += 1; else bucket.pending += 1;
       if (row.overridden) bucket.overridden += 1;
+      if (row.decision === 'no_certificate') bucket.noCertificate += 1;
     }
 
     const clans = [...byClan.values()].map((c) => ({
@@ -298,6 +343,7 @@ class CertificateVerificationService {
       verified: rows.filter((r) => r.status === 'verified').length,
       pending: rows.filter((r) => r.status !== 'verified').length,
       overridden: rows.filter((r) => r.overridden).length,
+      noCertificate: rows.filter(r => r.decision === 'no_certificate').length,
       allVerified: rows.length > 0 && rows.every((r) => r.status === 'verified'),
       approvedClans: clans.filter((c) => c.approved).length,
       awaitingApproval: clans.filter((c) => c.readyToApprove).length,
@@ -327,20 +373,25 @@ class CertificateVerificationService {
       throw new ForbiddenError('Only an admin can release a clan for issuing');
     }
 
-    const pending = await models.CertificateVerification.count({
-      where: { templateId, clanId, status: 'pending' }
-    });
+    const { approval, pending } = await sequelize.transaction(async transaction => {
+      await models.CertificateTemplate.findByPk(templateId, { transaction, lock: transaction.LOCK.UPDATE });
+      const pending = await models.CertificateVerification.count({
+        where: { templateId, clanId, status: 'pending' }, transaction
+      });
 
-    const [approval] = await models.CertificateClanApproval.findOrCreate({
-      where: { templateId, clanId },
-      defaults: {
-        templateId,
-        clanId,
-        approvedBy: user.id,
-        approvedAt: new Date(),
-        approvedBeforeVerified: pending > 0,
-        note
-      }
+      const [approval] = await models.CertificateClanApproval.findOrCreate({
+        where: { templateId, clanId },
+        transaction,
+        defaults: {
+          templateId,
+          clanId,
+          approvedBy: user.id,
+          approvedAt: new Date(),
+          approvedBeforeVerified: pending > 0,
+          note
+        }
+      });
+      return { approval, pending };
     });
 
     await this._notifyClanApproved(templateId, clanId);
@@ -443,10 +494,11 @@ class CertificateVerificationService {
     if (!Array.isArray(menteeIds) || !menteeIds.length) return out;
     const rows = await models.CertificateVerification.findAll({
       where: { templateId, menteeId: { [Op.in]: menteeIds } },
-      attributes: ['menteeId', 'finalTier', 'status']
+      attributes: ['menteeId', 'finalTier', 'status', 'decision']
     });
     for (const row of rows) {
-      if (row.finalTier) out.set(row.menteeId, row.finalTier);
+      if (row.decision === 'no_certificate') out.set(row.menteeId, null);
+      else if (row.finalTier) out.set(row.menteeId, row.finalTier);
     }
     return out;
   }
@@ -473,6 +525,9 @@ class CertificateVerificationService {
       aiTier: json.aiTier,
       aiMatchScore: json.aiMatchScore != null ? Number(json.aiMatchScore) : null,
       finalTier: json.finalTier,
+      decision: json.decision,
+      aiDecision: json.aiDecision,
+      decisionHistory: json.decisionHistory || [],
       overridden: Boolean(json.overridden),
       overrideReason: json.overrideReason || null,
       status: json.status,

@@ -28,6 +28,7 @@ export function useAIEvaluationProgress(options: UseAIEvaluationProgressOptions 
   const [aiResults, setAiResults] = useState<any[]>([]);
   const [aiRanAt, setAiRanAt] = useState<string | null>(null);
   const [runningAI, setRunningAI] = useState(false);
+  const [failedCount, setFailedCount] = useState(0);
   const [aiProgressCount, setAiProgressCount] = useState(0);
   const [aiTotalCount, setAiTotalCount] = useState(0);
   const [aiEvaluationRunId, setAiEvaluationRunId] = useState<string | null>(null);
@@ -59,16 +60,18 @@ export function useAIEvaluationProgress(options: UseAIEvaluationProgressOptions 
       callbacks.current.onSingleProgress?.(data.result);
     };
 
-    const handleComplete = (data: { runId: string; results: any[]; ranAt: string }) => {
+    const handleComplete = (data: { runId: string; results: any[]; ranAt: string; failed?: number }) => {
       if (data.runId !== aiEvaluationRunId) return;
       setAiResults(prev => mergeResults(prev, data.results || []));
       setAiRanAt(data.ranAt);
+      setFailedCount(data.failed ?? 0);
       setRunningAI(false);
       setAiEvaluationRunId(null);
 
       callbacks.current.onBatchComplete?.((data.results || []).filter(r => !r._failed));
 
-      toast.success(`AI evaluation completed successfully for ${(data.results || []).length} mentees!`);
+      if (data.failed) toast.warning(`${data.failed} evaluation(s) failed. Their previous decisions are unchanged; retry to evaluate them.`);
+      else toast.success(`AI evaluation completed for ${(data.results || []).length} mentees.`);
     };
 
     if (socket) {
@@ -86,6 +89,7 @@ export function useAIEvaluationProgress(options: UseAIEvaluationProgressOptions 
           const isDone = payload.isDone ?? res.isDone ?? false;
           const resultsList = payload.data ?? res.data ?? [];
 
+          setFailedCount(payload.failed ?? res.failed ?? 0);
           setAiProgressCount(completed);
           setAiTotalCount(total);
 
@@ -99,7 +103,8 @@ export function useAIEvaluationProgress(options: UseAIEvaluationProgressOptions 
             setRunningAI(false);
             setAiEvaluationRunId(null);
             if (pollInterval) clearInterval(pollInterval);
-            toast.success(`AI evaluation completed successfully!`);
+            if (payload.failed ?? res.failed) toast.warning('Some evaluations failed. Retry them; this does not mean No certificate.');
+            else toast.success('AI evaluation completed.');
           }
         }
       } catch (err) {
@@ -123,6 +128,7 @@ export function useAIEvaluationProgress(options: UseAIEvaluationProgressOptions 
 
     try {
       setRunningAI(true);
+      setFailedCount(0);
       setAiProgressCount(0);
       setAiTotalCount(0);
 
@@ -150,6 +156,7 @@ export function useAIEvaluationProgress(options: UseAIEvaluationProgressOptions 
         const statusRes: any = await certificatesApi.getAIEvaluationStatus(templateId!);
         if (statusRes.success && isMounted) {
           const payload = statusRes.data?.data ? statusRes.data : statusRes;
+          setFailedCount(payload.failed ?? statusRes.failed ?? 0);
           const activeRunId = payload.runId || statusRes.runId;
           const isDone = payload.isDone ?? statusRes.isDone ?? true;
           const completed = payload.completed ?? statusRes.completed ?? 0;
@@ -184,6 +191,7 @@ export function useAIEvaluationProgress(options: UseAIEvaluationProgressOptions 
     aiRanAt,
     setAiRanAt,
     runningAI,
+    failedCount,
     setRunningAI,
     aiProgressCount,
     setAiProgressCount,

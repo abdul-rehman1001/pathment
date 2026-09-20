@@ -1,5 +1,6 @@
 'use client';
 
+import { NO_CERTIFICATE, reviewSelection, aiSelection, type CertificateDecision } from '@/lib/utils/certificate-decision';
 import React from 'react';
 import { Loader2, Users, Sparkles, Info, Edit3, ChevronDown, PauseCircle, CheckCircle2, Clock, Lock } from 'lucide-react';
 import { getTierBadgeColor } from '@/lib/utils/certificates';
@@ -15,6 +16,8 @@ import { TierCriteria } from '@/components/admin/certificates/certificate-consta
 export interface RosterReviewState {
   status: 'pending' | 'verified';
   aiTier: string | null;
+  decision?: CertificateDecision;
+  aiDecision?: CertificateDecision;
   aiMatchScore?: number | null;
   finalTier: string | null;
   overridden: boolean;
@@ -110,9 +113,9 @@ export function RecipientRosterTable({
       <div className="max-h-[350px] overflow-y-auto divide-y divide-border">
         {filtered.map((m: any) => {
           const review = reviewRows?.[m.id];
-          const selectedTier = assignedTiers[m.id] ?? review?.finalTier ?? review?.aiTier ?? m.assignedTier ?? aiEvalMap[m.id]?.certificate_tier ?? '';
-          const recommendation = review?.aiTier
-            ? { certificate_tier: review.aiTier, match_score: review.aiMatchScore }
+          const selectedTier = assignedTiers[m.id] ?? (review ? reviewSelection(review) : m.assignedDecision === 'no_certificate' ? NO_CERTIFICATE : m.assignedTier ?? aiSelection(aiEvalMap[m.id]));
+          const recommendation = review?.aiTier || review?.aiDecision === 'no_certificate'
+            ? { certificate_tier: review.aiTier, decision: review.aiDecision, match_score: review.aiMatchScore }
             : aiEvalMap[m.id];
           const issuedTiersList: string[] = m.issuedTiers ?? [];
           const initials = `${m.firstName?.charAt(0) || ''}${m.lastName?.charAt(0) || ''}`.toUpperCase();
@@ -170,7 +173,7 @@ export function RecipientRosterTable({
                 ) : recommendation ? (
                   <div className="flex items-center gap-1.5 bg-violet-500/10 dark:bg-violet-500/20 border border-violet-500/20 px-2.5 py-1 rounded-xl">
                     <span className="text-[10px] font-bold text-violet-700 dark:text-violet-300 flex items-center gap-1">
-                      <Sparkles className="w-3 h-3 text-violet-500" /> {getTierName(recommendation.certificate_tier)}
+                      <Sparkles className="w-3 h-3 text-violet-500" /> {getTierName(aiSelection(recommendation))}
                     </span>
                     <span
                       className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
@@ -206,7 +209,8 @@ export function RecipientRosterTable({
                     disabled={locked}
                     className="w-full appearance-none pr-8 pl-3 py-1.5 bg-transparent text-[11px] font-semibold text-foreground cursor-pointer focus:outline-none disabled:cursor-not-allowed disabled:text-muted-foreground"
                   >
-                    <option value="">Select Certificate</option>
+                    <option value="">Select decision</option>
+                    <option value={NO_CERTIFICATE}>No certificate</option>
                     {criteria.map((c: any) => (
                       <option key={c.id} value={c.id} className="text-foreground bg-card font-medium">
                         {c.name}
@@ -219,7 +223,7 @@ export function RecipientRosterTable({
                 </div>
                 <ReviewNote
                   review={reviewRows?.[m.id]}
-                  aiTier={recommendation?.certificate_tier ?? null}
+                  aiTier={aiSelection(recommendation) || null}
                   selectedTier={selectedTier}
                   getTierName={getTierName}
                   userRole={userRole}
@@ -272,7 +276,7 @@ function ReviewNote({
   if (review?.status === 'verified') {
     // An unsaved change on top of a saved decision is still a change, and the
     // mentor needs to know it has not been recorded yet.
-    if (edited && review.finalTier !== selectedTier) {
+    if (reviewSelection(review) !== selectedTier) {
       return (
         <span className="flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 mt-0.5">
           <Edit3 className="w-2.5 h-2.5" /> Changed — verify to save
@@ -286,7 +290,7 @@ function ReviewNote({
       >
         <CheckCircle2 className="w-2.5 h-2.5" />
         {review.overridden
-          ? `Signed off — changed from ${getTierName(review.aiTier || '')}`
+          ? `Signed off — changed from ${getTierName(review.aiDecision === 'no_certificate' ? NO_CERTIFICATE : review.aiTier || '')}`
           : 'Signed off'}
       </span>
     );

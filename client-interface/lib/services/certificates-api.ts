@@ -1,3 +1,4 @@
+import type { CertificateDecision } from '@/lib/utils/certificate-decision';
 import { apiClient } from './api-client';
 
 export interface CertificateElement {
@@ -125,7 +126,8 @@ export interface AIEvaluationResult {
   lastName: string;
   email: string;
   is_eligible: boolean;
-  certificate_tier: string;
+  certificate_tier: string | null;
+  decision?: CertificateDecision;
   match_score: number;        
   overall_percentage: number; 
   completion_rate?: number;
@@ -171,6 +173,15 @@ export interface AIEvaluationResult {
 // ── Mentor verification of AI-assigned grades ───────────────────────────────
 
 /** One mentee awaiting (or carrying) a mentor's sign-off on their grade. */
+export interface CertificateDecisionHistoryEntry {
+  at: string;
+  by: string;
+  byName?: string;
+  from: { decision: CertificateDecision; tier: string | null };
+  to: { decision: CertificateDecision; tier: string | null };
+  reason: string | null;
+}
+
 export interface CertificateVerification {
   id: string;
   menteeId: string;
@@ -182,6 +193,9 @@ export interface CertificateVerification {
   aiMatchScore: number | null;
   /** What will actually be issued. */
   finalTier: string | null;
+  decision: CertificateDecision;
+  aiDecision: CertificateDecision;
+  decisionHistory: CertificateDecisionHistoryEntry[];
   overridden: boolean;
   overrideReason: string | null;
   status: 'pending' | 'verified';
@@ -197,6 +211,7 @@ export interface VerificationClanStatus {
   verified: number;
   pending: number;
   overridden: number;
+  noCertificate?: number;
   complete: boolean;
   /** Released by the admin — this is what lets the clan's mentors send. */
   approved: boolean;
@@ -224,6 +239,7 @@ export interface VerificationSummary {
   verified: number;
   pending: number;
   overridden: number;
+  noCertificate?: number;
   allVerified: boolean;
   /** Clans the admin has released for issuing. */
   approvedClans: number;
@@ -342,7 +358,7 @@ export interface MenteeEvidence {
   roadmaps: EvidenceRoadmap[];
   constraints: {
     /** The highest tier whose hard thresholds this mentee actually clears. */
-    maxEligibleTier: string;
+    maxEligibleTier: string | null;
     hardChecks: Record<string, TierConstraintChecks>;
   };
   /** What the AI proposed, when it has been run. One input, not the answer. */
@@ -353,6 +369,9 @@ export interface MenteeEvidence {
     aiTier: string | null;
     aiMatchScore: number | null;
     finalTier: string | null;
+    decision: CertificateDecision;
+    aiDecision: CertificateDecision;
+    decisionHistory: CertificateDecisionHistoryEntry[];
     overridden: boolean;
     overrideReason: string | null;
     verifiedAt: string | null;
@@ -392,13 +411,13 @@ export const certificatesApi = {
    * Confirm or change one mentee's grade. Omit `finalTier` to accept the AI's.
    * A different tier is an override and the server requires a reason.
    */
-  verifyOne: (templateId: string, menteeId: string, body: { finalTier?: string; reason?: string }) =>
+  verifyOne: (templateId: string, menteeId: string, body: { decision?: CertificateDecision; finalTier?: string | null; reason?: string }) =>
     apiClient.post<{ success: boolean; data: { verification: CertificateVerification } }>(
       `/certificates/templates/${templateId}/verifications/${menteeId}`, body
     ),
 
   /** Sign off several at once — "these all look right". */
-  verifyMany: (templateId: string, decisions: Array<{ menteeId: string; finalTier?: string; reason?: string }>) =>
+  verifyMany: (templateId: string, decisions: Array<{ menteeId: string; decision?: CertificateDecision; finalTier?: string | null; reason?: string }>) =>
     apiClient.post<{ success: boolean; message: string; data: { verified: number } }>(
       `/certificates/templates/${templateId}/verifications/bulk`, { decisions }, { timeout: 120000 }
     ),
@@ -522,8 +541,9 @@ export const certificatesApi = {
         instances: Array<{ id: string; menteeId: string }>;
         /** Actually issued. */
         count: number;
-        /** Recipients skipped because they already hold this certificate. */
+        /** Recipients skipped because they already hold a certificate or have a No certificate decision. */
         skipped: number;
+        skippedNoCertificate?: number;
         /** True when every recipient was already issued, so nothing was sent. */
         alreadyIssued?: boolean;
       };

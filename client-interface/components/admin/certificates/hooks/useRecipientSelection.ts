@@ -1,5 +1,6 @@
 'use client';
 
+import { AWARDED_CERTIFICATES, NO_CERTIFICATE, aiSelection } from '@/lib/utils/certificate-decision';
 import { useState, useMemo, useCallback } from 'react';
 import { toast } from 'sonner';
 import { TierCriteria } from '../certificate-constants';
@@ -67,9 +68,10 @@ export function useRecipientSelection({
     if (!id) return defaultTier;
 
     if (assignedTiers[id] !== undefined) return assignedTiers[id];
-    if (aiResults?.[id]?.certificate_tier) return aiResults[id].certificate_tier;
+    if (aiSelection(aiResults?.[id])) return aiSelection(aiResults?.[id]);
 
     const m = typeof mOrId === 'object' ? mOrId : activeList.find((x: any) => x.id === id);
+    if (m?.assignedDecision === 'no_certificate') return NO_CERTIFICATE;
     if (m?.assignedTier) return m.assignedTier;
 
     return defaultTier;
@@ -120,7 +122,7 @@ export function useRecipientSelection({
     if (badgeFilter !== 'all') {
       result = result.filter((m: any) => {
         const tier = getEffectiveTier(m);
-        return tier === badgeFilter;
+        return badgeFilter === AWARDED_CERTIFICATES ? Boolean(tier && tier !== NO_CERTIFICATE) : tier === badgeFilter;
       });
     }
 
@@ -222,8 +224,8 @@ export function useRecipientSelection({
     const aiMap: Record<string, string> = {};
 
     aiResults.forEach(r => {
-      if (r.mentee_id && r.certificate_tier) {
-        aiMap[r.mentee_id] = r.certificate_tier;
+      if (r.mentee_id && aiSelection(r)) {
+        aiMap[r.mentee_id] = aiSelection(r);
       }
     });
 

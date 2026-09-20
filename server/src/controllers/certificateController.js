@@ -153,7 +153,7 @@ const listVerifications = catchAsync(async (req, res) => {
 const verifyOne = catchAsync(async (req, res) => {
   const row = await certificateVerificationService.verify(
     req.params.id, req.params.menteeId,
-    { finalTier: req.body.finalTier, reason: req.body.reason },
+    { decision: req.body.decision, finalTier: req.body.finalTier, reason: req.body.reason },
     req.user
   );
   res.status(200).json(successResponse('Grade verified', { verification: row }));

@@ -7,7 +7,7 @@ const { sortCriteriaByPriority } = require('./criteriaUtils');
 function preCheckHardConstraints(menteePayload, criteria) {
   if (!criteria || !criteria.length) {
     return {
-      maxEligibleTier: 'participation',
+      maxEligibleTier: null,
       hardChecks: {},
     };
   }
@@ -65,7 +65,7 @@ function preCheckHardConstraints(menteePayload, criteria) {
   }
 
   return {
-    maxEligibleTier: maxEligibleTier || 'participation',
+    maxEligibleTier,
     hardChecks,
   };
 }
@@ -189,6 +189,7 @@ EVALUATION INSTRUCTIONS:
 2. DYNAMIC TIER STEP-DOWN HIERARCHY (highest to lowest): ${hierarchy}.
 
 3. FOR EVERY MENTEE IN THE INPUT ARRAY, EVALUATE:
+   - When no configured certificate type qualifies, use decision "no_certificate", certificate_tier null, and explain the unmet criteria. Never invent a participation award.
    - "certificate_tier": Check the tier's "Custom Qualification Rule" and "Required Tech Stack / Keywords" against the mentee's completed tasks.
      * If the mentee satisfies the Custom Rule and explicit Tech Stack for "max_eligible_tier", assign "certificate_tier": "max_eligible_tier".
      * If the mentee FAILS the explicit Custom Rule or explicit Tech Stack for "max_eligible_tier", STEP DOWN to the next lower tier in the hierarchy. Do NOT jump straight to the bottom! Assign the highest lower tier whose rules the mentee DOES satisfy.
@@ -204,7 +205,8 @@ EVALUATION INSTRUCTIONS:
   {
     "mentee_id": "<exact input mentee_id>",
     "is_eligible": true,
-    "certificate_tier": "<assigned tier id>",
+    "decision": "award or no_certificate",
+    "certificate_tier": "<assigned tier id, or null when no type qualifies>",
     "match_score": 85,
     "matched_keywords": ["React", "Node.js"],
     "missing_keywords": [],

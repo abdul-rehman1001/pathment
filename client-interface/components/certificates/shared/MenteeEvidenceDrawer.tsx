@@ -1,5 +1,6 @@
 'use client';
 
+import { NO_CERTIFICATE, reviewSelection, aiSelection, decisionPayload } from '@/lib/utils/certificate-decision';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
@@ -15,6 +16,7 @@ import { getTierBadgeColor } from '@/lib/utils/certificates';
 
 interface MenteeEvidenceDrawerProps {
   templateId: string | null;
+  initialSelection?: string;
   /** Open when set; the drawer fetches this mentee's case. */
   menteeId: string | null;
   onClose: () => void;
@@ -43,7 +45,7 @@ interface MenteeEvidenceDrawerProps {
  * read; burying it under the metrics would make them hunt for it.
  */
 export function MenteeEvidenceDrawer({
-  templateId, menteeId, onClose, onTierChange, onDecided, canDecide = true,
+  templateId, menteeId, onClose, onTierChange, onDecided, canDecide = true, initialSelection,
 }: MenteeEvidenceDrawerProps) {
   const [evidence, setEvidence] = useState<MenteeEvidence | null>(null);
   const [loading, setLoading] = useState(false);
@@ -69,7 +71,7 @@ export function MenteeEvidenceDrawer({
       const res = await certificatesApi.getMenteeEvidence(templateId, menteeId);
       if (res.success && res.data) {
         setEvidence(res.data);
-        setDraftTier(res.data.verification?.finalTier || res.data.ai?.certificate_tier || '');
+        setDraftTier(initialSelection ?? (res.data.verification ? reviewSelection(res.data.verification) : aiSelection(res.data.ai)));
         setReason(res.data.verification?.overrideReason || '');
       } else {
         setError('That record came back empty.');
@@ -81,7 +83,7 @@ export function MenteeEvidenceDrawer({
     } finally {
       setLoading(false);
     }
-  }, [templateId, menteeId]);
+  }, [templateId, menteeId, initialSelection]);
 
   useEffect(() => {
     if (!menteeId) { setEvidence(null); setError(null); return; }
@@ -89,22 +91,24 @@ export function MenteeEvidenceDrawer({
   }, [menteeId, load]);
 
   const tierName = (id: string | null | undefined) =>
-    evidence?.criteria.find((c) => c.id === id)?.name || id || '—';
+    id === NO_CERTIFICATE ? 'No certificate' : evidence?.criteria.find((c) => c.id === id)?.name || id || '—';
 
   const v = evidence?.verification ?? null;
   const m = evidence?.metrics;
   const basis = m?.completion_basis;
 
   /** A change away from the AI's pick needs a reason — the server insists too. */
-  const aiTier = v?.aiTier ?? evidence?.ai?.certificate_tier ?? null;
-  const isChange = Boolean(aiTier && draftTier && draftTier !== aiTier);
-  const reasonMissing = isChange && !reason.trim();
+  const aiTier = v?.aiDecision === 'no_certificate' ? NO_CERTIFICATE : v?.aiTier ?? aiSelection(evidence?.ai);
+  const isChange = Boolean(draftTier && draftTier !== aiTier);
+  const needsReason = isChange || draftTier === NO_CERTIFICATE || (v?.status === 'verified' && draftTier !== reviewSelection(v));
+  const reasonMissing = needsReason && !reason.trim();
 
   const save = async () => {
     if (!templateId || !menteeId) return;
     // With no review round there is nothing to record a decision against, so
     // the change just moves the roster's tier and is signed off later.
     if (!v) {
+      if (draftTier === NO_CERTIFICATE) { toast.error('An admin must open the review round before this decision can be recorded.'); return; }
       onTierChange?.(menteeId, draftTier);
       toast.success('Badge updated for this roster');
       onClose();
@@ -113,8 +117,8 @@ export function MenteeEvidenceDrawer({
     try {
       setSaving(true);
       await certificatesApi.verifyOne(templateId, menteeId, {
-        finalTier: draftTier,
-        reason: isChange ? reason.trim() : undefined,
+        ...decisionPayload(draftTier),
+        reason: needsReason ? reason.trim() : undefined,
       });
       toast.success(isChange ? 'Grade changed and signed off' : 'Grade signed off');
       onDecided?.();
@@ -171,6 +175,19 @@ export function MenteeEvidenceDrawer({
           </div>
 
           <DecisionBlock evidence={evidence} tierName={tierName} />
+          {canDecide && !!v?.decisionHistory?.length && (
+            <details className="rounded-xl border border-border p-3 text-xs">
+              <summary className="cursor-pointer font-medium">Decision history</summary>
+              <ol className="mt-3 space-y-3">
+                {v.decisionHistory.map((entry, index) => (
+                  <li key={`${entry.at}-${index}`}>
+                    <p>{new Date(entry.at).toLocaleString()} · {entry.byName || 'Reviewer'} · {entry.from.decision === 'no_certificate' ? 'No certificate' : tierName(entry.from.tier)} → {entry.to.decision === 'no_certificate' ? 'No certificate' : tierName(entry.to.tier)}</p>
+                    <p className="text-muted-foreground">{entry.reason || 'Confirmed the recommendation.'}</p>
+                  </li>
+                ))}
+              </ol>
+            </details>
+          )}
 
           {/* ── The numbers behind it ──────────────────────────────────── */}
           {m && (
@@ -233,7 +250,12 @@ export function MenteeEvidenceDrawer({
 
           <WorkBlock roadmaps={evidence.roadmaps || []} />
 
-          <ThresholdBlock evidence={evidence} tier={draftTier || aiTier} tierName={tierName} />
+          {draftTier === NO_CERTIFICATE ? (
+            <details className="space-y-3 rounded-xl border border-border p-3">
+              <summary className="cursor-pointer text-xs font-medium">Eligibility by certificate type</summary>
+              {evidence.criteria.map(tier => <ThresholdBlock key={tier.id} evidence={evidence} tier={tier.id} tierName={tierName} />)}
+            </details>
+          ) : <ThresholdBlock evidence={evidence} tier={draftTier || aiTier} tierName={tierName} />}
 
           {/* ── The AI's view, when it has one ─────────────────────────── */}
           {evidence.ai && (
@@ -242,7 +264,7 @@ export function MenteeEvidenceDrawer({
               <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-4 space-y-2">
                 <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-violet-600 dark:text-violet-400">
                   <Sparkles className="w-3.5 h-3.5" />
-                  Proposed {tierName(evidence.ai.certificate_tier)}
+                  Proposed {tierName(aiSelection(evidence.ai))}
                   {evidence.ai.match_score != null && ` · ${Math.round(evidence.ai.match_score)}% match`}
                 </div>
                 <p className="text-xs text-foreground leading-relaxed">
@@ -299,7 +321,7 @@ export function MenteeEvidenceDrawer({
                 <SelectMenu
                   value={draftTier}
                   onChange={setDraftTier}
-                  options={evidence.criteria.map((c) => ({ value: c.id, label: c.name }))}
+                  options={[{ value: NO_CERTIFICATE, label: 'No certificate' }, ...evidence.criteria.map((c) => ({ value: c.id, label: c.name }))]}
                   placeholder="Pick a badge"
                   ariaLabel="Badge"
                   className="w-full"
@@ -308,10 +330,10 @@ export function MenteeEvidenceDrawer({
                 {/* Required, because an admin reading this in a month — and the
                     mentor themselves — need to know why the evidence was
                     overruled. The server rejects an override without one. */}
-                {isChange && (
+                {needsReason && (
                   <div className="space-y-1.5">
                     <label className="block text-[11px] font-medium text-foreground">
-                      Why are you changing this from {tierName(aiTier)}? <span className="text-amber-600">Required</span>
+                      Explain this decision ({tierName(draftTier)}). <span className="text-amber-600">Required</span>
                     </label>
                     <textarea
                       rows={3}
@@ -420,7 +442,7 @@ function DecisionBlock({
         <Clock className="w-4 h-4 shrink-0 text-amber-500 mt-0.5" />
         <p className="text-xs text-foreground">
           Awaiting a mentor&apos;s sign-off. The AI proposed{' '}
-          <span className="font-semibold">{tierName(v.aiTier)}</span>.
+          <span className="font-semibold">{tierName(v.aiDecision === 'no_certificate' ? NO_CERTIFICATE : v.aiTier)}</span>.
         </p>
       </div>
     );
@@ -431,17 +453,17 @@ function DecisionBlock({
       <div className="flex flex-wrap items-center gap-2">
         <CheckCircle2 className="w-4 h-4 shrink-0 text-brand-500" />
         <span className="text-sm font-semibold text-foreground">
-          Signed off as {tierName(v.finalTier)}
+          Signed off as {tierName(reviewSelection(v))}
         </span>
         <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${getTierBadgeColor(v.finalTier || '')}`}>
-          {tierName(v.finalTier)}
+          {tierName(reviewSelection(v))}
         </span>
       </div>
       <p className="text-[11px] text-muted-foreground">
         {v.verifiedBy ? `by ${v.verifiedBy}` : 'by a mentor'}
         {v.verifiedAt && ` · ${new Date(v.verifiedAt).toLocaleDateString()}`}
       </p>
-      {v.overridden && <OverrideNote v={v} tierName={tierName} />}
+      {v.overrideReason && <OverrideNote v={v} tierName={tierName} />}
     </div>
   );
 }
@@ -456,9 +478,9 @@ function OverrideNote({
     <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 space-y-1">
       <p className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-400">
         <AlertTriangle className="w-3.5 h-3.5" />
-        Changed by a mentor
+        {v.overridden ? 'Changed by a mentor' : 'Review reason'}
         <span className="font-normal normal-case text-muted-foreground">
-          {tierName(v.aiTier)} → {tierName(v.finalTier)}
+          {tierName(v.aiDecision === 'no_certificate' ? NO_CERTIFICATE : v.aiTier)} → {tierName(reviewSelection(v))}
         </span>
       </p>
       <p className="text-xs text-foreground leading-relaxed">
@@ -509,7 +531,7 @@ function ThresholdBlock({
       <section className="space-y-2.5">
         <SectionLabel>Against {tierName(tier)}</SectionLabel>
         <p className="rounded-2xl border border-border bg-card p-4 text-xs text-muted-foreground">
-          {tierName(tier)} sets no minimum requirements — it is awarded to active participants.
+          {tierName(tier)} sets no numeric thresholds. Check its keyword and custom-rule evidence before deciding.
         </p>
       </section>
     );
@@ -544,8 +566,7 @@ function ThresholdBlock({
       </div>
       {eligible !== tier && (
         <p className="text-[11px] text-muted-foreground">
-          On the thresholds alone this mentee clears{' '}
-          <span className="font-medium text-foreground">{tierName(eligible)}</span>.
+          {eligible ? <>On the thresholds alone this mentee clears <span className="font-medium text-foreground">{tierName(eligible)}</span>.</> : 'This mentee does not meet the numeric requirements for any configured certificate type.'}
         </p>
       )}
     </section>

@@ -281,15 +281,16 @@ class CertificateService {
       const aiEval = aiResultMap[m.id];
       // The dispatched assignment remains authoritative until explicitly reviewed.
       if (review) {
-        const tier = review.finalTier ?? review.aiTier;
-        return { ...m, assignedTier: tier, tierMatches: tier ? { [tier]: review.aiMatchScore ?? 0 } : {},
+        const tier = review.decision === 'no_certificate' ? null : (review.finalTier ?? review.aiTier);
+        return { ...m, assignedDecision: review.decision, assignedTier: tier, tierMatches: tier ? { [tier]: review.aiMatchScore ?? 0 } : {},
           criteriaMatch: review.aiMatchScore, issuedTiers: issuedMap[m.id] || [] };
       }
       if (hasAiRun && aiEval) {
         return {
           ...m,
+          assignedDecision: aiEval.decision || (aiEval.certificate_tier ? 'award' : 'undecided'),
           assignedTier: aiEval.certificate_tier || null,
-          tierMatches: { [aiEval.certificate_tier || 'participation']: Number(aiEval.match_score) || 0 },
+          tierMatches: aiEval.certificate_tier ? { [aiEval.certificate_tier]: Number(aiEval.match_score) || 0 } : {},
           criteriaMatch: Number(aiEval.match_score) || 0,
           issuedTiers: issuedMap[m.id] || []
         };
@@ -297,6 +298,7 @@ class CertificateService {
       return {
         ...m,
         assignedTier: null,
+        assignedDecision: 'undecided',
         tierMatches: {},
         criteriaMatch: null,
         issuedTiers: issuedMap[m.id] || []
@@ -443,6 +445,14 @@ class CertificateService {
       attributes: ['id', 'tier', 'certificateNumber', 'createdAt']
     });
 
+    // No-award reviews are internal. They do not create a mentee-facing
+    // credential or publish a rejection explanation implicitly.
+    if (user?.id === menteeId && !instance &&
+        (verification?.decision === 'no_certificate' || ai?.decision === 'no_certificate') &&
+        !(await authzService.hasAdminAccess(user))) {
+      throw new ForbiddenError('This certificate decision has not been published.');
+    }
+
     const elapsed = Date.now() - startedAt;
     if (elapsed > 2000) {
       // Loud only when it is actually slow. The client gives up at 30s, so a
@@ -482,6 +492,9 @@ class CertificateService {
         aiTier:         verification.aiTier,
         aiMatchScore:   verification.aiMatchScore,
         finalTier:      verification.finalTier,
+        decision:       verification.decision,
+        aiDecision:     verification.aiDecision,
+        decisionHistory: user?.id === menteeId ? [] : verification.decisionHistory || [],
         overridden:     verification.overridden,
         overrideReason: verification.overrideReason,
         verifiedAt:     verification.verifiedAt,
@@ -1020,17 +1033,21 @@ class CertificateService {
 
       const blockersAnalysisObj = aiItem.blockers_analysis || aiItem.blockersAnalysis || {};
 
-      let qualifiedTier = 'participation';
+      let qualifiedTier = null;
       const normalizedMatched = matchedKw.map(k => String(k).toLowerCase());
+      const hasKeywordEvidence = Array.isArray(aiItem.matched_keywords) || Array.isArray(aiItem.matchedKeywords);
 
       for (const tierConfig of sortedCriteria) {
         const tierId = tierConfig.id;
 
-        if (!this.isTierAllowed(tierId, maxTierId, sortedCriteria)) {
+        if (!Object.values(livePreCheck.hardChecks[tierId] || {}).every(Boolean)) {
           continue;
         }
 
         const requiredKw = Array.isArray(tierConfig.keywords) ? tierConfig.keywords : [];
+        if ((requiredKw.length > 0 && !hasKeywordEvidence) || (tierConfig.customRule?.trim() && !customRulesCheck.length)) {
+          return { menteeId, result: this.buildFallbackResult(menteePayload, livePreCheck) };
+        }
         const unfulfilledKw = requiredKw.filter(kw => !normalizedMatched.includes(String(kw).toLowerCase()));
         if (unfulfilledKw.length > 0) {
           continue;
@@ -1049,22 +1066,25 @@ class CertificateService {
 
       const assignedTier = aiItem.certificate_tier || aiItem.certificateTier || aiItem.tier || maxTierId;
 
-      const validTier = qualifiedTier !== 'participation' ? qualifiedTier : assignedTier;
+      const validTier = qualifiedTier;
 
       const hardConstraintsCheck = livePreCheck.hardChecks[validTier]
-        ?? (validTier === 'participation'
-          ? Object.values(livePreCheck.hardChecks)[0] ?? { score_ok: false, blockers_ok: false, completion_rate_ok: false, on_time_rate_ok: false, rating_ok: false, attendance_ok: false }
-          : { score_ok: true, blockers_ok: true, completion_rate_ok: true, on_time_rate_ok: true, rating_ok: true, attendance_ok: true });
+        ?? Object.values(livePreCheck.hardChecks)[0]
+        ?? { score_ok: false, blockers_ok: false, completion_rate_ok: false,
+          on_time_rate_ok: false, rating_ok: false, attendance_ok: false };
 
       let finalReasoning = aiItem.reasoning || aiItem.summary || '';
-      if (validTier !== assignedTier) {
+      if (!validTier) {
+        finalReasoning = 'No certificate: none of the configured certificate types meet all required criteria. ' + finalReasoning;
+      } else if (validTier !== assignedTier) {
         const tierName = sortedCriteria.find(c => c.id === validTier)?.name || validTier;
         finalReasoning = `Mentee qualifies for the ${tierName} based on priority tier evaluation: hard constraints, required keywords, and custom rules were all satisfied.`;
       }
 
       const result = {
         mentee_id:            menteeId,
-        is_eligible:          validTier !== 'participation',
+        decision:             validTier ? 'award' : 'no_certificate',
+        is_eligible:          Boolean(validTier),
         certificate_tier:     validTier,
         match_score:          cappedScore,
         matched_keywords:     matchedKw,
@@ -1093,13 +1113,16 @@ class CertificateService {
 
 
   buildFallbackResult(menteePayload, preCheckResult) {
+    preCheckResult = preCheckResult || { maxEligibleTier: null, hardChecks: {} };
     const cappedScore = Math.min(100, Math.max(0, Number(menteePayload.normalized_score) || 0));
     const blockers    = menteePayload.blockers ?? {};
 
     return {
       mentee_id:       menteePayload.mentee_id,
-      is_eligible:     preCheckResult.maxEligibleTier !== 'participation',
-      certificate_tier: preCheckResult.maxEligibleTier,
+      _failed: true,
+      decision: 'undecided',
+      is_eligible: false,
+      certificate_tier: null,
       match_score:     cappedScore,
       matched_keywords: [],
       missing_keywords: [],
@@ -1118,9 +1141,9 @@ class CertificateService {
         resolved: blockers.resolved ?? 0,
         open:     blockers.open     ?? 0,
         impact:   (blockers.open ?? 0) > 2 ? 'High' : (blockers.open ?? 0) > 0 ? 'Medium' : 'Low',
-        summary:  'AI response could not be parsed. Tier assigned by server-side constraint checks.'
+        summary:  'AI evaluation failed. No certificate decision has been made.'
       },
-      reasoning: `Server pre-check determined ${preCheckResult.maxEligibleTier} tier based on: score=${cappedScore}%, completion=${menteePayload.completion_rate}%, on-time=${menteePayload.on_time_rate}%.`
+      reasoning: 'AI evaluation could not be completed. Retry the evaluation; this is not a No certificate decision.'
     };
   }
 
@@ -1431,7 +1454,8 @@ class CertificateService {
       const template = await models.CertificateTemplate.findOne({
         where: { id: templateId, status: 'active' },
         include: [{ model: models.Program, as: 'program', required: false }],
-        transaction: t
+        transaction: t,
+        lock: { level: t.LOCK.UPDATE, of: models.CertificateTemplate }
       });
 
       if (!template) {
@@ -1474,6 +1498,11 @@ class CertificateService {
       }
 
       const verifiedTiers = await certificateVerificationService.resolveTiers(templateId, requested);
+      const aiNoCertificateIds = new Set((template.aiEvaluation?.results || [])
+        .filter(result => result.decision === 'no_certificate').map(result => result.mentee_id || result.id));
+      const excludedIds = new Set(requested.filter(id => verifiedTiers.has(id)
+        ? verifiedTiers.get(id) === null : aiNoCertificateIds.has(id)));
+
 
       // Nobody gets the same certificate twice.
       //
@@ -1490,10 +1519,11 @@ class CertificateService {
         transaction: t
       });
       const alreadyIssuedIds = new Set(alreadyIssued.map((r) => r.menteeId));
+      const skippedNoCertificate = [...excludedIds].filter(id => !alreadyIssuedIds.has(id)).length;
 
       let instancesData = [];
       if (Array.isArray(recipients) && recipients.length > 0) {
-        instancesData = recipients.filter(r => !alreadyIssuedIds.has(r.menteeId)).map(r => ({
+        instancesData = recipients.filter(r => !alreadyIssuedIds.has(r.menteeId) && !excludedIds.has(r.menteeId)).map(r => ({
           id: crypto.randomUUID(),
           templateId,
           menteeId:  r.menteeId,
@@ -1507,7 +1537,7 @@ class CertificateService {
         if (!Array.isArray(menteeIds) || menteeIds.length === 0) {
           throw new ValidationError('At least one mentee ID or recipients list is required');
         }
-        instancesData = menteeIds.filter(menteeId => !alreadyIssuedIds.has(menteeId)).map(menteeId => ({
+        instancesData = menteeIds.filter(menteeId => !alreadyIssuedIds.has(menteeId) && !excludedIds.has(menteeId)).map(menteeId => ({
           id: crypto.randomUUID(),
           templateId,
           menteeId,
@@ -1519,6 +1549,10 @@ class CertificateService {
         }));
       }
 
+      if (instancesData.some(instance => ['__no_certificate__', 'no_certificate'].includes(instance.tier))) {
+        throw new ValidationError('Record No certificate as a review decision, not a certificate tier.');
+      }
+
       // Every credential gets its public number here, at the moment it becomes
       // real. Generated per row and retried on the unique index: the odds of a
       // collision are negligible, but "negligible" is not "never" and a clash
@@ -1526,7 +1560,7 @@ class CertificateService {
       const skipped = requested.length - instancesData.length;
       if (instancesData.length === 0) {
         await t.rollback();
-        return { instances: [], count: 0, skipped, alreadyIssued: true };
+        return { instances: [], count: 0, skipped, skippedNoCertificate, alreadyIssued: skippedNoCertificate === 0 };
       }
 
       const instances = await this._createWithNumbers(instancesData, t);
@@ -1540,6 +1574,7 @@ class CertificateService {
       return {
         instances: instances.map(i => ({ id: i.id, menteeId: i.menteeId })),
         count: instances.length,
+        skippedNoCertificate,
         skipped
       };
     } catch (err) {

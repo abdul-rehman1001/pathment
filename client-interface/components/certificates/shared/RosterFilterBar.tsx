@@ -1,5 +1,6 @@
 'use client';
 
+import { AWARDED_CERTIFICATES, NO_CERTIFICATE } from '@/lib/utils/certificate-decision';
 import { Search, X } from 'lucide-react';
 import { SelectMenu } from '@/components/shared/SelectMenu';
 import type { ReviewerClanState } from '@/lib/services/certificates-api';
@@ -128,7 +129,10 @@ export function RosterFilterBar({
           value={badge}
           onChange={onBadge}
           options={[
-            { value: 'all', label: 'All badges' },
+            { value: 'all', label: 'All decisions' },
+            { value: AWARDED_CERTIFICATES, label: 'Certificate assigned' },
+            { value: NO_CERTIFICATE, label: 'No certificate' },
+            { value: '', label: 'Not evaluated / unassigned' },
             ...criteria.map((c) => ({ value: c.id, label: c.name })),
           ]}
           ariaLabel="Filter by badge"
