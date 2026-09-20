@@ -47,10 +47,12 @@ async function up() {
     console.log(`Added column roadmap_tasks.${TASK_COL}`);
   }
 
+  // Keep legacy article/interactive rows valid; this migration adds a type,
+  // it must not narrow the types already stored in production.
   await sequelize.query(`
     ALTER TABLE roadmap_tasks DROP CONSTRAINT IF EXISTS "roadmap_tasks_type_check";
     ALTER TABLE roadmap_tasks ADD CONSTRAINT "roadmap_tasks_type_check"
-      CHECK (type IN ('reading','video','exercise','project','quiz','discussion','practical','assessment','custom','assignment','interview','open_source'))
+      CHECK (type IN ('article','interactive','reading','video','exercise','project','quiz','discussion','practical','assessment','custom','assignment','interview','open_source'))
   `);
   console.log('Updated roadmap_tasks type constraint');
 }
@@ -62,9 +64,15 @@ async function down() {
   await sequelize.query(`
     ALTER TABLE roadmap_tasks DROP CONSTRAINT IF EXISTS "roadmap_tasks_type_check";
     ALTER TABLE roadmap_tasks ADD CONSTRAINT "roadmap_tasks_type_check"
-      CHECK (type IN ('reading','video','exercise','project','quiz','discussion','practical','assessment','custom','assignment','interview'))
+      CHECK (type IN ('article','interactive','reading','video','exercise','project','quiz','discussion','practical','assessment','custom','assignment','interview'))
   `);
   console.log('Rollback complete');
 }
 
 module.exports = { up, down };
+
+if (require.main === module) {
+  up()
+    .catch(error => { console.error(error); process.exitCode = 1; })
+    .finally(() => sequelize.close());
+}
