@@ -17,8 +17,8 @@ import CertificateHistoryLog from '@/components/admin/certificates/CertificateHi
 import { DuplicateWarnModal } from '@/components/shared';
 import { getTierBadgeColor, getTierButtonColor, getTierIconColor } from '@/lib/utils/certificates';
 import { Drawer } from '@/components/shared/Drawer';
-import { MenteeEvidenceDrawer, AIEvaluationBanner, RecipientRosterTable, CertificatePreview, RosterFilterBar, type CertificateRenderData, type ReviewFilter, type RosterSort } from '@/components/certificates/shared';
-import { useAIEvaluationProgress } from '@/components/admin/certificates/hooks';
+import { MenteeEvidenceDrawer, RecipientRosterTable, CertificatePreview, RosterFilterBar, type CertificateRenderData, type ReviewFilter, type RosterSort } from '@/components/certificates/shared';
+import { scopeCertificateReviews } from '@/lib/utils/certificate-review-scope';
 import { downloadCertificateAsPng } from '@/lib/utils/certificate-renderer';
 
 
@@ -135,13 +135,7 @@ export default function MentorCertificatesPage() {
   const [mentorTiers, setMentorTiers] = useState<Record<string, string>>({});
   const [inspectedRecipient, setInspectedRecipient] = useState<any | null>(null);
 
-  const {
-    aiResults, setAiResults, aiRanAt, setAiRanAt, runningAI, failedCount,
-    aiProgressCount, aiTotalCount, runAIEvaluation
-  } = useAIEvaluationProgress({
-    templateId: activeTemplateId
-  });
-
+  const [aiResults, setAiResults] = useState<any[]>([]);
 
 
   const getTierName = (tierId: string) => {
@@ -258,7 +252,27 @@ export default function MentorCertificatesPage() {
   const awaitingApproval = (release ?? []).filter(c => !c.canSend);
   const criteria = currentTemplate?.criteria ?? [];
 
-  const reviewList = useMemo(() => Object.values(reviewRows ?? {}), [reviewRows]);
+  const activeMentees = useMemo<MenteeRow[]>(() => {
+    const list: MenteeRow[] = [];
+    const seen = new Set<string>();
+    Object.keys(qualifiedData).forEach(key => {
+      if (key !== 'paused' && key !== 'mentors') {
+        const arr = qualifiedData[key] || [];
+        arr.forEach((m: MenteeRow) => {
+          if (!seen.has(m.id)) {
+            seen.add(m.id);
+            list.push(m);
+          }
+        });
+      }
+    });
+    return list;
+  }, [qualifiedData]);
+
+  const { rows: reviewList, clans: reviewClans } = useMemo(
+    () => scopeCertificateReviews(activeMentees, Object.values(reviewRows ?? {}), release ?? []),
+    [activeMentees, reviewRows, release],
+  );
   /** There is something to sign off on for this template. */
   const reviewOpen = reviewList.length > 0;
   const pendingReviewCount = reviewList.filter(r => r.status !== 'verified').length;
@@ -386,7 +400,6 @@ export default function MentorCertificatesPage() {
           if (activeTemplate?.aiEvaluation?.results) {
             const aiRes = activeTemplate.aiEvaluation.results;
             setAiResults(aiRes);
-            setAiRanAt(activeTemplate.aiEvaluation.ranAt ?? null);
             aiRes.forEach((r: any) => {
               if (r.mentee_id && aiSelection(r) && seenIds.has(r.mentee_id)) {
                 if (!initialTiers[r.mentee_id]) initialTiers[r.mentee_id] = aiSelection(r);
@@ -395,7 +408,6 @@ export default function MentorCertificatesPage() {
             });
           } else {
             setAiResults([]);
-            setAiRanAt(null);
           }
 
           setMentorTiers(initialTiers);
@@ -406,23 +418,6 @@ export default function MentorCertificatesPage() {
       .finally(() => { if (!cancelled) setLoadingQualifications(false); });
     return () => { cancelled = true; };
   }, [activeTemplateId, user, refreshKey]);
-
-  const activeMentees = useMemo<MenteeRow[]>(() => {
-    const list: MenteeRow[] = [];
-    const seen = new Set<string>();
-    Object.keys(qualifiedData).forEach(key => {
-      if (key !== 'paused' && key !== 'mentors') {
-        const arr = qualifiedData[key] || [];
-        arr.forEach((m: MenteeRow) => {
-          if (!seen.has(m.id)) {
-            seen.add(m.id);
-            list.push(m);
-          }
-        });
-      }
-    });
-    return list;
-  }, [qualifiedData]);
 
   const mentorAIResults = useMemo(() => {
     const activeIds = new Set(activeMentees.map(m => m.id));
@@ -689,10 +684,6 @@ export default function MentorCertificatesPage() {
       })
       .map(id => ({ menteeId: id, finalTier: getEffectiveTier(id) }));
   }, [selectedIds, reviewRows, getEffectiveTier]);
-
-  const handleRunAIEvaluation = () => {
-    if (activeTemplateId) runAIEvaluation(activeTemplateId);
-  };
 
   const executeIssuance = async (recipientsList: Array<{ menteeId: string; tier: string }>) => {
     try {
@@ -1151,43 +1142,17 @@ export default function MentorCertificatesPage() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-border/60 mb-5 gap-3">
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-xs font-semibold text-foreground uppercase tracking-wider">Mentees Eligibility & Issuance</h3>
+                  <h3 className="text-xs font-semibold text-foreground uppercase tracking-wider">Review & issue certificates</h3>
                   <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-500/10 text-brand-600 dark:text-brand-400">
                     <TrendingUp className="w-3 h-3" />
                     {activeMentees.length} Active
                   </span>
                 </div>
-                <p className="text-[10px] text-muted-foreground mt-0.5">Evaluate eligibility with AI and assign certificate tiers</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Review your mentees’ grades and sign off. Send certificates after admin approval.</p>
               </div>
 
-              <button
-                type="button"
-                onClick={handleRunAIEvaluation}
-                disabled={runningAI || !activeTemplateId}
-                className="flex items-center gap-1.5 px-4 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all shadow-xs self-start sm:self-auto"
-              >
-                {runningAI ? (
-                  <><Loader2 className="animate-spin w-3.5 h-3.5" /> Evaluating…</>
-                ) : (
-                  <><Sparkles className="w-3.5 h-3.5" /> {aiRanAt ? 'Re-run AI Evaluation' : 'Run AI Evaluation'}</>
-                )}
-              </button>
             </div>
 
-
-
-
-              {}
-                <AIEvaluationBanner
-                  failedCount={failedCount}
-                  count={mentorAIResults.length}
-                  ranAt={aiRanAt}
-                  runningAI={runningAI}
-                  progressCount={aiProgressCount}
-                  totalCount={aiTotalCount}
-                />
-
-              {}
               <MenteeEvidenceDrawer
                 templateId={activeTemplateId}
                 menteeId={inspectedRecipient?.mentee_id ?? null}
@@ -1200,7 +1165,7 @@ export default function MentorCertificatesPage() {
               {}
               {reviewOpen && (
                 <ReviewRoundBanner
-                  clans={release ?? []}
+                  clans={reviewClans}
                   pending={pendingReviewCount}
                   total={reviewList.length}
                   daysLeft={reviewDaysLeft}
@@ -1212,7 +1177,7 @@ export default function MentorCertificatesPage() {
               <RosterFilterBar
                 search={search} onSearch={setSearch}
                 clan={clanFilter} onClan={setClanFilter}
-                clans={rosterClans} clanStates={release ?? []}
+                clans={rosterClans} clanStates={reviewClans}
                 badge={badgeFilter} onBadge={setBadgeFilter}
                 criteria={criteria}
                 sort={sortBy} onSort={setSortBy}
@@ -1372,7 +1337,7 @@ export default function MentorCertificatesPage() {
       >
         <div className="space-y-6">
           <p className="text-xs text-muted-foreground leading-relaxed">
-            The rules below define the AI evaluation criteria for each tier. The AI evaluates keywords, score percentage, and open blockers to assign tiers.
+            These are the criteria for each certificate tier. Use them alongside each mentee’s evidence when reviewing grades.
           </p>
 
           <div className="space-y-4">
