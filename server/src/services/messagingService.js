@@ -819,6 +819,7 @@ class MessagingService {
         'actionLabel',
         'relatedEntityType',
         'relatedEntityId',
+        'clanId',
         'readAt',
         'sentAt',
         'emailSent',
