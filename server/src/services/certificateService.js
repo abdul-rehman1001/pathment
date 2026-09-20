@@ -269,32 +269,22 @@ class CertificateService {
 
     const criteria = sortCriteriaByPriority(Array.isArray(template.criteria) ? template.criteria : []);
 
-    const latestQueueRun = await models.AIEvaluationQueue.findOne({
-      where: { templateId: id, status: 'completed' },
-      order: [['createdAt', 'DESC']],
-      attributes: ['runId'],
-      raw: true
-    });
-
-    let aiResults = [];
-    if (latestQueueRun) {
-      const jobs = await models.AIEvaluationQueue.findAll({
-        where: { runId: latestQueueRun.runId, status: 'completed' },
-        attributes: ['result'],
-        raw: true
-      });
-      aiResults = jobs.map(j => j.result).filter(Boolean);
-    }
-
-    if (aiResults.length === 0 && Array.isArray(template.aiEvaluation?.results)) {
-      aiResults = template.aiEvaluation.results;
-    }
-
+    const aiResults = Array.isArray(template.aiEvaluation?.results) ? template.aiEvaluation.results : [];
     const aiResultMap = Object.fromEntries(aiResults.map(r => [r.mentee_id || r.id, r]));
+    const reviews = await models.CertificateVerification.findAll({ where: { templateId: id }, raw: true });
+    const reviewMap = new Map(reviews.map(row => [row.menteeId, row]));
+
     const hasAiRun = aiResults.length > 0;
 
     const buildMenteeRow = (m) => {
+      const review = reviewMap.get(m.id);
       const aiEval = aiResultMap[m.id];
+      // The dispatched assignment remains authoritative until explicitly reviewed.
+      if (review) {
+        const tier = review.finalTier ?? review.aiTier;
+        return { ...m, assignedTier: tier, tierMatches: tier ? { [tier]: review.aiMatchScore ?? 0 } : {},
+          criteriaMatch: review.aiMatchScore, issuedTiers: issuedMap[m.id] || [] };
+      }
       if (hasAiRun && aiEval) {
         return {
           ...m,

@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const { models, sequelize } = require('../db');
 const certificateService = require('../services/certificateService');
+const { saveResults } = require('../services/certificateEvaluationStore');
 const { enrichEvaluationResults } = require('../utils/certificateUtils');
 const { emitToUser } = require('../socket');
 const logger = require('../utils/logger');
@@ -44,20 +45,16 @@ async function checkRunCompletion(runId, triggeredBy) {
   if (pending === 0 && processing === 0) {
     const finishedJobs = await models.AIEvaluationQueue.findAll({
       where: { runId, status: 'completed' },
-      attributes: ['menteeId', 'result', 'templateId'],
+      attributes: ['menteeId', 'result', 'templateId', 'createdAt'],
       raw: true
     });
 
-    const results = finishedJobs.map(j => j.result).filter(Boolean);
+    const results = finishedJobs.filter(j => j.result).map(j => ({ ...j.result, mentee_id: j.menteeId, evaluatedAt: j.createdAt }));
     const enrichedResults = await enrichEvaluationResults(results);
     const templateId = finishedJobs[0]?.templateId ?? null;
 
     if (templateId) {
-      const ranAt = new Date().toISOString();
-      await models.CertificateTemplate.update(
-        { aiEvaluation: { results: enrichedResults, ranAt }, aiEvaluationRanAt: ranAt },
-        { where: { id: templateId } }
-      );
+      await saveResults(templateId, enrichedResults);
 
       // The round is NOT opened here. Grading and asking mentors to review are
       // two different decisions: an admin usually runs the AI more than once
@@ -86,6 +83,7 @@ async function processBatchJobs(batchJobs) {
   const templateId  = batchJobs[0].templateId;
   const triggeredBy = batchJobs[0].triggeredBy;
   const runId       = batchJobs[0].runId;
+  let persisted = false;
 
   try {
     logger.info(`[Certificate Worker - AI Eval] Processing micro-batch of ${batchJobs.length} mentees for run ${runId}`);
@@ -105,8 +103,18 @@ async function processBatchJobs(batchJobs) {
       job.status = 'completed';
       job.result = result;
       job.error  = null;
-      await job.save();
     }
+
+    // Persist each completed batch before reporting progress, including runs
+    // whose remaining batches fail or whose worker is restarted.
+    const persistedResults = await enrichEvaluationResults(batchJobs.map(job => ({
+      ...job.result, mentee_id: job.menteeId, evaluatedAt: job.createdAt
+    })));
+    await sequelize.transaction(async transaction => {
+      await saveResults(templateId, persistedResults, { transaction });
+      for (const job of batchJobs) await job.save({ transaction });
+    });
+    persisted = true;
 
     const [{ completedCount, totalCount }] = await sequelize.query(
       `SELECT COUNT(*) FILTER (WHERE status IN ('completed', 'failed')) AS "completedCount", COUNT(*) AS "totalCount" FROM ai_evaluation_queue WHERE run_id = :runId`,
@@ -143,6 +151,9 @@ async function processBatchJobs(batchJobs) {
     await checkRunCompletion(runId, triggeredBy);
   } catch (batchError) {
     logger.error(`[Certificate Worker - AI Eval] Micro-batch failed: ${batchError.stack || batchError.message}`);
+    // A progress/notification failure after commit must not undo completed jobs.
+    // Polling can still read their saved results.
+    if (persisted) return;
 
     let errorCompletedCount = 0;
     let errorTotalCount = 0;

@@ -95,7 +95,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
   } = useAIEvaluationProgress({
     templateId,
     onSingleProgress: (result) => {
-      setAdminTiers(prev => ({ ...prev, [result.mentee_id]: result.certificate_tier }));
+      if (!reviewRows[result.mentee_id]) setAdminTiers(prev => ({ ...prev, [result.mentee_id]: result.certificate_tier }));
       const menteeObj = [...recipientMenteesList, ...recipientMentorsList, ...recipientPausedList].find(m => m.id === result.mentee_id);
       if (menteeObj && !menteeObj.isPaused) {
         setSelectedMenteeIds(prev => new Set(prev).add(result.mentee_id));
@@ -107,7 +107,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
       const pausedSet = new Set(recipientPausedList.map((m: any) => m.id));
       for (const r of results) {
         if (r.mentee_id) {
-          newTiers[r.mentee_id] = r.certificate_tier;
+          if (!reviewRows[r.mentee_id]) newTiers[r.mentee_id] = r.certificate_tier;
           if (!pausedSet.has(r.mentee_id)) {
             autoSelected.add(r.mentee_id);
           }
@@ -138,7 +138,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
     selectedMenteeIds, setSelectedMenteeIds,
     assignedTiers: adminTiers, setAssignedTiers: setAdminTiers,
     recipientMenteesList, recipientMentorsList, recipientPausedList, filtered, allSelected,
-    selectedSummary, toggleAll, toggleOne, handleTierChange,
+    selectedSummary, getEffectiveTier, toggleAll, toggleOne, handleTierChange,
     bulkSetBadge: bulkSetBadgeHook, resetToAIRecommendations: resetToAIRecommendationsHook
   } = useRecipientSelection({ criteria, qualifiedData, aiResults: aiEvalMap, reviewRows, clanStates });
 
@@ -374,9 +374,9 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
           const autoSelected = new Set<string>();
 
           activeList.forEach(m => {
-            const defTier = m.assignedTier || aiEvalMap[m.id]?.certificate_tier || criteria[criteria.length - 1]?.id || 'participation';
+            const defTier = m.assignedTier ?? aiEvalMap[m.id]?.certificate_tier ?? '';
             initialTiers[m.id] = defTier;
-            autoSelected.add(m.id);
+            if (defTier) autoSelected.add(m.id);
           });
 
           const mentorDefaultTier = criteria[criteria.length - 1]?.id || 'participation';
@@ -397,6 +397,15 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
 
     fetchQualifications();
   }, [templateId, selectedProgramId, refreshKey]);
+
+  useEffect(() => {
+    if (loadingQualifications) return;
+    setAdminTiers(previous => {
+      const next = { ...previous };
+      for (const row of Object.values(reviewRows)) next[row.menteeId] = row.finalTier ?? row.aiTier ?? '';
+      return next;
+    });
+  }, [reviewRows, loadingQualifications, setAdminTiers]);
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!activeDragId || !canvasRef.current) return;
@@ -661,11 +670,15 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
       return;
     }
 
-    const defaultTier = criteria[criteria.length - 1]?.id ?? 'participation';
     const recipients = Array.from(selectedMenteeIds).map(id => ({
       menteeId: id,
-      tier: adminTiers[id] ?? defaultTier
+      tier: adminTiers[id] ?? getEffectiveTier(id)
     }));
+
+    if (recipients.some(recipient => !recipient.tier)) {
+      toast.error('Choose a certificate for every selected recipient before issuing.');
+      return;
+    }
 
     const allMentees: any[] = [];
     const seenIds = new Set<string>();

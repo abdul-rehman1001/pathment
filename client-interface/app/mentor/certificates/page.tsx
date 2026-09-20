@@ -135,21 +135,7 @@ export default function MentorCertificatesPage() {
     aiResults, setAiResults, aiRanAt, setAiRanAt, runningAI,
     aiProgressCount, aiTotalCount, runAIEvaluation
   } = useAIEvaluationProgress({
-    templateId: activeTemplateId,
-    onSingleProgress: (result) => {
-      setMentorTiers(prev => ({ ...prev, [result.mentee_id]: result.certificate_tier }));
-      setSelectedIds(prev => new Set(prev).add(result.mentee_id));
-    },
-    onBatchComplete: (results) => {
-      const newTiers: Record<string, string> = {};
-      const autoSelected = new Set<string>();
-      for (const r of results) {
-        newTiers[r.mentee_id] = r.certificate_tier;
-        autoSelected.add(r.mentee_id);
-      }
-      setMentorTiers(prev => ({ ...prev, ...newTiers }));
-      setSelectedIds(autoSelected);
-    }
+    templateId: activeTemplateId
   });
 
 
@@ -226,24 +212,34 @@ export default function MentorCertificatesPage() {
    * the clan that follows from it. Refreshed on template change and after every
    * decision, so an approval landing while this page is open shows up.
    */
+  const reviewRequestId = useRef(0);
   const loadReview = useCallback(async () => {
+    const requestId = ++reviewRequestId.current;
     if (!activeTemplateId) { setRelease(null); setReviewRows(null); return; }
     try {
       const res = await certificatesApi.listVerifications(activeTemplateId);
+      if (requestId !== reviewRequestId.current) return;
+      if (!res.success) throw new Error('Failed to load certificate review');
       setRelease(res.data?.clans ?? []);
       setReviewDeadline(res.data?.template?.verificationDeadline ?? null);
       const byMentee: Record<string, CertificateVerification> = {};
       for (const row of res.data?.rows ?? []) byMentee[row.menteeId] = row;
       setReviewRows(byMentee);
     } catch {
-      // Advisory: a failed lookup must not strand the page. The server is the
-      // real gate, so the worst case is a button that 403s as it did before.
-      setRelease([]);
-      setReviewRows({});
+      if (requestId !== reviewRequestId.current) return;
+      // Unknown approval is not the same as having no review round.
+      setRelease(null);
+      setReviewRows(null);
+      toast.error('Could not load certificate review. Please retry.');
     }
   }, [activeTemplateId]);
 
-  useEffect(() => { loadReview(); }, [loadReview]);
+  useEffect(() => {
+    setRelease(null);
+    setReviewRows(null);
+    loadReview();
+    return () => { reviewRequestId.current++; };
+  }, [loadReview]);
 
   /**
    * A clan is releasable when the admin has approved it. With no review round
@@ -326,13 +322,14 @@ export default function MentorCertificatesPage() {
       return;
     }
 
+    let cancelled = false;
     setLoadingQualifications(true);
     setSearch('');
     setSelectedIds(new Set());
 
     certificatesApi.getQualification(activeTemplateId, { mentorId: user.id })
       .then(res => {
-        if (res.success && res.data) {
+        if (!cancelled && res.success && res.data) {
           const data = res.data as QualifiedData;
           setQualifiedData(data);
           if (res.criteriaTasks) {
@@ -372,19 +369,7 @@ export default function MentorCertificatesPage() {
           const autoSelected = new Set<string>();
 
           activeList.forEach(m => {
-            let defTier = m.assignedTier;
-            if (!defTier || !criteria.some(c => c.id === defTier)) {
-              let maxMatch = -1;
-              let bestTierId = criteria[criteria.length - 1]?.id || 'participation';
-              criteria.forEach(c => {
-                const match = m.tierMatches?.[c.id] ?? 0;
-                if (match > maxMatch) {
-                  maxMatch = match;
-                  bestTierId = c.id;
-                }
-              });
-              defTier = bestTierId;
-            }
+            const defTier = criteria.some(c => c.id === m.assignedTier) ? m.assignedTier! : '';
             initialTiers[m.id] = defTier;
 
             const matchPercent = m.tierMatches?.[defTier] ?? 0;
@@ -399,7 +384,7 @@ export default function MentorCertificatesPage() {
             setAiRanAt(activeTemplate.aiEvaluation.ranAt ?? null);
             aiRes.forEach((r: any) => {
               if (r.mentee_id && r.certificate_tier && seenIds.has(r.mentee_id)) {
-                initialTiers[r.mentee_id] = r.certificate_tier;
+                if (!initialTiers[r.mentee_id]) initialTiers[r.mentee_id] = r.certificate_tier;
                 autoSelected.add(r.mentee_id);
               }
             });
@@ -412,8 +397,9 @@ export default function MentorCertificatesPage() {
           setSelectedIds(autoSelected);
         }
       })
-      .catch(() => toast.error('Failed to load qualification details'))
-      .finally(() => setLoadingQualifications(false));
+      .catch(() => { if (!cancelled) toast.error('Failed to load qualification details'); })
+      .finally(() => { if (!cancelled) setLoadingQualifications(false); });
+    return () => { cancelled = true; };
   }, [activeTemplateId, user, refreshKey]);
 
   const activeMentees = useMemo<MenteeRow[]>(() => {
@@ -445,20 +431,18 @@ export default function MentorCertificatesPage() {
   }, [mentorAIResults]);
 
   const getEffectiveTier = useCallback((mOrId: any): string => {
-    const activeTemplate = templates.find(t => t.id === activeTemplateId);
-    const criteria = activeTemplate?.criteria ?? [];
-    const defaultTier = criteria[criteria.length - 1]?.id ?? 'participation';
+    const defaultTier = '';
     const id = typeof mOrId === 'string' ? mOrId : mOrId?.id;
     if (!id) return defaultTier;
 
-    if (mentorTiers[id]) return mentorTiers[id];
+    if (mentorTiers[id] !== undefined) return mentorTiers[id];
     if (aiEvalMap[id]?.certificate_tier) return aiEvalMap[id].certificate_tier;
 
     const m = typeof mOrId === 'object' ? mOrId : activeMentees.find((x: any) => x.id === id);
     if (m?.assignedTier) return m.assignedTier;
 
     return defaultTier;
-  }, [mentorTiers, aiEvalMap, activeMentees, templates, activeTemplateId]);
+  }, [mentorTiers, aiEvalMap, activeMentees]);
 
   const filtered = useMemo(() => {
     let result = [...activeMentees];
@@ -623,21 +607,19 @@ export default function MentorCertificatesPage() {
   };
 
   /**
-   * A signed-off grade is what will actually be issued, so it beats whatever
-   * the AI seeded into the roster. Re-applied whenever something else writes
-   * into that roster — the qualification fetch settling, a fresh AI run, the
-   * round reloading — because any of them can land last.
+   * Seed the roster from the dispatched review, including pending decisions.
+   * New AI suggestions do not overwrite the mentor's unsaved edits.
    */
   useEffect(() => {
     if (!reviewRows) return;
     setMentorTiers(prev => {
       const next = { ...prev };
       for (const row of Object.values(reviewRows)) {
-        if (row.status === 'verified' && row.finalTier) next[row.menteeId] = row.finalTier;
+        next[row.menteeId] = row.finalTier ?? row.aiTier ?? '';
       }
       return next;
     });
-  }, [reviewRows, loadingQualifications, aiResults]);
+  }, [reviewRows, loadingQualifications]);
 
   /**
    * Sign off the selected rows at the grades currently shown in the table.
@@ -649,6 +631,10 @@ export default function MentorCertificatesPage() {
   const handleVerify = () => {
     if (!activeTemplateId || !pendingDecisions.length) return;
     const decisions = pendingDecisions;
+    if (decisions.some(decision => !decision.finalTier)) {
+      toast.error('Choose a certificate for every selected mentee before verifying.');
+      return;
+    }
 
     const changed = decisions.filter(d => {
       const row = reviewRows?.[d.menteeId];
@@ -751,14 +737,15 @@ export default function MentorCertificatesPage() {
       return;
     }
 
-    const activeTemplate = templates.find(t => t.id === activeTemplateId);
-    const criteria = activeTemplate?.criteria ?? [];
-    const defaultTier = criteria[criteria.length - 1]?.id || 'participation';
-
     const recipients = Array.from(selectedIds).map(id => ({
       menteeId: id,
-      tier: mentorTiers[id] ?? defaultTier
+      tier: getEffectiveTier(id)
     }));
+
+    if (recipients.some(recipient => !recipient.tier)) {
+      toast.error('Choose a certificate for every selected mentee before issuing.');
+      return;
+    }
 
     const duplicateInstances = recipients.filter(r => {
       const m = activeMentees.find(item => item.id === r.menteeId);

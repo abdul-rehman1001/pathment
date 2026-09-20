@@ -62,11 +62,11 @@ export function useRecipientSelection({
   }, [recipientType, recipientMenteesList, recipientMentorsList, recipientPausedList]);
 
   const getEffectiveTier = useCallback((mOrId: any): string => {
-    const defaultTier = criteria[criteria.length - 1]?.id ?? 'participation';
+    const defaultTier = '';
     const id = typeof mOrId === 'string' ? mOrId : mOrId?.id;
     if (!id) return defaultTier;
 
-    if (assignedTiers[id]) return assignedTiers[id];
+    if (assignedTiers[id] !== undefined) return assignedTiers[id];
     if (aiResults?.[id]?.certificate_tier) return aiResults[id].certificate_tier;
 
     const m = typeof mOrId === 'object' ? mOrId : activeList.find((x: any) => x.id === id);

@@ -15,6 +15,7 @@ import { TierCriteria } from '@/components/admin/certificates/certificate-consta
 export interface RosterReviewState {
   status: 'pending' | 'verified';
   aiTier: string | null;
+  aiMatchScore?: number | null;
   finalTier: string | null;
   overridden: boolean;
   overrideReason: string | null;
@@ -108,8 +109,11 @@ export function RecipientRosterTable({
       {}
       <div className="max-h-[350px] overflow-y-auto divide-y divide-border">
         {filtered.map((m: any) => {
-          const defaultTier = m.isPaused ? '' : (criteria[criteria.length - 1]?.id ?? 'participation');
-          const selectedTier = assignedTiers[m.id] || (aiEvalMap[m.id]?.certificate_tier || m.assignedTier || defaultTier);
+          const review = reviewRows?.[m.id];
+          const selectedTier = assignedTiers[m.id] ?? review?.finalTier ?? review?.aiTier ?? m.assignedTier ?? aiEvalMap[m.id]?.certificate_tier ?? '';
+          const recommendation = review?.aiTier
+            ? { certificate_tier: review.aiTier, match_score: review.aiMatchScore }
+            : aiEvalMap[m.id];
           const issuedTiersList: string[] = m.issuedTiers ?? [];
           const initials = `${m.firstName?.charAt(0) || ''}${m.lastName?.charAt(0) || ''}`.toUpperCase();
 
@@ -163,19 +167,19 @@ export function RecipientRosterTable({
                   <span className="text-[10px] font-bold text-amber-600/80 dark:text-amber-400/80 flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
                     <PauseCircle className="w-3 h-3" /> Paused (No Auto Cert)
                   </span>
-                ) : aiEvalMap[m.id] ? (
+                ) : recommendation ? (
                   <div className="flex items-center gap-1.5 bg-violet-500/10 dark:bg-violet-500/20 border border-violet-500/20 px-2.5 py-1 rounded-xl">
                     <span className="text-[10px] font-bold text-violet-700 dark:text-violet-300 flex items-center gap-1">
-                      <Sparkles className="w-3 h-3 text-violet-500" /> {getTierName(aiEvalMap[m.id].certificate_tier)}
+                      <Sparkles className="w-3 h-3 text-violet-500" /> {getTierName(recommendation.certificate_tier)}
                     </span>
                     <span
                       className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                        (aiEvalMap[m.id].match_score ?? 0) >= 75
+                        (recommendation.match_score ?? 0) >= 75
                           ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/20'
                           : 'text-amber-600 dark:text-amber-400 bg-amber-500/20'
                       }`}
                     >
-                      {aiEvalMap[m.id].match_score}%
+                      {recommendation.match_score == null ? '—' : `${recommendation.match_score}%`}
                     </span>
                   </div>
                 ) : (
@@ -215,7 +219,7 @@ export function RecipientRosterTable({
                 </div>
                 <ReviewNote
                   review={reviewRows?.[m.id]}
-                  aiTier={aiEvalMap[m.id]?.certificate_tier ?? null}
+                  aiTier={recommendation?.certificate_tier ?? null}
                   selectedTier={selectedTier}
                   getTierName={getTierName}
                   userRole={userRole}

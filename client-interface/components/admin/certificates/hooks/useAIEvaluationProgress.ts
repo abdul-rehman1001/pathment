@@ -1,9 +1,18 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { certificatesApi } from '@/lib/services/certificates-api';
 import { getSocket } from '@/lib/services/socket-client';
+
+/** Polls and completion events contain only this run's recipients. */
+function mergeResults<T extends { mentee_id?: string; _failed?: boolean }>(previous: T[], incoming: T[]): T[] {
+  const results = new Map(previous.map(result => [result.mentee_id, result]));
+  for (const result of incoming) {
+    if (result.mentee_id && !result._failed) results.set(result.mentee_id, result);
+  }
+  return [...results.values()];
+}
 
 export interface UseAIEvaluationProgressOptions {
   templateId?: string | null;
@@ -13,6 +22,8 @@ export interface UseAIEvaluationProgressOptions {
 
 export function useAIEvaluationProgress(options: UseAIEvaluationProgressOptions = {}) {
   const { templateId, onSingleProgress, onBatchComplete } = options;
+  const callbacks = useRef({ onSingleProgress, onBatchComplete });
+  useEffect(() => { callbacks.current = { onSingleProgress, onBatchComplete }; }, [onSingleProgress, onBatchComplete]);
 
   const [aiResults, setAiResults] = useState<any[]>([]);
   const [aiRanAt, setAiRanAt] = useState<string | null>(null);
@@ -24,6 +35,7 @@ export function useAIEvaluationProgress(options: UseAIEvaluationProgressOptions 
   useEffect(() => {
     if (!aiEvaluationRunId || !templateId) return;
 
+    let cancelled = false;
     const socket = getSocket();
     let pollInterval: NodeJS.Timeout | null = null;
 
@@ -32,6 +44,7 @@ export function useAIEvaluationProgress(options: UseAIEvaluationProgressOptions 
       setAiProgressCount(data.completed);
       setAiTotalCount(data.total);
 
+      if (data.result._failed) return;
       setAiResults(prev => {
         const index = prev.findIndex(r => r.mentee_id === data.result.mentee_id);
         if (index > -1) {
@@ -43,21 +56,17 @@ export function useAIEvaluationProgress(options: UseAIEvaluationProgressOptions 
         }
       });
 
-      if (onSingleProgress) {
-        onSingleProgress(data.result);
-      }
+      callbacks.current.onSingleProgress?.(data.result);
     };
 
     const handleComplete = (data: { runId: string; results: any[]; ranAt: string }) => {
       if (data.runId !== aiEvaluationRunId) return;
-      setAiResults(data.results || []);
+      setAiResults(prev => mergeResults(prev, data.results || []));
       setAiRanAt(data.ranAt);
       setRunningAI(false);
       setAiEvaluationRunId(null);
 
-      if (onBatchComplete) {
-        onBatchComplete(data.results || []);
-      }
+      callbacks.current.onBatchComplete?.((data.results || []).filter(r => !r._failed));
 
       toast.success(`AI evaluation completed successfully for ${(data.results || []).length} mentees!`);
     };
@@ -70,7 +79,7 @@ export function useAIEvaluationProgress(options: UseAIEvaluationProgressOptions 
     pollInterval = setInterval(async () => {
       try {
         const res: any = await certificatesApi.getAIEvaluationStatus(templateId, aiEvaluationRunId);
-        if (res.success) {
+        if (!cancelled && res.success) {
           const payload = res.data?.data ? res.data : res;
           const completed = payload.completed ?? res.completed ?? 0;
           const total = payload.total ?? res.total ?? 0;
@@ -81,10 +90,8 @@ export function useAIEvaluationProgress(options: UseAIEvaluationProgressOptions 
           setAiTotalCount(total);
 
           if (Array.isArray(resultsList) && resultsList.length > 0) {
-            setAiResults(resultsList);
-            if (onBatchComplete) {
-              onBatchComplete(resultsList);
-            }
+            setAiResults(prev => mergeResults(prev, resultsList));
+            callbacks.current.onBatchComplete?.(resultsList.filter(r => !r._failed));
           }
 
           if (isDone) {
@@ -101,13 +108,14 @@ export function useAIEvaluationProgress(options: UseAIEvaluationProgressOptions 
     }, 4000);
 
     return () => {
+      cancelled = true;
       if (socket) {
         socket.off('ai-eval:progress', handleProgress);
         socket.off('ai-eval:complete', handleComplete);
       }
       if (pollInterval) clearInterval(pollInterval);
     };
-  }, [aiEvaluationRunId, templateId, onSingleProgress, onBatchComplete]);
+  }, [aiEvaluationRunId, templateId]);
 
   const runAIEvaluation = useCallback(async (targetTemplateId?: string) => {
     const idToUse = targetTemplateId || templateId;
@@ -117,7 +125,6 @@ export function useAIEvaluationProgress(options: UseAIEvaluationProgressOptions 
       setRunningAI(true);
       setAiProgressCount(0);
       setAiTotalCount(0);
-      setAiResults([]);
 
       const res: any = await certificatesApi.runAIEvaluation(idToUse);
       const runId = res.runId || res.data?.runId;
