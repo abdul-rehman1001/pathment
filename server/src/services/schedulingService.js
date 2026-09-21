@@ -50,15 +50,14 @@ class SchedulingService {
   }
 
   /**
-   * The mentor's own list — only their MANUAL one-off slots (upcoming). Recurring
-   * availability is managed through the weekly editor, and bookings of any kind
-   * surface under "Upcoming 1:1s", so we keep this list from being flooded with
-   * the dozens of auto-generated recurring slots.
+   * The mentor's upcoming availability, including slots expanded from weekly
+   * hours. The schedule calendar needs both kinds to show when mentees can
+   * book; the client keeps the separate one-off management list concise.
    */
   async listMyAvailability(mentorId) {
     const todayStr = todayInZone(await this._userTimeZone(mentorId));
     return models.AvailabilitySlot.findAll({
-      where: { mentorId, ruleId: null, [Op.or]: [{ date: null }, { date: { [Op.gte]: todayStr } }] },
+      where: { mentorId, [Op.or]: [{ date: null }, { date: { [Op.gte]: todayStr } }] },
       include: [{ model: models.User, as: 'bookedBy', attributes: ['id', 'firstName', 'lastName'] }],
       order: [['date', 'ASC'], ['starts_at', 'ASC'], ['created_at', 'ASC']]
     });

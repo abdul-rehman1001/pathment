@@ -5,6 +5,7 @@ import { meetingsApi } from '@/lib/services/meetings-api';
 
 export interface AvailabilitySlot {
   id: string;
+  ruleId?: string | null;
   day: string;
   date?: string | null;
   time: string;

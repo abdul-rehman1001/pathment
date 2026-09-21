@@ -54,6 +54,19 @@ class PerformanceNominationService {
     // thirty-eight — the denominator has to be the whole field, not the page.
     const { ranked, notRanked, counted } = await performanceService.leaderboard(menteeIds, { clanId, limit });
 
+    const attendancePercent = (attendance) => {
+      if (!attendance) return null;
+      // `attendanceCounts` intentionally returns the individual buckets. There
+      // is no `total` field on that object, so dividing present by a fabricated
+      // denominator made every multi-session record look like 200%, 900%, etc.
+      // Excused and unmarked sessions are not a mentee's absence and therefore
+      // do not belong in the performance denominator.
+      const present = Number(attendance.present) || 0;
+      const absent = Number(attendance.absent) || 0;
+      const marked = present + absent;
+      return marked > 0 ? Math.round((present / marked) * 100) : null;
+    };
+
     const shape = (row) => ({
       menteeId: row.id,
       mentee: {
@@ -75,10 +88,7 @@ class PerformanceNominationService {
         avgRating: row.evidence?.avgRating ?? null,
         effortHours: row.evidence?.effortHours ?? null,
         activeWeeks: row.evidence?.activeWeeks ?? null,
-        attendancePct: row.evidence?.attendance
-          ? Math.round(((row.evidence.attendance.present || 0) /
-              Math.max(1, row.evidence.attendance.total || 1)) * 100)
-          : null,
+        attendancePct: attendancePercent(row.evidence?.attendance),
         openBlockers: 0,
         blockersResolved: 0
       }

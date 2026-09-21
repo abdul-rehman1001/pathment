@@ -58,7 +58,9 @@ export function SignalStrip({ signals }: { signals: PerformanceNomination['syste
     { label: 'roadmap', value: `${signals.completionRate}%` },
     { label: 'on time', value: `${signals.onTimeRate}%` },
     signals.avgRating != null ? { label: 'rating', value: `${signals.avgRating}/5` } : null,
-    signals.attendancePct != null ? { label: 'attendance', value: signals.attendancePct >= 0 && signals.attendancePct <= 100 ? `${signals.attendancePct}%` : 'Unavailable' } : null,
+    signals.attendancePct != null && signals.attendancePct >= 0 && signals.attendancePct <= 100
+      ? { label: 'attendance', value: `${signals.attendancePct}%` }
+      : null,
     { label: 'open blockers', value: signals.openBlockers != null ? String(signals.openBlockers) : '—' },
   ].filter(Boolean) as Array<{ label: string; value: string }>;
 

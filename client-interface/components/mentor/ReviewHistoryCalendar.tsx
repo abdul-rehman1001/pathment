@@ -10,6 +10,8 @@ interface Props {
   initialDate?: string;
   selected: string | null;
   onSelect: (date: string | null) => void;
+  /** Let a planning calendar select empty days too; history stays evidence-only. */
+  selectableDays?: 'highlighted' | 'all';
 }
 
 /** Local date keys avoid shifting a saved review into the preceding day. */
@@ -20,6 +22,7 @@ export function ReviewHistoryCalendar({
   label = 'Review history calendar',
   unit = 'review',
   initialDate,
+  selectableDays = 'highlighted',
 }: Props) {
   const [month, setMonth] = useState(() => {
     const latest = initialDate || [...dates].sort().at(-1);
@@ -66,7 +69,7 @@ export function ReviewHistoryCalendar({
         </button>
       </div>
       <div className="mb-3 flex items-center justify-between text-xs text-muted-foreground">
-        <span>Select a highlighted day to filter</span>
+        <span>{selectableDays === 'all' ? 'Select any day to view or add availability' : 'Select a highlighted day to filter'}</span>
         <button
           className="font-medium text-brand-700 dark:text-brand-300"
           onClick={() => {
@@ -93,11 +96,11 @@ export function ReviewHistoryCalendar({
           return (
             <button
               key={key}
-              disabled={!count}
-              aria-label={`${key}, ${count} ${unit}${count === 1 ? '' : 's'}`}
+              disabled={selectableDays === 'highlighted' && !count}
+              aria-label={`${key}, ${count} ${unit}${count === 1 ? '' : 's'}${selectableDays === 'all' && !count ? ', available to select' : ''}`}
               aria-pressed={selected === key}
               onClick={() => onSelect(selected === key ? null : key)}
-              className={`min-h-10 rounded-lg text-xs disabled:opacity-50 ${selected === key ? 'bg-brand-600 text-white' : count ? 'bg-brand-50 text-brand-700 hover:bg-brand-100' : 'text-muted-foreground'}`}
+              className={`min-h-10 rounded-lg text-xs disabled:opacity-50 ${selected === key ? 'bg-brand-600 text-white' : count ? 'bg-brand-50 text-brand-700 hover:bg-brand-100' : selectableDays === 'all' ? 'text-muted-foreground hover:bg-muted' : 'text-muted-foreground'}`}
             >
               {i + 1}
               {count > 0 && (

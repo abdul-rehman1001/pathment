@@ -910,6 +910,18 @@ function AvailabilityTab() {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   };
   const visibleMeetings = calendarDate ? upcoming.filter((m) => dateKey(m.startsAt) === calendarDate) : upcoming;
+  const availabilityOnSelectedDay = calendarDate
+    ? availability.filter((slot) => (slot.date || dateKey(slot.startsAt)) === calendarDate)
+    : [];
+  const calendarDates = [
+    ...upcoming.map((meeting) => dateKey(meeting.startsAt)),
+    ...availability.map((slot) => slot.date || dateKey(slot.startsAt)),
+  ].filter(Boolean);
+  const oneOffSlots = availability.filter((slot) => !slot.ruleId);
+  const selectCalendarDay = (nextDate: string | null) => {
+    setCalendarDate(nextDate);
+    if (nextDate) setDate(nextDate);
+  };
 
 
   if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-7 h-7 animate-spin text-brand-600" /></div>;
@@ -922,8 +934,13 @@ function AvailabilityTab() {
           <h3 className="text-slate-900 dark:text-slate-100 font-semibold text-sm">Upcoming 1:1s</h3>
         </div>
         <div className="p-6 grid gap-5 lg:grid-cols-[minmax(240px,0.8fr)_1fr]">
-          <div><ReviewHistoryCalendar label="Meeting calendar" unit="meeting" initialDate={dateKey(new Date().toISOString())} dates={visibleMeetings.map((m) => dateKey(m.startsAt)).filter(Boolean)} selected={calendarDate} onSelect={setCalendarDate} /><p className="text-xs text-muted-foreground">Times shown in {getBrowserTimeZone()}. Select a highlighted date to filter meetings.</p></div>
-          {visibleMeetings.length === 0 ? <p className="text-xs text-slate-500 dark:text-slate-400">{calendarDate ? 'No meetings on this date.' : 'No upcoming 1:1s.'}</p> : (
+          <div><ReviewHistoryCalendar label="Meeting calendar" unit="slot" initialDate={dateKey(new Date().toISOString())} dates={calendarDates} selected={calendarDate} onSelect={selectCalendarDay} selectableDays="all" /><p className="text-xs text-muted-foreground">Times shown in {getBrowserTimeZone()}. Days with a count have availability or a booked 1:1; select any day to plan a one-off slot.</p></div>
+          {visibleMeetings.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-300">
+              <p className="font-semibold text-slate-900 dark:text-slate-100">{calendarDate ? `No booked 1:1s on ${calendarDate}.` : 'No upcoming 1:1s yet.'}</p>
+              {calendarDate && availabilityOnSelectedDay.length > 0 ? <p className="mt-1">{availabilityOnSelectedDay.length} bookable {availabilityOnSelectedDay.length === 1 ? 'slot is' : 'slots are'} open on this day.</p> : <p className="mt-1">Select a day, then add a one-off time below or set weekly hours.</p>}
+            </div>
+          ) : (
             <div className="space-y-2.5">
               {visibleMeetings.map((m) => (
                 <div key={m.id} className="flex flex-wrap items-center gap-3 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40">
@@ -983,9 +1000,9 @@ function AvailabilityTab() {
             {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}Publish slot
           </button>
         </div>
-        {availability.length === 0 ? <p className="text-xs text-slate-500 dark:text-slate-400">No slots published.</p> : (
+        {oneOffSlots.length === 0 ? <p className="text-xs text-slate-500 dark:text-slate-400">No one-off slots published. Weekly-hour slots appear in the calendar above.</p> : (
           <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-            {availability.map((s) => (
+            {oneOffSlots.map((s) => (
               <div key={s.id} className="flex items-center justify-between gap-2 p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50">
                 <div>
                   <p className="text-xs font-semibold text-slate-900 dark:text-slate-100">{formatMeeting(s.startsAt, s.day, s.time)}</p>
