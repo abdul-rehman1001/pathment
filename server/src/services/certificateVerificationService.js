@@ -172,7 +172,7 @@ class CertificateVerificationService {
       where.clanId = clanId;
     }
 
-    const rows = await models.CertificateVerification.findAll({
+    const historicalRows = await models.CertificateVerification.findAll({
       where,
       include: [
         { model: models.User, as: 'mentee', attributes: ['id', 'firstName', 'lastName', 'email', 'profilePictureUrl'] },
@@ -181,6 +181,8 @@ class CertificateVerificationService {
       ],
       order: [['createdAt', 'ASC']]
     });
+
+    const rows = await this._activeReviewRows(historicalRows, template.programId);
 
     // Whether each clan in this queue has been released, so the mentor's screen
     // can say "signed off, waiting on the admin" rather than leaving them
@@ -301,13 +303,15 @@ class CertificateVerificationService {
     const template = await models.CertificateTemplate.findByPk(templateId);
     if (!template) throw new NotFoundError('Certificate template not found');
 
-    const [rows, approvedClans] = await Promise.all([
+    const [historicalRows, approvedClans] = await Promise.all([
       models.CertificateVerification.findAll({
         where: { templateId },
         include: [{ model: models.Clan, as: 'clan', attributes: ['id', 'name'], required: false }]
       }),
       this.approvedClanIds(templateId)
     ]);
+
+    const rows = await this._activeReviewRows(historicalRows, template.programId);
 
     const byClan = new Map();
     for (const row of rows) {
@@ -375,9 +379,10 @@ class CertificateVerificationService {
 
     const { approval, pending } = await sequelize.transaction(async transaction => {
       await models.CertificateTemplate.findByPk(templateId, { transaction, lock: transaction.LOCK.UPDATE });
-      const pending = await models.CertificateVerification.count({
+      const pendingRows = await models.CertificateVerification.findAll({
         where: { templateId, clanId, status: 'pending' }, transaction
       });
+      const pending = (await this._activeReviewRows(pendingRows, template.programId, { transaction })).length;
 
       const [approval] = await models.CertificateClanApproval.findOrCreate({
         where: { templateId, clanId },
@@ -590,13 +595,47 @@ class CertificateVerificationService {
     return out;
   }
 
+  /**
+   * Review rows are an audit trail, not the live roster. Keep past decisions in
+   * storage, but don't ask a clan to sign off for paused, removed, suspended or
+   * transferred mentees it cannot see. All review counts use this same scope.
+   */
+  async _activeReviewRows(rows, programId, { transaction } = {}) {
+    if (!rows.length) return [];
+    const menteeIds = [...new Set(rows.map((row) => row.menteeId))];
+    const memberships = await models.ClanMembership.findAll({
+      where: { userId: { [Op.in]: menteeIds }, role: 'mentee', status: { [Op.in]: VISIBLE_MEMBERSHIP_STATUSES } },
+      attributes: ['userId', 'clanId', 'status'],
+      include: [
+        { model: models.User, as: 'user', attributes: [], required: true, where: { status: { [Op.ne]: 'suspended' } } },
+        ...(programId ? [{ model: models.Clan, as: 'clan', attributes: [], required: true, where: { programId } }] : [])
+      ],
+      raw: true, transaction
+    });
+    const paused = new Set(memberships.filter((m) => m.status === 'paused').map((m) => m.userId));
+    const current = new Set(memberships.filter((m) => m.status === 'active').map((m) => `${m.userId}:${m.clanId}`));
+    const placed = new Set(memberships.map((m) => m.userId));
+    const unassignedIds = rows.filter((r) => !r.clanId).map((r) => r.menteeId);
+    const enrollments = unassignedIds.length ? await models.Enrollment.findAll({
+      where: { programId, menteeId: { [Op.in]: unassignedIds }, status: { [Op.notIn]: ['paused', 'dropped', 'rejected'] } },
+      attributes: ['menteeId'],
+      include: [{ model: models.User, as: 'mentee', attributes: [], required: true, where: { status: { [Op.ne]: 'suspended' } } }],
+      raw: true, transaction
+    }) : [];
+    const unassigned = new Set(enrollments.map((e) => e.menteeId));
+    return rows.filter((row) => !paused.has(row.menteeId) && (row.clanId
+      ? current.has(`${row.menteeId}:${row.clanId}`)
+      : unassigned.has(row.menteeId) && !placed.has(row.menteeId)));
+  }
+
   /** Tell each clan's mentors they have grades waiting, and by when. */
   async _notifyMentors(template) {
-    const pending = await models.CertificateVerification.findAll({
+    const historicalRows = await models.CertificateVerification.findAll({
       where: { templateId: template.id, status: 'pending' },
-      attributes: ['clanId'],
+      attributes: ['menteeId', 'clanId'],
       raw: true
     });
+    const pending = await this._activeReviewRows(historicalRows, template.programId);
     const clanIds = [...new Set(pending.map((r) => r.clanId).filter(Boolean))];
     if (!clanIds.length) return 0;
 
@@ -645,21 +684,19 @@ class CertificateVerificationService {
   /** When a clan finishes, tell the admins it is clear to issue. */
   async _notifyAdminsIfClanComplete(templateId, clanId, actor) {
     if (!clanId) return;
-    const stillPending = await models.CertificateVerification.count({
-      where: { templateId, clanId, status: 'pending' }
-    });
-    if (stillPending > 0) return;
-
-    const [template, clan] = await Promise.all([
-      models.CertificateTemplate.findByPk(templateId, { attributes: ['id', 'name'] }),
-      models.Clan.findByPk(clanId, { attributes: ['name'] })
+    const [template, clan, historicalRows] = await Promise.all([
+      models.CertificateTemplate.findByPk(templateId),
+      models.Clan.findByPk(clanId, { attributes: ['name'] }),
+      models.CertificateVerification.findAll({ where: { templateId, clanId } })
     ]);
+    if (!template) return;
+    const rows = await this._activeReviewRows(historicalRows, template.programId);
+    if (!rows.length || rows.some((row) => row.status !== 'verified')) return;
+
     const admins = await models.User.findAll({ where: { role: 'admin', status: 'active' }, attributes: ['id'] });
     if (!admins.length) return;
 
-    const overrides = await models.CertificateVerification.count({
-      where: { templateId, clanId, overridden: true }
-    });
+    const overrides = rows.filter((row) => row.overridden).length;
 
     try {
       await notificationOrchestrator.dispatch({

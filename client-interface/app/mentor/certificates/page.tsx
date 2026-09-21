@@ -1580,7 +1580,7 @@ function ReviewRoundBanner({
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 rounded-lg bg-muted px-2 py-0.5 font-semibold text-muted-foreground">
-                <Clock className="w-2.5 h-2.5" /> Waiting on admin approval
+                <Clock className="w-2.5 h-2.5" /> {clan.pending > 0 ? 'Needs mentor sign-off' : 'Waiting on admin approval'}
               </span>
             )}
           </li>

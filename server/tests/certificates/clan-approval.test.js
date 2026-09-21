@@ -81,6 +81,51 @@ describe('admin approval gates issuing', () => {
     });
   });
 
+  describe('current roster, not historical review rows', () => {
+    it('shows ten signed-off active mentees and ignores six paused pending records on both screens', async () => {
+      const active = [mentee];
+      const paused = [];
+      for (let i = 0; i < 15; i++) {
+        const person = await createMentee({ email: `roster-${i}@test.com` });
+        await clanService.addMember(clan.id, { userId: person.id, role: 'mentee' });
+        (i < 9 ? active : paused).push(person);
+      }
+      await verification.open(template.id, [...active, ...paused].map((m) => ({ mentee_id: m.id, certificate_tier: 'bronze' })), { notify: false });
+      for (const person of paused) {
+        await models.ClanMembership.update({ status: 'paused' }, { where: { clanId: clan.id, userId: person.id, role: 'mentee' } });
+      }
+      for (const person of active) await verification.verify(template.id, person.id, {}, lead);
+      const reviewer = await verification.listForReviewer(template.id, lead);
+      const summary = await verification.summary(template.id);
+      expect(reviewer.rows).toHaveLength(10);
+      expect(reviewer.clans[0]).toMatchObject({ pending: 0, verified: 10, canSend: false });
+      expect(summary.clans[0]).toMatchObject({ total: 10, pending: 0, verified: 10, readyToApprove: true });
+      expect(summary.allVerified).toBe(true);
+      expect(await models.CertificateVerification.count({ where: { templateId: template.id } })).toBe(16);
+      const release = await verification.approveClan(template.id, clan.id, {}, admin);
+      expect(release).toMatchObject({ approvedBeforeVerified: false, outstandingAtApproval: 0 });
+    });
+
+    it.each(['removed', 'paused'])('excludes %s memberships and includes them again when reactivated', async (status) => {
+      await models.ClanMembership.update({ status }, { where: { clanId: clan.id, userId: mentee.id, role: 'mentee' } });
+      expect((await verification.summary(template.id)).total).toBe(0);
+      expect((await verification.listForReviewer(template.id, lead)).rows).toHaveLength(0);
+      await models.ClanMembership.update({ status: 'active' }, { where: { clanId: clan.id, userId: mentee.id, role: 'mentee' } });
+      expect((await verification.summary(template.id)).pending).toBe(1);
+    });
+
+    it('does not count suspended accounts or move a historical sign-off to another clan', async () => {
+      await mentee.update({ status: 'suspended' });
+      expect((await verification.summary(template.id)).total).toBe(0);
+      await mentee.update({ status: 'active' });
+      const nextClan = await models.Clan.create({ programId: program.id, name: 'Next clan', leadMentorId: lead.id, createdBy: admin.id });
+      await models.ClanMembership.update({ status: 'removed' }, { where: { clanId: clan.id, userId: mentee.id, role: 'mentee' } });
+      await clanService.addMember(nextClan.id, { userId: mentee.id, role: 'mentee' });
+      expect((await verification.summary(template.id)).total).toBe(0);
+      expect(await models.CertificateVerification.count({ where: { templateId: template.id } })).toBe(1);
+    });
+  });
+
   describe('after the admin approves', () => {
     beforeEach(async () => {
       await verification.verify(template.id, mentee.id, {}, lead);
