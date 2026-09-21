@@ -129,6 +129,7 @@ module.exports = (sequelize, DataTypes) => {
       field: 'clan_id'
     },
     // ── Per-mentee overrides (null = use the RoadmapTask default) ────────────
+    typeOverride: { type: DataTypes.STRING(20), allowNull: true, field: 'type_override' },
     titleOverride: { type: DataTypes.STRING(255), allowNull: true, field: 'title_override' },
     descriptionOverride: { type: DataTypes.TEXT, allowNull: true, field: 'description_override' },
     deliverableOverride: { type: DataTypes.TEXT, allowNull: true, field: 'deliverable_override' },

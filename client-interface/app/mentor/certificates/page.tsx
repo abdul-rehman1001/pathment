@@ -1213,7 +1213,7 @@ export default function MentorCertificatesPage() {
                       <button
                         type="button"
                         onClick={resetToAIRecommendations}
-                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-violet-600 hover:bg-violet-700 text-white shadow-3xs uppercase tracking-wider transition-colors border border-transparent"
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-brand-600 hover:bg-brand-700 text-white shadow-3xs uppercase tracking-wider transition-colors border border-transparent"
                       >
                         <Sparkles className="w-2.5 h-2.5 text-white animate-pulse" /> Reset to AI
                       </button>

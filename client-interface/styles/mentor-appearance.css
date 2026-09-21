@@ -1,0 +1,249 @@
+/* Shared mobile-inspired appearance for mentor and mentee portals. Root tokens also reach dialogs/popovers portaled to <body>,
+   and automatically revert when the mentor layout leaves the document. */
+:root:has(:is([data-mentor-appearance], [data-mentee-appearance])) {
+  --canvas: #f3f6f5;
+  --background: #ffffff;
+  --foreground: #0e1b1a;
+  --card: #ffffff;
+  --card-foreground: #0e1b1a;
+  --popover: #ffffff;
+  --popover-foreground: #0e1b1a;
+  --secondary: #f3f6f5;
+  --secondary-foreground: #213d38;
+  --muted: #edf2f0;
+  --muted-foreground: #60736e;
+  --accent: #e8f2ef;
+  --accent-foreground: #164a43;
+  --border: #e3e9e8;
+  --input: #d5e0dc;
+  --input-background: #f3f6f5;
+  --switch-background: #c5d4ce;
+  --primary: var(--brand-600);
+  --primary-foreground: #ffffff;
+  --ring: var(--brand-500);
+  --sidebar: var(--card);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--accent-foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+
+  /* Existing neutral utility classes follow the new surfaces too. */
+  --color-slate-50: #f6f8f7;
+  --color-slate-100: #edf2f0;
+  --color-slate-200: #dce5e1;
+  --color-slate-300: #c2d0ca;
+  --color-slate-400: #81968e;
+  --color-slate-500: #60736e;
+  --color-slate-600: #485e56;
+  --color-slate-700: #344b43;
+  --color-slate-800: #21382f;
+  --color-slate-900: #0e1b1a;
+  --color-slate-950: #07110e;
+
+  /* Keep content panels quiet; floating dialogs retain their elevation. */
+  --shadow-xs: 0 1px 2px rgb(14 27 26 / 0.025);
+  --shadow-sm: 0 1px 3px rgb(14 27 26 / 0.04);
+  --shadow-md: 0 3px 12px rgb(14 27 26 / 0.05);
+}
+
+/* Learning portals use one fixed petrol palette, including old accent preferences. */
+:root:has(:is([data-mentor-appearance], [data-mentee-appearance])) {
+  --brand-50: #edf7f4;
+  --brand-100: #d8eee7;
+  --brand-200: #b2ded1;
+  --brand-300: #7cc7b5;
+  --brand-400: #3fb3a6;
+  --brand-500: #008078;
+  --brand-600: #006963;
+  --brand-700: #00564f;
+  --brand-800: #064740;
+  --brand-900: #083a34;
+  --brand-950: #03211e;
+}
+
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) {
+  --canvas: #0a1211;
+  --background: #0a1211;
+  --foreground: #e7edec;
+  --card: #111a19;
+  --card-foreground: #e7edec;
+  --popover: #16211f;
+  --popover-foreground: #e7edec;
+  --secondary: #1b2925;
+  --secondary-foreground: #e7edec;
+  --muted: #16211f;
+  --muted-foreground: #a1b4ac;
+  --accent: #18332c;
+  --accent-foreground: #c0e8db;
+  --border: #263932;
+  --input: #30463d;
+  --input-background: #16211f;
+  --switch-background: #385248;
+  --primary: var(--brand-400);
+  --primary-foreground: #03211e;
+  --ring: var(--brand-400);
+
+  /* Match the app's existing inverted neutral utility convention. */
+  --color-slate-50: #182520;
+  --color-slate-100: #1e2e27;
+  --color-slate-200: #2d4238;
+  --color-slate-300: #435e51;
+  --color-slate-400: #89a296;
+  --color-slate-500: #a1b4ac;
+  --color-slate-600: #bfd0c8;
+  --color-slate-700: #d0ddd7;
+  --color-slate-800: #dce7e1;
+  --color-slate-900: #e7edec;
+  --color-slate-950: #f3f7f5;
+}
+
+/* These older components explicitly specify dark variants. Unlike the plain
+   inverted utilities above, they must retain dark surfaces and light ink. */
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .dark\:bg-slate-950,
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .dark\:bg-slate-900 {
+  background-color: var(--background);
+}
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .dark\:bg-slate-800 {
+  background-color: var(--card);
+}
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .dark\:bg-slate-700 {
+  background-color: var(--muted);
+}
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .dark\:text-slate-100,
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .dark\:text-slate-200 {
+  color: var(--foreground);
+}
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .dark\:text-slate-300,
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .dark\:text-slate-400 {
+  color: var(--muted-foreground);
+}
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .dark\:border-slate-700,
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .dark\:border-slate-800 {
+  border-color: var(--border);
+}
+
+/* Mobile's system typography and petrol hero, applied to the existing cockpit
+   rather than introducing a second navigation or a different dashboard flow. */
+:root:has(:is([data-mentor-appearance], [data-mentee-appearance])) body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+:is([data-mentor-appearance], [data-mentee-appearance]) {
+  --mentor-hero-start: #00514d;
+  --mentor-hero-end: #00807a;
+  --mentor-hero-text: #ffffff;
+  --mentor-hero-muted: #d4e9e5;
+}
+.dark :is([data-mentor-appearance], [data-mentee-appearance]) {
+  --mentor-hero-start: #0c3f3b;
+  --mentor-hero-end: #12615b;
+}
+.mentor-cockpit-header {
+  padding: 32px;
+  border-radius: 28px;
+  background: linear-gradient(115deg, var(--mentor-hero-start), var(--mentor-hero-end));
+  color: var(--mentor-hero-text);
+}
+.mentor-cockpit-header h1 {
+  color: var(--mentor-hero-text);
+  font-size: clamp(1.5rem, 2.6vw, 2rem);
+  font-weight: 350;
+  letter-spacing: -0.025em;
+}
+.mentor-cockpit-header p { color: var(--mentor-hero-muted); }
+.mentor-cockpit-actions button {
+  background: rgb(255 255 255 / 0.12);
+  border: 1px solid rgb(255 255 255 / 0.25);
+  color: var(--mentor-hero-text);
+}
+.mentor-cockpit-actions button:last-child {
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #00514d;
+}
+.mentor-cockpit-actions button:hover { background: rgb(255 255 255 / 0.22); }
+.mentor-cockpit-actions button:last-child:hover { background: #e3f3ed; }
+.mentor-cockpit-stats > div {
+  border-color: transparent;
+  border-radius: 18px;
+  background: var(--muted);
+}
+.mentor-cockpit-stats .text-3xl { font-weight: 350; letter-spacing: -0.035em; }
+.mentor-cockpit-filters {
+  border-radius: 24px;
+  background: var(--muted);
+  padding: 5px;
+  width: fit-content;
+  max-width: 100%;
+}
+.mentor-cockpit-filters button {
+  border: 0;
+  border-radius: 20px;
+  margin: 0;
+  color: var(--muted-foreground);
+}
+.mentor-cockpit-filters button[aria-pressed='true'] {
+  background: var(--foreground);
+  color: var(--background);
+}
+@media (max-width: 640px) {
+  .mentor-cockpit-header { padding: 24px 20px; }
+}
+
+/* One quiet inbox, with conversations and replies in a shared frame. */
+.mentor-inbox {
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background: var(--card);
+  box-shadow: 0 8px 32px rgb(14 27 26 / 4%);
+}
+.mentor-inbox .conversation-list,
+.mentor-inbox .conversation-thread {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+@media (min-width: 1280px) {
+  .mentor-inbox .conversation-list { border-right: 1px solid var(--border); }
+}
+
+@media (min-width: 1024px) {
+  .mentor-inbox > .grid { grid-template-columns: minmax(300px, 0.85fr) minmax(0, 1.65fr); }
+  .mentor-inbox .inbox-list-pane { display: block; grid-column: auto; }
+  .mentor-inbox .inbox-thread-pane { display: flex; grid-column: auto; }
+  .mentor-inbox .conversation-list { border-right: 1px solid var(--border); }
+  .mentor-inbox [aria-label="Back to conversation list"] { display: none; }
+}
+
+/* Keep the conversation readable without crowding the reply pane. */
+.mentor-inbox .conversation-thread { background: var(--card); }
+.mentor-inbox .conversation-list > div:first-child { padding: 20px; }
+.mentor-inbox .conversation-list button { transition: background-color 150ms ease; }
+
+/* Readable accent links and quiet tinted surfaces in the mentor dark theme.
+   Button fills retain their darker teal so white button labels keep contrast. */
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .text-brand-500,
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .text-brand-600,
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .text-brand-700 { color: #98dbcc; }
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .bg-brand-50 { background-color: #16372f; }
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .bg-brand-100 { background-color: #20493f; }
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .border-brand-200,
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .border-brand-300 { border-color: #356658; }
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .bg-amber-50 { background-color: #302616; }
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .text-amber-700,
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .text-amber-800 { color: #e9c181; }
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .border-amber-200 { border-color: #665133; }
+.mentor-inbox .conversation-list > div:first-child > div:first-child { flex-wrap: wrap; }
+.mentor-inbox .conversation-list > div:first-child > div:first-child > div:first-child { min-width: 120px; }
+
+/* Pastel statistic tiles inspired by the supplied reference. */
+.mentor-stat-0 { --stat-ink: #075746; background: linear-gradient(125deg, #d7f8e7, #b8eed7); }
+.mentor-stat-1 { --stat-ink: #593487; background: linear-gradient(125deg, #eee3ff, #ddc8fb); }
+.mentor-stat-2 { --stat-ink: #79500b; background: linear-gradient(125deg, #fff6d9, #ffeab4); }
+.mentor-stat-3 { --stat-ink: #843c29; background: linear-gradient(125deg, #ffede4, #ffd6c5); }
+.mentor-stat::before { content: ''; position: absolute; z-index: -1; inset: 0; opacity: .15; background-image: radial-gradient(var(--stat-ink) .7px, transparent .7px); background-size: 6px 6px; mask-image: linear-gradient(130deg, #000, transparent 40%, transparent 75%, #000); }
+:root:has(:is([data-mentor-appearance], [data-mentee-appearance])) .mentor-stat * { color: var(--stat-ink); border-color: color-mix(in srgb, var(--stat-ink) 14%, transparent); }
+.mentor-stat .bg-muted { background: rgb(255 255 255 / .45); }
+.mentor-stat p { font-size: 2.5rem; }

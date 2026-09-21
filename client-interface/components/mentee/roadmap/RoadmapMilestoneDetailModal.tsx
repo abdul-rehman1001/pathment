@@ -1,28 +1,41 @@
-'use client';
+"use client";
+import { RichTextReader } from "@/components/shared/RichTextReader";
 
-import { X, CheckCircle2, Clock, Award, FileCode, BookOpen, ExternalLink, ArrowRight } from 'lucide-react';
-import type { MenteeRoadmapStep } from '@/lib/services/roadmap-api';
-import { useRouter } from 'next/navigation';
+import {
+  X,
+  CheckCircle2,
+  Clock,
+  Award,
+  FileCode,
+  BookOpen,
+  ExternalLink,
+  ArrowRight,
+} from "lucide-react";
+import type { MenteeRoadmapStep } from "@/lib/services/roadmap-api";
+import { useRouter } from "next/navigation";
 
 interface RoadmapMilestoneDetailModalProps {
   step: MenteeRoadmapStep | null;
   onClose: () => void;
 }
 
-export function RoadmapMilestoneDetailModal({ step, onClose }: RoadmapMilestoneDetailModalProps) {
+export function RoadmapMilestoneDetailModal({
+  step,
+  onClose,
+}: RoadmapMilestoneDetailModalProps) {
   const router = useRouter();
 
   if (!step) return null;
 
-  const isCompleted = step.done || step.status === 'completed';
-  const isCurrent = step.current || step.status === 'current';
+  const isCompleted = step.done || step.status === "completed";
+  const isCurrent = step.current || step.status === "current";
 
   const handleAction = () => {
     onClose();
     if (step.assignedTask?.id) {
       router.push(`/mentee/tasks/${step.assignedTask.id}`);
     } else {
-      router.push('/mentee/tasks');
+      router.push("/mentee/tasks");
     }
   };
 
@@ -41,19 +54,28 @@ export function RoadmapMilestoneDetailModal({ step, onClose }: RoadmapMilestoneD
               <span
                 className={`px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wide ${
                   isCompleted
-                    ? 'bg-emerald-100 text-emerald-800'
+                    ? "bg-emerald-100 text-emerald-800"
                     : isCurrent
-                    ? 'bg-blue-100 text-blue-800'
-                    : 'bg-slate-100 text-slate-700'
+                      ? "bg-blue-100 text-blue-800"
+                      : "bg-slate-100 text-slate-700"
                 }`}
               >
-                {isCompleted ? 'Completed' : isCurrent ? 'In Progress' : 'Upcoming Stage'}
+                {isCompleted
+                  ? "Completed"
+                  : isCurrent
+                    ? "In Progress"
+                    : "Upcoming Stage"}
               </span>
               <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600 capitalize">
-                {step.type || 'Assignment'}
+                {step.type || "Assignment"}
               </span>
             </div>
-            <h2 id="milestone-modal-title" className="text-xl font-bold text-slate-900">{step.title}</h2>
+            <h2
+              id="milestone-modal-title"
+              className="text-xl font-bold text-slate-900"
+            >
+              {step.title}
+            </h2>
           </div>
           <button
             onClick={onClose}
@@ -69,25 +91,35 @@ export function RoadmapMilestoneDetailModal({ step, onClose }: RoadmapMilestoneD
           {/* Metadata Bar */}
           <div className="grid grid-cols-3 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 text-center">
             <div>
-              <div className="text-[11px] text-slate-500 font-medium">Difficulty</div>
-              <div className="text-xs font-bold text-slate-800 capitalize mt-0.5">{step.difficulty || 'Standard'}</div>
-            </div>
-            <div>
-              <div className="text-[11px] text-slate-500 font-medium">Est. Hours</div>
-              <div className="text-xs font-bold text-slate-800 mt-0.5">
-                {step.estimatedHours != null ? `${step.estimatedHours} hrs` : 'N/A'}
+              <div className="text-[11px] text-slate-500 font-medium">
+                Difficulty
+              </div>
+              <div className="text-xs font-bold text-slate-800 capitalize mt-0.5">
+                {step.difficulty || "Standard"}
               </div>
             </div>
             <div>
               <div className="text-[11px] text-slate-500 font-medium">
-                {isCompleted ? 'Points Earned' : 'Base Points'}
+                Est. Hours
               </div>
-              <div className={`text-xs font-bold mt-0.5 ${isCompleted ? 'text-emerald-600' : 'text-brand-700'}`}>
+              <div className="text-xs font-bold text-slate-800 mt-0.5">
+                {step.estimatedHours != null
+                  ? `${step.estimatedHours} hrs`
+                  : "N/A"}
+              </div>
+            </div>
+            <div>
+              <div className="text-[11px] text-slate-500 font-medium">
+                {isCompleted ? "Points Earned" : "Base Points"}
+              </div>
+              <div
+                className={`text-xs font-bold mt-0.5 ${isCompleted ? "text-emerald-600" : "text-brand-700"}`}
+              >
                 {isCompleted && step.assignedTask?.pointsAwarded != null
                   ? `+${step.assignedTask.pointsAwarded} pts`
                   : step.pointsBase != null
-                  ? `${step.pointsBase} pts`
-                  : 'N/A'}
+                    ? `${step.pointsBase} pts`
+                    : "N/A"}
               </div>
             </div>
           </div>
@@ -95,8 +127,13 @@ export function RoadmapMilestoneDetailModal({ step, onClose }: RoadmapMilestoneD
           {/* Description */}
           {step.description && (
             <div>
-              <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-2">Overview</h4>
-              <p className="text-sm text-slate-600 leading-relaxed">{step.description}</p>
+              <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-2">
+                Overview
+              </h4>
+              <RichTextReader
+                content={step.description}
+                className="text-sm text-muted-foreground"
+              />
             </div>
           )}
 
@@ -107,17 +144,24 @@ export function RoadmapMilestoneDetailModal({ step, onClose }: RoadmapMilestoneD
                 <FileCode className="w-4 h-4 text-brand-600" />
                 Required Deliverable
               </h4>
-              <p className="text-xs text-brand-800 leading-relaxed">{step.deliverable}</p>
+              <p className="text-xs text-brand-800 leading-relaxed">
+                {step.deliverable}
+              </p>
             </div>
           )}
 
           {/* Acceptance Criteria */}
           {step.acceptanceCriteria && step.acceptanceCriteria.length > 0 && (
             <div>
-              <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-2">Acceptance Criteria</h4>
+              <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-2">
+                Acceptance Criteria
+              </h4>
               <ul className="space-y-2">
                 {step.acceptanceCriteria.map((criterion, idx) => (
-                  <li key={idx} className="flex items-start gap-2.5 text-xs text-slate-700">
+                  <li
+                    key={idx}
+                    className="flex items-start gap-2.5 text-xs text-slate-700"
+                  >
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
                     <span>{criterion}</span>
                   </li>
@@ -129,7 +173,9 @@ export function RoadmapMilestoneDetailModal({ step, onClose }: RoadmapMilestoneD
           {/* Attached Resources */}
           {step.resources && step.resources.length > 0 && (
             <div>
-              <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-2">Learning Resources</h4>
+              <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-2">
+                Learning Resources
+              </h4>
               <div className="space-y-2">
                 {step.resources.map((res, idx) => {
                   const rawUrl = res.url?.trim();
@@ -144,9 +190,11 @@ export function RoadmapMilestoneDetailModal({ step, onClose }: RoadmapMilestoneD
                       </div>
                     );
                   }
-                  const href = rawUrl.startsWith('http://') || rawUrl.startsWith('https://')
-                    ? rawUrl
-                    : `https://${rawUrl}`;
+                  const href =
+                    rawUrl.startsWith("http://") ||
+                    rawUrl.startsWith("https://")
+                      ? rawUrl
+                      : `https://${rawUrl}`;
                   return (
                     <a
                       key={idx}
@@ -180,7 +228,7 @@ export function RoadmapMilestoneDetailModal({ step, onClose }: RoadmapMilestoneD
             onClick={handleAction}
             className="px-5 py-2 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-xl shadow-xs flex items-center gap-1.5 transition-colors"
           >
-            {isCompleted ? 'View Task & Feedback' : 'Go to Task Workspace'}
+            {isCompleted ? "View Task & Feedback" : "Go to Task Workspace"}
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>

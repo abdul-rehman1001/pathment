@@ -12,7 +12,6 @@ const interviewKitService = require('./interviewKitService');
 const quizKitService = require('./quizKitService');
 const { resolveMenteeClanId, listMenteeClans, clanScopedWhere } = require('./menteeClanScope');
 const { toStringList } = require('../utils/multipartFields');
-const crypto = require('crypto');
 
 /**
  * The statuses a mentee may set on their own task.
@@ -65,6 +64,7 @@ function applyTaskOverrides(taskInstance) {
     const res = t.resourcesOverride;
     t.roadmapTask = {
       ...rt,
+      type: t.typeOverride ?? rt.type,
       title: t.titleOverride ?? rt.title,
       description: t.descriptionOverride ?? rt.description,
       deliverable: t.deliverableOverride ?? rt.deliverable,
@@ -72,7 +72,7 @@ function applyTaskOverrides(taskInstance) {
       resources: Array.isArray(res) ? res : rt.resources,
     };
   }
-  t.hasOverrides = !!(t.titleOverride || t.descriptionOverride || t.deliverableOverride
+  t.hasOverrides = !!(t.typeOverride || t.titleOverride || t.descriptionOverride || t.deliverableOverride
     || (Array.isArray(t.acceptanceCriteriaOverride) && t.acceptanceCriteriaOverride.length)
     || Array.isArray(t.resourcesOverride) || t.mentorNote);
 
@@ -151,115 +151,13 @@ class TaskService {
       throw new ValidationError('At least one open source organization is required for open source tasks');
     }
 
+    // Older clients may still send the former recurring pseudo-type.
     if (type === 'recurring') {
-      const rec = data.recurring;
-      if (!rec) {
-        throw new ValidationError('Recurring task configuration is required');
-      }
-
-      if (!rec.type || !['discussion', 'project', 'reading', 'exercise'].includes(rec.type)) {
-        throw new ValidationError('Invalid or missing recurring task type');
-      }
-
-      let daysOfWeek = [];
-      if (Array.isArray(rec.daysOfWeek) && rec.daysOfWeek.length > 0) {
-        daysOfWeek = rec.daysOfWeek.map(Number).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
-      }
-      if (!daysOfWeek.length) daysOfWeek = [1];
-      const dayOfWeek = daysOfWeek[0];
-
-      const timeLocal = rec.timeLocal || '09:00';
-      if (!/^\d{2}:\d{2}$/.test(timeLocal)) {
-        throw new ValidationError('timeLocal must be in HH:mm format');
-      }
-
-      const startsOn = rec.startsOn || new Date().toISOString().split('T')[0];
-      const endsOn = rec.endsOn ? String(rec.endsOn).split('T')[0] : null;
-
-      const dueOffsetDays = Number.isInteger(Number(rec.dueOffsetDays)) && Number(rec.dueOffsetDays) > 0
-        ? Number(rec.dueOffsetDays)
-        : 7;
-
-      const intervalWeeks = Number.isInteger(Number(rec.intervalWeeks)) && Number(rec.intervalWeeks) >= 1
-        ? Math.min(52, Number(rec.intervalWeeks))
-        : 1;
-
-      let ms = await models.MenteeSchedule.findOne({ where: { menteeId } });
-      if (!ms) {
-        ms = await models.MenteeSchedule.create({
-          menteeId,
-          schedule: [],
-          assignedBy: mentorId,
-          timezone: 'UTC'
-        });
-      }
-
-      const schedule = Array.isArray(ms.schedule) ? ms.schedule : [];
-      const slotId = `slot-recurring-${crypto.randomUUID()}`;
-
-      const newSlot = {
-        id: slotId,
-        label: title || 'Recurring Task',
-        time: timeLocal,
-        days: daysOfWeek.includes(0) || daysOfWeek.includes(6) ? 'everyday' : 'weekdays',
-        kind: 'recurring',
-        recurring: {
-          title: title || 'Recurring Task',
-          type: rec.type,
-          recurrence: 'weekly',
-          dayOfWeek,
-          daysOfWeek,
-          timeLocal,
-          timezone: ms.timezone || 'UTC',
-          startsOn,
-          endsOn,
-          dueOffsetDays,
-          intervalWeeks
-        }
-      };
-
-      schedule.push(newSlot);
-      ms.schedule = schedule;
-      ms.changed('schedule', true);
-      await ms.save();
-
-      // Dispatch a single notification for the recurring task schedule assignment
-      try {
-        const mentorUser = await models.User.findByPk(mentorId, { attributes: ['firstName', 'lastName'] });
-        const mentorFirst = mentorUser?.firstName || 'Your mentor';
-        const mentorName = mentorUser ? `${mentorUser.firstName} ${mentorUser.lastName}`.trim() : 'Your mentor';
-        const slotTitle = title || 'Recurring Task';
-        const cleanSlotId = slotId.replace('slot-recurring-', '');
-
-        await notificationOrchestrator.dispatch({
-          eventKey: NOTIFICATION_EVENTS.TASK_ASSIGNED,
-          recipients: [{ userId: menteeId }],
-          payload: {
-            title: `${mentorFirst} assigned you a recurring task`,
-            message: `“${slotTitle}” has been scheduled. Upcoming tasks will appear on your list automatically.`,
-            actionUrl: '/mentee/dashboard',
-            actionLabel: 'Go to dashboard',
-            emailSubject: `New recurring schedule from ${mentorName}: ${slotTitle}`,
-            relatedEntityType: 'mentee_schedule',
-            relatedEntityId: cleanSlotId
-          },
-          dedupe: {
-            relatedEntityType: 'recurring_schedule_assigned',
-            relatedEntityId: cleanSlotId
-          }
-        });
-      } catch (err) {
-        console.error('[taskService] Failed to dispatch recurring notification:', err.message);
-      }
-
-      // Fire-and-forget: materialize tasks in the background so the API
-      // responds instantly. The next scheduler tick will catch any missed
-      // materializations if this fails.
-      const recurringSlotMaterializer = require('./recurringSlotMaterializer');
-      recurringSlotMaterializer.activateSlotForMentor(mentorId, slotId, [menteeId])
-        .catch((err) => console.error('[recurringSlotMaterializer] Background activation failed:', err.message));
-
-      return newSlot;
+      const rec = data.recurring || {};
+      return this.createCustomTask({ ...data, type: rec.type || 'discussion', recurring: undefined,
+        schedule: { ...rec, mode: 'weekly', timezone: rec.timezone || 'UTC',
+          startsOn: rec.startsOn || new Date().toISOString().slice(0, 10),
+          timeLocal: rec.timeLocal || '09:00', daysOfWeek: rec.daysOfWeek?.length ? rec.daysOfWeek.map(Number) : [1] } }, mentorId);
     }
 
     // Interview tasks carry a kit + options (retake / camera / AI / timing) under
@@ -275,6 +173,7 @@ class TaskService {
       });
       const kitQuestions = kit?.questions || [];
       if (!kit || kitQuestions.length === 0) throw new ValidationError('That interview kit has no questions yet');
+      if (kit.status !== 'published') throw new ValidationError('Publish this interview kit before assigning or scheduling it');
       const timingMode = interviewOpts.timingMode || kit.timingMode;
       const seconds = timingMode === 'total'
         ? (Number(interviewOpts.totalSeconds || kit.totalSeconds) || 0)
@@ -293,8 +192,12 @@ class TaskService {
       });
       const kitQuestions = kit?.questions || [];
       if (!kit || kitQuestions.length === 0) throw new ValidationError('That quiz has no questions yet');
+      if (kit.status !== 'published') throw new ValidationError('Publish this quiz before assigning or scheduling it');
       const seconds = Number(quizOpts.timeLimitSeconds || kit.timeLimitSeconds) || (kitQuestions.length * 45);
       quizEstimateHours = Math.max(1, Math.round(seconds / 3600));
+    }
+    if (data.schedule) {
+      return require('./customTaskScheduleService').create({ ...data, enrollmentId }, mentorId, clanId);
     }
     // Sensible per-difficulty estimate for non-interview custom tasks (was a flat 5h).
     const EST_HOURS_BY_DIFFICULTY = { easy: 2, medium: 4, hard: 8, expert: 12 };
@@ -1260,6 +1163,24 @@ class TaskService {
     const task = await models.AssignedTask.findByPk(taskId);
     if (!task) throw new NotFoundError('Task not found');
     if (task.status === 'completed') throw new ValidationError('Cannot edit a completed task');
+
+    if ('typeOverride' in data) {
+      const editableTypes = ['reading', 'video', 'exercise', 'project', 'discussion', 'practical', 'assessment', 'custom', 'assignment'];
+      const source = await models.RoadmapTask.findByPk(task.roadmapTaskId);
+      const nextType = data.typeOverride == null ? source.type : data.typeOverride;
+      const currentType = task.typeOverride || source.type;
+      if (nextType !== currentType) {
+        if (!['assigned', 'not_started', 'in_progress'].includes(task.status)) {
+          throw new ValidationError('Task type can only change before submission');
+        }
+        if (!editableTypes.includes(nextType) || !editableTypes.includes(currentType)) {
+          throw new ValidationError('Quizzes, interviews and open-source tasks require their dedicated assignment setup');
+        }
+        const submissions = await models.TaskSubmission.count({ where: { assignedTaskId: task.id } });
+        if (submissions) throw new ValidationError('Cannot change the type of a task with submission history');
+      }
+      task.typeOverride = nextType === source.type ? null : nextType;
+    }
 
     const overrideFields = ['titleOverride', 'descriptionOverride', 'deliverableOverride', 'acceptanceCriteriaOverride', 'resourcesOverride', 'mentorNote'];
     for (const f of overrideFields) {

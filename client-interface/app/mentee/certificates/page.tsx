@@ -1,35 +1,58 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useAuth } from '@/lib/context/AuthContext';
-import { toast } from 'sonner';
+import { useState, useEffect } from "react";
+import Link from "next/link";
+import { useAuth } from "@/lib/context/AuthContext";
+import { toast } from "sonner";
 import {
-  Award, Download, Linkedin,
-  Loader2, Calendar, ShieldCheck, X, Eye, BadgeCheck, Info
-} from 'lucide-react';
-import { certificatesApi, CertificateInstance } from '@/lib/services/certificates-api';
-import { CertificatePreview, MenteeEvidenceDrawer, type CertificateRenderData } from '@/components/certificates/shared';
-import { downloadCertificateAsPng } from '@/lib/utils/certificate-renderer';
+  Award,
+  Download,
+  Linkedin,
+  Loader2,
+  Calendar,
+  ShieldCheck,
+  X,
+  Eye,
+  BadgeCheck,
+  Info,
+} from "lucide-react";
+import {
+  certificatesApi,
+  CertificateInstance,
+} from "@/lib/services/certificates-api";
+import {
+  CertificatePreview,
+  MenteeEvidenceDrawer,
+  type CertificateRenderData,
+} from "@/components/certificates/shared";
+import { downloadCertificateAsPng } from "@/lib/utils/certificate-renderer";
 
 // ==================== HELPERS ====================
 
-function buildRenderData(cert: CertificateInstance, menteeName: string): CertificateRenderData {
+function buildRenderData(
+  cert: CertificateInstance,
+  menteeName: string,
+): CertificateRenderData {
   return {
     menteeName,
-    programName:    cert.template?.program?.name || cert.template?.name,
+    programName: cert.template?.program?.name || cert.template?.name,
     fellowshipName: cert.template?.program?.name || cert.template?.name,
-    dateIssued:     new Date(cert.createdAt).toLocaleDateString('en-US', {
-      year: 'numeric', month: 'long', day: 'numeric',
+    dateIssued: new Date(cert.createdAt).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
     }),
-    issuerName:  cert.mentor
+    issuerName: cert.mentor
       ? `${cert.mentor.firstName} ${cert.mentor.lastName}`.trim()
-      : 'Pathment Admin',
-    issuerTitle: cert.mentor ? 'Mentor' : 'Pathment Admin',
+      : "Pathment Admin",
+    issuerTitle: cert.mentor ? "Mentor" : "Pathment Admin",
     // The tier the certificate was actually awarded at. Tier-aware layers —
     // per-tier wording, per-tier badges, layers only the top tier gets —
     // resolve against this, so it has to travel with the render data.
-    tier:        cert.tier,
-    tierName:    cert.template?.criteria?.find(c => c.id === cert.tier)?.name || cert.tier,
+    tier: cert.tier,
+    tierName:
+      cert.template?.criteria?.find((c) => c.id === cert.tier)?.name ||
+      cert.tier,
     certificateNumber: cert.certificateNumber,
   };
 }
@@ -37,21 +60,23 @@ function buildRenderData(cert: CertificateInstance, menteeName: string): Certifi
 function getBadgeUrl(cert: CertificateInstance): string | null {
   const criteria = cert.template?.criteria;
   if (!Array.isArray(criteria)) return null;
-  return criteria.find(c => c.id === cert.tier)?.badgeUrl ?? null;
+  return criteria.find((c) => c.id === cert.tier)?.badgeUrl ?? null;
 }
 
 function getLinkedInShareUrl(cert: CertificateInstance): string {
-  const title = `Awarded: ${cert.template?.name || 'Certificate of Mastery'} from Pathment`;
+  const title = `Awarded: ${cert.template?.name || "Certificate of Mastery"} from Pathment`;
   return `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(window.location.href)}&title=${encodeURIComponent(title)}`;
 }
 
 // ==================== PAGE ====================
 
 export default function MenteeCertificatesPage() {
-  const { user }     = useAuth();
+  const { user } = useAuth();
   const [certificates, setCertificates] = useState<CertificateInstance[]>([]);
-  const [loading,      setLoading]      = useState(true);
-  const [previewCert,  setPreviewCert]  = useState<CertificateInstance | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [previewCert, setPreviewCert] = useState<CertificateInstance | null>(
+    null,
+  );
   /**
    * Which certificate the mentee is asking "why did I get this?" about.
    * Read-only for them: they see the same evidence their mentor reviewed —
@@ -59,7 +84,7 @@ export default function MenteeCertificatesPage() {
    * made with the reason they gave — but they cannot re-grade themselves.
    */
   const [whyCert, setWhyCert] = useState<CertificateInstance | null>(null);
-  const [downloading,  setDownloading]  = useState<string | null>(null);
+  const [downloading, setDownloading] = useState<string | null>(null);
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
 
@@ -70,33 +95,40 @@ export default function MenteeCertificatesPage() {
       const res = await certificatesApi.listMenteeCertificates(user.id);
       if (res.success && res.data) setCertificates(res.data);
     } catch (err: any) {
-      toast.error('Failed to load your certificates');
+      toast.error("Failed to load your certificates");
       console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { fetchCertificates(); }, [user?.id]);
+  useEffect(() => {
+    fetchCertificates();
+  }, [user?.id]);
 
   // ── Download ───────────────────────────────────────────────────────────────
 
   const handleDownload = async (cert: CertificateInstance) => {
-    if (!cert.template) { toast.error('Certificate template not loaded'); return; }
+    if (!cert.template) {
+      toast.error("Certificate template not loaded");
+      return;
+    }
     if (downloading) return;
     setDownloading(cert.id);
     try {
       const menteeName = user
         ? `${user.firstName} ${user.lastName}`.trim()
-        : 'Recipient';
-      const data    = buildRenderData(cert, menteeName);
-      const badge   = getBadgeUrl(cert);
-      const name    = (cert.template.name || 'certificate').replace(/[^a-z0-9-_]+/gi, '-').toLowerCase();
+        : "Recipient";
+      const data = buildRenderData(cert, menteeName);
+      const badge = getBadgeUrl(cert);
+      const name = (cert.template.name || "certificate")
+        .replace(/[^a-z0-9-_]+/gi, "-")
+        .toLowerCase();
       await downloadCertificateAsPng(cert.template, data, `${name}.png`, badge);
-      toast.success('Certificate downloaded!');
+      toast.success("Certificate downloaded!");
     } catch (err: any) {
       console.error(err);
-      toast.error('Download failed — please try again');
+      toast.error("Download failed — please try again");
     } finally {
       setDownloading(null);
     }
@@ -106,41 +138,59 @@ export default function MenteeCertificatesPage() {
 
   const renderMenteeName = user
     ? `${user.firstName} ${user.lastName}`.trim()
-    : 'Recipient';
+    : "Recipient";
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="border-b border-border pb-4">
-        <h1 className="text-slate-900 mb-2 inline-flex items-center gap-2">
+      <div className="mentee-page-heading">
+        <h1 className="text-2xl font-semibold text-foreground mb-2 inline-flex items-center gap-2">
           <Award className="w-6 h-6 text-brand-600" />
           My certificates
         </h1>
-        <p className="text-slate-600">View, download, and share what you have earned.</p>
+        <p className="text-slate-600">
+          View, download, and share what you have earned.
+        </p>
       </div>
 
       {/* Body */}
       {loading ? (
         <div className="flex flex-col items-center justify-center min-h-[300px] gap-3">
           <Loader2 className="animate-spin h-8 w-8 text-brand-500" />
-          <span className="text-sm text-muted-foreground font-medium">Loading your certificates...</span>
+          <span className="text-sm text-muted-foreground font-medium">
+            Loading your certificates...
+          </span>
         </div>
       ) : certificates.length === 0 ? (
         <div className="flex flex-col items-center justify-center min-h-[300px] border border-dashed border-border rounded-2xl p-8 bg-card text-center">
           <Award className="w-12 h-12 text-brand-500 mb-3 opacity-60" />
-          <h3 className="text-sm font-bold text-foreground mb-1">No Certificates Yet</h3>
-          <p className="text-xs text-muted-foreground max-w-sm">
-            Keep working on your milestones! Your mentor will award you certificates as you complete your program targets.
+          <h3 className="text-sm font-bold text-foreground mb-1">
+            Your achievements belong here
+          </h3>
+          <p className="text-sm leading-relaxed text-muted-foreground max-w-sm">
+            Keep working on your milestones! Your mentor will award you
+            certificates as you complete your program targets.
           </p>
+          <Link
+            href="/mentee/roadmap"
+            className="mt-5 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-700"
+          >
+            View my roadmap
+          </Link>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {certificates.map(cert => {
-            const dateStr = new Date(cert.createdAt).toLocaleDateString('en-US', {
-              year: 'numeric', month: 'long', day: 'numeric',
-            });
-            const renderData   = buildRenderData(cert, renderMenteeName);
-            const badgeUrl     = getBadgeUrl(cert);
+          {certificates.map((cert) => {
+            const dateStr = new Date(cert.createdAt).toLocaleDateString(
+              "en-US",
+              {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              },
+            );
+            const renderData = buildRenderData(cert, renderMenteeName);
+            const badgeUrl = getBadgeUrl(cert);
             const isDownloading = downloading === cert.id;
 
             return (
@@ -165,27 +215,36 @@ export default function MenteeCertificatesPage() {
                   {/* hover overlay */}
                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
                     <span className="bg-white/90 dark:bg-black/90 text-foreground text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 shadow-sm">
-                      <Eye className="w-4 h-4 text-brand-500" /> View Certificate
+                      <Eye className="w-4 h-4 text-brand-500" /> View
+                      Certificate
                     </span>
                   </div>
                 </div>
 
                 {/* Card footer */}
-                <div className="p-4 flex-1 flex flex-col justify-between space-y-4" onClick={e => e.stopPropagation()}>
+                <div
+                  className="p-4 flex-1 flex flex-col justify-between space-y-4"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <div className="space-y-1">
-                    <h3
-                      className="text-xs font-bold text-foreground line-clamp-1 hover:text-brand-500 transition-colors cursor-pointer"
+                    <button
+                      type="button"
+                      className="text-base font-semibold text-foreground line-clamp-2 hover:text-brand-500 transition-colors cursor-pointer"
                       onClick={() => setPreviewCert(cert)}
                     >
-                      {cert.template?.name || 'Certificate of Completion'}
-                    </h3>
+                      {cert.template?.name || "Certificate of Completion"}
+                    </button>
                     <div className="space-y-1 pt-1">
-                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-semibold">
-                        <Calendar className="w-3 h-3 text-brand-500" /> Issued: {dateStr}
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-semibold">
+                        <Calendar className="w-3 h-3 text-brand-500" /> Issued:{" "}
+                        {dateStr}
                       </div>
-                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-semibold">
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-semibold">
                         <ShieldCheck className="w-3 h-3 text-brand-500" />
-                        Verified by: {cert.mentor ? `${cert.mentor.firstName} ${cert.mentor.lastName}` : 'Pathment Admin'}
+                        Verified by:{" "}
+                        {cert.mentor
+                          ? `${cert.mentor.firstName} ${cert.mentor.lastName}`
+                          : "Pathment Admin"}
                       </div>
                       {/* The credential's public identity. Shown as a link so a
                           mentee can open the page anyone else would see when
@@ -196,10 +255,12 @@ export default function MenteeCertificatesPage() {
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
-                          className="flex items-center gap-1.5 text-[10px] font-semibold text-brand-600 hover:underline"
+                          className="flex items-center gap-1.5 text-xs font-semibold text-brand-600 hover:underline"
                         >
                           <BadgeCheck className="w-3 h-3" />
-                          <span className="font-mono tracking-wider">{cert.certificateNumber}</span>
+                          <span className="font-mono tracking-wider">
+                            {cert.certificateNumber}
+                          </span>
                         </a>
                       )}
                     </div>
@@ -209,13 +270,16 @@ export default function MenteeCertificatesPage() {
                   <div className="flex gap-2">
                     <button
                       onClick={() => setPreviewCert(cert)}
-                      className="flex-1 flex items-center justify-center gap-1 py-1.5 px-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-[10px] font-bold transition-colors"
+                      className="flex-1 flex items-center justify-center gap-1 py-1.5 px-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold transition-colors"
                     >
                       <Eye className="w-3.5 h-3.5" /> View
                     </button>
 
                     <button
-                      onClick={e => { e.stopPropagation(); setWhyCert(cert); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setWhyCert(cert);
+                      }}
                       className="p-2 bg-muted hover:bg-muted/70 text-foreground border border-border rounded-xl transition-colors flex items-center justify-center"
                       title="Why did I get this?"
                     >
@@ -228,10 +292,12 @@ export default function MenteeCertificatesPage() {
                       className="p-2 bg-muted hover:bg-muted/70 text-foreground border border-border rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-0.5 disabled:opacity-60"
                       title="Download PNG"
                     >
-                      {isDownloading
-                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        : <Download className="w-3.5 h-3.5" />}
-                      <span className="text-[10px] font-bold">PNG</span>
+                      {isDownloading ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Download className="w-3.5 h-3.5" />
+                      )}
+                      <span className="text-xs font-bold">PNG</span>
                     </button>
 
                     <a
@@ -240,7 +306,7 @@ export default function MenteeCertificatesPage() {
                       rel="noopener noreferrer"
                       className="p-2 bg-[#0a66c2]/10 hover:bg-[#0a66c2]/20 text-[#0a66c2] rounded-xl transition-colors border border-transparent flex items-center justify-center"
                       title="Share on LinkedIn"
-                      onClick={e => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
                     >
                       <Linkedin className="w-3.5 h-3.5" />
                     </a>
@@ -275,7 +341,7 @@ export default function MenteeCertificatesPage() {
 
           <div
             className="w-full max-w-3xl lg:max-w-4xl flex flex-col items-center gap-4 my-auto py-4"
-            onClick={e => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
           >
             {/* Live full-screen preview */}
             <div className="w-full border border-white/10 rounded-2xl overflow-hidden shadow-2xl bg-black/40">
@@ -296,12 +362,13 @@ export default function MenteeCertificatesPage() {
             <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-3 bg-white/10 border border-white/15 p-4 rounded-2xl backdrop-blur-md shadow-xl select-none">
               <div className="text-center sm:text-left space-y-0.5">
                 <h2 className="text-white text-sm md:text-base font-bold">
-                  {previewCert.template?.name || 'Certificate of Mastery'}
+                  {previewCert.template?.name || "Certificate of Mastery"}
                 </h2>
                 <p className="text-white/70 text-[11px] font-medium">
-                  Issued by {previewCert.mentor
+                  Issued by{" "}
+                  {previewCert.mentor
                     ? `${previewCert.mentor.firstName} ${previewCert.mentor.lastName}`
-                    : 'Pathment Admin'}
+                    : "Pathment Admin"}
                 </p>
               </div>
 
@@ -311,9 +378,11 @@ export default function MenteeCertificatesPage() {
                   disabled={!!downloading}
                   className="flex items-center gap-1.5 px-4 py-2 bg-white hover:bg-white/90 text-black rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 disabled:opacity-60 cursor-pointer"
                 >
-                  {downloading === previewCert.id
-                    ? <Loader2 className="w-4 h-4 animate-spin" />
-                    : <Download className="w-4 h-4" />}
+                  {downloading === previewCert.id ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Download className="w-4 h-4" />
+                  )}
                   Download PNG
                 </button>
 

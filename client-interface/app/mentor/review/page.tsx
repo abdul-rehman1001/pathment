@@ -1,4 +1,7 @@
 'use client';
+import { AttendanceHistoryCalendar } from '@/components/mentor/AttendanceHistoryCalendar';
+
+import { ReviewHistoryCalendar } from '@/components/mentor/ReviewHistoryCalendar';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -23,7 +26,7 @@ import { AISummaryPanel } from '@/components/mentor/AISummaryPanel';
 import { NudgeButton } from '@/components/mentor/NudgeButton';
 import { MoveMenteeButton } from '@/components/mentor/MoveMenteeButton';
 import { ReviewDrawer } from '@/components/mentor/ReviewDrawer';
-import { AssignTaskDrawer } from '@/components/mentor/AssignTaskDrawer';
+import dynamic from 'next/dynamic';
 import { MenteeTaskDrawer } from '@/components/mentor/MenteeTaskDrawer';
 import { InterviewReviewDrawer } from '@/components/mentor/InterviewReviewDrawer';
 import { QuizReviewDrawer } from '@/components/mentor/QuizReviewDrawer';
@@ -68,6 +71,8 @@ const TASK_STATUS_META: Record<string, { label: string; cls: string }> = {
 };
 const TASK_STATUS_ORDER = ['revision_needed', 'submitted', 'in_progress', 'assigned', 'not_started', 'completed', 'cancelled'];
 const TASK_STATUS_COLLAPSED_DEFAULT = new Set(['completed', 'cancelled']);
+
+const AssignTaskDrawer = dynamic(() => import('@/components/mentor/AssignTaskDrawer').then(module => module.AssignTaskDrawer));
 
 export default function CohortReview() {
   const router = useRouter();
@@ -124,6 +129,7 @@ export default function CohortReview() {
   // The dated, saved cohort-review session (today by default, or ?session=<id>).
   // attendance / seen / deferred are derived from its entries — nothing ephemeral.
   const [session, setSession] = useState<ReviewSession | null>(null);
+  const [historyDate, setHistoryDate] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [sessions, setSessions] = useState<ReviewSessionSummary[]>([]);
   // Mentees already given an "up next" heads-up this visit (avoid double-pinging).
@@ -397,7 +403,7 @@ export default function CohortReview() {
   }, [menteeId, session?.id, editable]);
 
   // The mentee's assigned work, grouped by status (their "day"). 'submitted'
-  // tasks live in the "To review" queue below, so exclude them here.
+  // tasks live in the "To review" queue above, so exclude them here.
   // Pending due-date extension requests for this mentee, derived from the
   // latest submission on each task (already loaded — no extra fetch).
   const pendingExtensions = useMemo(() => tasks.map((t) => {
@@ -999,6 +1005,42 @@ export default function CohortReview() {
             </div>
           )}
 
+          {/* Submissions to review */}
+          <div className="bg-card rounded-2xl border border-slate-200">
+            <div className="px-5 py-4 border-b border-slate-200 flex items-center gap-2">
+              <ClipboardCheck className="w-4 h-4 text-brand-500" />
+              <h3 className="text-slate-900 font-medium">To review</h3>
+              {pending.length > 0 && <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs rounded-full">{pending.length}</span>}
+            </div>
+            <div className="p-4">
+              {pending.length === 0 ? (
+                <p className="text-sm text-slate-500 flex items-center gap-2 px-1 py-2"><CheckCircle2 className="w-4 h-4 text-emerald-400" />Nothing waiting. All clear.</p>
+              ) : (
+                <div className="space-y-2">
+                  {pending.map((item, i) => (
+                    <button key={item.submissionId} onClick={() => { setFocus(i); setReviewing(item); }}
+                      className={`group w-full text-left flex items-center gap-3 p-3 rounded-xl border transition-colors ${i === focus ? 'border-brand-300 bg-brand-50 dark:bg-brand-500/15' : 'border-slate-200 hover:border-brand-300'}`}>
+                      <span className="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-500/15 flex items-center justify-center shrink-0">
+                        <ClipboardCheck className="w-4 h-4 text-brand-600" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-slate-900 truncate">{item.title}</p>
+                        <div className="flex items-center gap-2 text-xs text-slate-500">
+                          {item.type && <span className="capitalize">{item.type}</span>}
+                          {typeof item.version === 'number' && item.version > 1 && <span>v{item.version}</span>}
+                          {item.isLate && <span className="inline-flex items-center gap-1 text-red-600"><Clock className="w-3 h-3" />late</span>}
+                        </div>
+                      </div>
+                      <span className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-brand-600 group-hover:bg-brand-700 text-white text-xs font-medium">
+                        Review &amp; decide <ChevronRight className="w-3.5 h-3.5" />
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Assigned work - everything currently on this mentee's plate */}
           <div className="bg-card rounded-2xl border border-slate-200">
             <div className="px-5 py-4 border-b border-slate-200 flex items-center gap-2">
@@ -1007,6 +1049,7 @@ export default function CohortReview() {
               {dayTasks.length > 0 && <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs rounded-full">{dayTasks.length}</span>}
               <button onClick={() => setAssigning(true)} className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700"><Plus className="w-3.5 h-3.5" />Assign</button>
             </div>
+            {dayTasks.length > 0 && <div className="flex flex-wrap gap-2 px-5 pt-4" aria-label="Assigned work summary">{taskGroups.map((group) => <span key={group.status} className="rounded-lg bg-muted px-3 py-1.5 text-xs text-muted-foreground">{(TASK_STATUS_META[group.status] ?? TASK_STATUS_META.assigned).label} <strong className="ml-1 text-foreground">{group.items.length}</strong></span>)}</div>}
             <div className="p-4">
               {tasksLoading ? (
                 <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin text-slate-400" /></div>
@@ -1137,41 +1180,6 @@ export default function CohortReview() {
             </div>
           </div>
 
-          {/* Submissions to review */}
-          <div className="bg-card rounded-2xl border border-slate-200">
-            <div className="px-5 py-4 border-b border-slate-200 flex items-center gap-2">
-              <ClipboardCheck className="w-4 h-4 text-brand-500" />
-              <h3 className="text-slate-900 font-medium">To review</h3>
-              {pending.length > 0 && <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs rounded-full">{pending.length}</span>}
-            </div>
-            <div className="p-4">
-              {pending.length === 0 ? (
-                <p className="text-sm text-slate-500 flex items-center gap-2 px-1 py-2"><CheckCircle2 className="w-4 h-4 text-emerald-400" />Nothing waiting. All clear.</p>
-              ) : (
-                <div className="space-y-2">
-                  {pending.map((item, i) => (
-                    <button key={item.submissionId} onClick={() => { setFocus(i); setReviewing(item); }}
-                      className={`group w-full text-left flex items-center gap-3 p-3 rounded-xl border transition-colors ${i === focus ? 'border-brand-300 bg-brand-50 dark:bg-brand-500/15' : 'border-slate-200 hover:border-brand-300'}`}>
-                      <span className="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-500/15 flex items-center justify-center shrink-0">
-                        <ClipboardCheck className="w-4 h-4 text-brand-600" />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-slate-900 truncate">{item.title}</p>
-                        <div className="flex items-center gap-2 text-xs text-slate-500">
-                          {item.type && <span className="capitalize">{item.type}</span>}
-                          {typeof item.version === 'number' && item.version > 1 && <span>v{item.version}</span>}
-                          {item.isLate && <span className="inline-flex items-center gap-1 text-red-600"><Clock className="w-3 h-3" />late</span>}
-                        </div>
-                      </div>
-                      <span className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-brand-600 group-hover:bg-brand-700 text-white text-xs font-medium">
-                        Review &amp; decide <ChevronRight className="w-3.5 h-3.5" />
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
         </div>
 
         {/* Side rail */}
@@ -1368,7 +1376,7 @@ export default function CohortReview() {
         if (taskType === 'quiz') {
           return <QuizReviewDrawer taskId={taskDetail.id} onClose={() => setTaskDetail(null)} onReviewed={refresh} />;
         }
-        return <MenteeTaskDrawer task={taskDetail} onClose={() => setTaskDetail(null)} onChanged={refresh} />;
+        return <MenteeTaskDrawer key={taskDetail.id} task={taskDetail} onClose={() => setTaskDetail(null)} onChanged={refresh} />;
       })()}
 
       {assigning && mentee && (
@@ -1433,10 +1441,11 @@ export default function CohortReview() {
             Editing unlocked{lockState?.grantExpiresAt ? <> until {new Date(lockState.grantExpiresAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</> : ''}.
           </div>
         )}
+        {sessions.length > 0 && <ReviewHistoryCalendar dates={sessions.map((s) => s.sessionDate)} selected={historyDate} onSelect={setHistoryDate} />}
         <div className="space-y-2">
           {sessions.length === 0 ? (
             <p className="text-sm text-slate-400 text-center py-10">No saved reviews yet.</p>
-          ) : sessions.map((s) => {
+          ) : sessions.filter((s) => !historyDate || s.sessionDate === historyDate).map((s) => {
             const isCurrent = s.id === session?.id;
             const dateLabel = new Date(`${s.sessionDate}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
             const busy = busySession === s.id;
@@ -1484,41 +1493,7 @@ export default function CohortReview() {
       <Drawer open={attOpen} onClose={() => setAttOpen(false)} width="md"
         title="Attendance history"
         subtitle={mentee ? `${mentee.name} · ${attHistory.length} recorded meeting${attHistory.length === 1 ? '' : 's'}` : undefined}>
-        {attHistory.length === 0 ? (
-          <p className="text-sm text-slate-400 text-center py-10">No attendance recorded yet — nothing before they joined.</p>
-        ) : (
-          <>
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 mb-3">
-              <span className="text-emerald-600">{attHistory.filter((h) => h.status === 'present').length} present</span>
-              <span className="text-red-500">{attHistory.filter((h) => h.status === 'absent').length} absent</span>
-              <span className="text-amber-600">{attHistory.filter((h) => h.status === 'excused').length} excused</span>
-            </div>
-            <div className="space-y-2">
-              {attHistory.map((h) => {
-                const isCurrent = !!session?.sessionDate && h.date === session.sessionDate;
-                const dateLabel = h.date
-                  ? new Date(`${h.date}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
-                  : 'Undated';
-                const dot = h.status === 'present' ? 'bg-emerald-500' : h.status === 'excused' ? 'bg-amber-500' : 'bg-rose-500';
-                const pill = h.status === 'present' ? 'bg-emerald-100 text-emerald-700' : h.status === 'excused' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700';
-                return (
-                  <div key={h.sessionId}
-                    className={`flex items-center justify-between gap-3 rounded-xl border px-3.5 py-3 ${isCurrent ? 'border-brand-300 bg-brand-50 dark:bg-brand-500/10' : 'border-slate-200 dark:border-slate-700'}`}>
-                    <div className="min-w-0">
-                      <span className="text-sm font-medium text-slate-900 inline-flex items-center gap-1.5">
-                        <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
-                        {dateLabel}
-                        {isCurrent && <span className="text-[10px] font-medium text-brand-600">· this review</span>}
-                      </span>
-                      {h.title && <p className="text-xs text-slate-500 mt-0.5 truncate">{h.title}</p>}
-                    </div>
-                    <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full capitalize shrink-0 ${pill}`}>{h.status}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        )}
+        <AttendanceHistoryCalendar key={`${mentee?.id}-${attHistory[0]?.date || "empty"}`} entries={attHistory} />
       </Drawer>
 
       {showHelp && (

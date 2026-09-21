@@ -348,7 +348,7 @@ export default function MentorApprovals() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-slate-900 mb-2">Approvals</h1>
           <p className="text-slate-600">
@@ -360,19 +360,22 @@ export default function MentorApprovals() {
           </p>
         </div>
         {tab === 'review' && (
+          <div className="flex flex-wrap gap-2">
+          {filteredReview.length > 0 && <button onClick={() => setReviewing(filteredReview[0])} className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-700"><ChevronRight className="h-4 w-4" />Review next</button>}
           <button
             onClick={() => setBulkOpen(true)}
             disabled={selected.size === 0}
-            className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-700 transition-colors disabled:opacity-50 shrink-0"
+            className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-medium text-brand-700 hover:bg-muted transition-colors disabled:opacity-50 shrink-0"
           >
             <ClipboardCheck className="w-4 h-4" />
             Review{selected.size > 0 ? ` ${selected.size}` : ''} selected
           </button>
+          </div>
         )}
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 border-b border-slate-200">
+      <div className="flex flex-wrap items-center gap-1 border-b border-slate-200">
         {tabs.map((t) => (
           <button
             key={t.key}

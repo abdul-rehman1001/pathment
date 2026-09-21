@@ -7,6 +7,10 @@ export interface ChainRoadmapDetail {
   currentStep: number; totalSteps: number; percent: number;
 }
 export interface RecurringSlotConfig {
+  mode?: 'once' | 'weekly';
+  task?: { type: string; title?: string };
+  mentorId?: string;
+  clanId?: string;
   title: string;
   type: string;
   recurrence?: string;

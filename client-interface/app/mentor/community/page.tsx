@@ -3,5 +3,5 @@
 import CommunityHub from '@/components/community/CommunityHub';
 
 export default function MentorCommunity() {
-  return <CommunityHub />;
+  return <CommunityHub mentor />;
 }

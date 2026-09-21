@@ -1,18 +1,23 @@
 'use client';
+import { useSearchParams } from 'next/navigation';
+import { useEffect as useSettingsLinkEffect } from 'react';
 
-import { Loader2, Save, User, Users, Bell, Shield, KeyRound, Sparkles, Palette, BookOpen } from 'lucide-react';
+import { Loader2, Save, Users, Sparkles } from 'lucide-react';
 import { useMentorSettings } from '@/lib/hooks/mentor';
-import { PageHeader, TabBar } from '@/components/admin/ui';
-import SecurityTab from '@/components/shared/SecurityTab';
-import AIConnectionsTab from '@/components/settings/AIConnectionsTab';
+import { PageHeader } from '@/components/admin/ui';
 import { LocationDetailsFields } from '@/components/settings/LocationDetailsFields';
 import { SkillsTab } from '@/components/settings/SkillsTab';
 import { ProfilePhotoField } from '@/components/settings/ProfilePhotoField';
 import { AppearanceTab } from '@/components/settings/AppearanceTab';
 import { NotificationPreferencesTab } from '@/components/settings/NotificationPreferencesTab';
-import { DocumentsTab } from '@/components/settings/DocumentsTab';
-import type { Tab } from '@/components/admin/ui';
+import dynamic from 'next/dynamic';
+import Link from 'next/link';
+import { MentorSettingsNav, settingsSectionDescription } from '@/components/mentor/MentorSettingsNav';
 import { PhoneField } from '@/components/shared/PhoneField';
+
+const SecurityTab = dynamic(() => import('@/components/shared/SecurityTab'), { loading: () => <p className="p-6 text-sm text-muted-foreground">Loading settings…</p> });
+const AIConnectionsTab = dynamic(() => import('@/components/settings/AIConnectionsTab'), { loading: () => <p className="p-6 text-sm text-muted-foreground">Loading settings…</p> });
+const DocumentsTab = dynamic(() => import('@/components/settings/DocumentsTab').then(module => module.DocumentsTab), { loading: () => <p className="p-6 text-sm text-muted-foreground">Loading reply assistance…</p> });
 
 export default function MentorSettings() {
   const {
@@ -32,6 +37,12 @@ export default function MentorSettings() {
     handleAutoReplyUpdate,
   } = useMentorSettings();
 
+  const settingsParams = useSearchParams();
+  const requestedSection = settingsParams.get('tab');
+  useSettingsLinkEffect(() => {
+    if (requestedSection === 'security') setActiveTab('security');
+  }, [requestedSection, setActiveTab]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -40,16 +51,7 @@ export default function MentorSettings() {
     );
   }
 
-  const tabs: Tab[] = [
-    { id: 'profile', label: 'Profile', icon: User },
-    { id: 'skills', label: 'Skills', icon: Sparkles },
-    { id: 'appearance', label: 'Appearance', icon: Palette },
-    { id: 'availability', label: 'Availability', icon: Users },
-    { id: 'notifications', label: 'Notifications', icon: Bell },
-    { id: 'replies', label: 'Auto Replies', icon: BookOpen, isNew: true },
-    { id: 'ai', label: 'AI Connections', icon: KeyRound },
-    { id: 'security', label: 'Security', icon: Shield },
-  ];
+  const section = settingsSectionDescription(activeTab);
 
   return (
     <div className="space-y-6">
@@ -59,13 +61,14 @@ export default function MentorSettings() {
         subtitle="Manage your account preferences and mentor profile"
       />
 
-      {/* Tabs */}
-      <div className="bg-card rounded-2xl border border-slate-200 overflow-hidden">
-        <div className="px-2 overflow-x-auto">
-          <TabBar tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
-        </div>
-
-        <div className="p-8">
+      <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)] items-start">
+        <MentorSettingsNav activeTab={activeTab} onChange={setActiveTab} />
+        <section aria-label={section?.label} className="min-w-0 rounded-3xl border border-border bg-card overflow-hidden">
+          <header className="px-5 sm:px-8 py-5 border-b border-border bg-muted/30">
+            <h2 className="text-lg font-semibold">{section?.label}</h2><p className="mt-1 text-sm text-muted-foreground">{section?.description}</p>
+            {activeTab === 'availability' && <Link href="/mentor/schedules" className="inline-flex mt-3 text-sm font-medium text-brand-700">Manage meeting times in Schedule →</Link>}
+          </header>
+          <div className="p-5 sm:p-8">
           {/* Profile Tab */}
           {activeTab === 'profile' && (
             <div className="space-y-6">
@@ -75,7 +78,7 @@ export default function MentorSettings() {
               <div className="grid md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-slate-700 mb-2 text-sm font-medium">First Name</label>
-                  <input
+                  <input aria-label="First Name"
                     type="text"
                     value={profileData.firstName}
                     onChange={(e) => setProfileData({ ...profileData, firstName: e.target.value })}
@@ -85,7 +88,7 @@ export default function MentorSettings() {
 
                 <div>
                   <label className="block text-slate-700 mb-2 text-sm font-medium">Last Name</label>
-                  <input
+                  <input aria-label="Last Name"
                     type="text"
                     value={profileData.lastName}
                     onChange={(e) => setProfileData({ ...profileData, lastName: e.target.value })}
@@ -95,7 +98,7 @@ export default function MentorSettings() {
 
                 <div>
                   <label className="block text-slate-700 mb-2 text-sm font-medium">Email</label>
-                  <input
+                  <input aria-label="Email"
                     type="email"
                     value={profileData.email}
                     disabled
@@ -111,7 +114,7 @@ export default function MentorSettings() {
 
               <div>
                 <label className="block text-slate-700 mb-2 text-sm font-medium">Bio</label>
-                <textarea
+                <textarea aria-label="Bio"
                   value={profileData.bio}
                   onChange={(e) => setProfileData({ ...profileData, bio: e.target.value })}
                   rows={4}
@@ -157,7 +160,7 @@ export default function MentorSettings() {
               <div className="grid md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-slate-700 mb-2 text-sm font-medium">Title</label>
-                  <input
+                  <input aria-label="Title"
                     type="text"
                     value={mentorProfile.title}
                     onChange={(e) => setMentorProfile({ ...mentorProfile, title: e.target.value })}
@@ -168,7 +171,7 @@ export default function MentorSettings() {
 
                 <div>
                   <label className="block text-slate-700 mb-2 text-sm font-medium">Organization</label>
-                  <input
+                  <input aria-label="Organization"
                     type="text"
                     value={mentorProfile.organization}
                     onChange={(e) => setMentorProfile({ ...mentorProfile, organization: e.target.value })}
@@ -179,7 +182,7 @@ export default function MentorSettings() {
 
                 <div>
                   <label className="block text-slate-700 mb-2 text-sm font-medium">Years of Experience</label>
-                  <input
+                  <input aria-label="Years of Experience"
                     type="number"
                     value={mentorProfile.yearsOfExperience}
                     onChange={(e) => setMentorProfile({ ...mentorProfile, yearsOfExperience: parseInt(e.target.value) || 0 })}
@@ -190,7 +193,7 @@ export default function MentorSettings() {
 
                 <div>
                   <label className="block text-slate-700 mb-2 text-sm font-medium">LinkedIn URL</label>
-                  <input
+                  <input aria-label="LinkedIn URL"
                     type="url"
                     value={mentorProfile.linkedinUrl}
                     onChange={(e) => setMentorProfile({ ...mentorProfile, linkedinUrl: e.target.value })}
@@ -201,7 +204,7 @@ export default function MentorSettings() {
 
                 <div>
                   <label className="block text-slate-700 mb-2 text-sm font-medium">GitHub URL</label>
-                  <input
+                  <input aria-label="GitHub URL"
                     type="url"
                     value={mentorProfile.githubUrl}
                     onChange={(e) => setMentorProfile({ ...mentorProfile, githubUrl: e.target.value })}
@@ -212,7 +215,7 @@ export default function MentorSettings() {
 
                 <div>
                   <label className="block text-slate-700 mb-2 text-sm font-medium">Portfolio URL</label>
-                  <input
+                  <input aria-label="Portfolio URL"
                     type="url"
                     value={mentorProfile.portfolioUrl}
                     onChange={(e) => setMentorProfile({ ...mentorProfile, portfolioUrl: e.target.value })}
@@ -342,7 +345,8 @@ export default function MentorSettings() {
           {activeTab === 'security' && (
             <SecurityTab userRole="mentor" showAuditLogs={false} />
           )}
-        </div>
+          </div>
+        </section>
       </div>
     </div>
   );

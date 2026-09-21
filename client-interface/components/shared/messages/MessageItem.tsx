@@ -1,9 +1,14 @@
 'use client';
 
-import { Fragment, useMemo } from 'react';
-import { Check, CheckCheck } from 'lucide-react';
+import { Fragment, useMemo, useState } from 'react';
+import { Check, CheckCheck, SmilePlus } from 'lucide-react';
 
-import type { ChatMessage, MessageReaction } from '@/lib/types/messaging';
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from '@/components/ui/popover';
+import type { ChatMessage } from '@/lib/types/messaging';
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '🎉', '🙏'];
 
@@ -12,7 +17,7 @@ interface MessageItemProps {
   isMine: boolean;
   startsRun: boolean;
   currentUserId?: string;
-  onReact: (messageId: string, emoji: string) => void;
+  onReact: (messageId: string, emoji: string) => void | Promise<void>;
 }
 
 /**
@@ -47,13 +52,33 @@ function FormattedMessageText({ text }: { text: string }) {
       return (
         <Fragment key={idx}>
           {tokens.map((token, tokenIdx) => {
-            if (token.startsWith('**') && token.endsWith('**') && token.length > 4) {
-              return <strong key={tokenIdx} className="font-semibold">{token.slice(2, -2)}</strong>;
+            if (
+              token.startsWith('**') &&
+              token.endsWith('**') &&
+              token.length > 4
+            ) {
+              return (
+                <strong key={tokenIdx} className="font-semibold">
+                  {token.slice(2, -2)}
+                </strong>
+              );
             }
-            if (token.startsWith('*') && token.endsWith('*') && token.length > 2) {
-              return <em key={tokenIdx} className="italic">{token.slice(1, -1)}</em>;
+            if (
+              token.startsWith('*') &&
+              token.endsWith('*') &&
+              token.length > 2
+            ) {
+              return (
+                <em key={tokenIdx} className="italic">
+                  {token.slice(1, -1)}
+                </em>
+              );
             }
-            if (token.startsWith('`') && token.endsWith('`') && token.length > 2) {
+            if (
+              token.startsWith('`') &&
+              token.endsWith('`') &&
+              token.length > 2
+            ) {
               return (
                 <code
                   key={tokenIdx}
@@ -80,7 +105,18 @@ export default function MessageItem({
   currentUserId,
   onReact,
 }: MessageItemProps) {
-  const read = Boolean(message.isRead || message.readAt);
+  const [reactionsOpen, setReactionsOpen] = useState(false);
+  const [reacting, setReacting] = useState(false);
+  const react = async (emoji: string) => {
+    if (reacting) return;
+    setReacting(true);
+    setReactionsOpen(false);
+    try {
+      await onReact(message.id, emoji);
+    } finally {
+      setReacting(false);
+    }
+  };
 
   // Group reactions by emoji
   const groupedReactions = useMemo(() => {
@@ -97,7 +133,7 @@ export default function MessageItem({
         }
         return acc;
       },
-      [] as { emoji: string; count: number; mine: boolean }[]
+      [] as { emoji: string; count: number; mine: boolean }[],
     );
   }, [message.reactions, currentUserId]);
 
@@ -107,8 +143,8 @@ export default function MessageItem({
       ? 'rounded-2xl rounded-tr-sm'
       : 'rounded-2xl rounded-mr-sm'
     : startsRun
-    ? 'rounded-2xl rounded-tl-sm'
-    : 'rounded-2xl rounded-ml-sm';
+      ? 'rounded-2xl rounded-tl-sm'
+      : 'rounded-2xl rounded-ml-sm';
 
   return (
     <div
@@ -127,83 +163,121 @@ export default function MessageItem({
         >
           {startsRun && !isMine && (
             <p className="text-[11px] font-semibold text-brand-600 dark:text-brand-400 mb-0.5">
-              {`${message.sender?.firstName || ''} ${message.sender?.lastName || ''}`.trim() || 'User'}
+              {`${message.sender?.firstName || ''} ${message.sender?.lastName || ''}`.trim() ||
+                'User'}
             </p>
           )}
 
           <FormattedMessageText text={message.messageText} />
 
-          <div className={`flex items-center gap-1.5 mt-1 ${isMine ? 'justify-end' : 'justify-start'}`}>
-            <span className={`text-[10px] ${isMine ? 'text-white/70' : 'text-muted-foreground'}`}>
-              {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          <div
+            className={`flex items-center gap-1.5 mt-1 ${isMine ? 'justify-end' : 'justify-start'}`}
+          >
+            <span
+              className={`text-[10px] ${isMine ? 'text-white/70' : 'text-muted-foreground'}`}
+            >
+              {new Date(message.createdAt).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
             </span>
 
-            {isMine && (() => {
-              const isTemp = message.id.startsWith('temp-');
-              const isRead = Boolean(message.isRead || message.readAt);
-              const isDelivered = Boolean(message.deliveredAt);
+            {isMine &&
+              (() => {
+                const isTemp = message.id.startsWith('temp-');
+                const isRead = Boolean(message.isRead || message.readAt);
+                const isDelivered = Boolean(message.deliveredAt);
 
-              if (isTemp) {
+                if (isTemp) {
+                  return (
+                    <span className="inline-flex" title="Sending...">
+                      <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin self-center" />
+                    </span>
+                  );
+                }
+
+                if (isRead) {
+                  return (
+                    <span className="inline-flex" title="Seen">
+                      <CheckCheck
+                        className="w-3.5 h-3.5 text-sky-300"
+                        aria-label="Seen"
+                      />
+                    </span>
+                  );
+                }
+
+                if (isDelivered) {
+                  return (
+                    <span className="inline-flex" title="Delivered">
+                      <CheckCheck
+                        className="w-3.5 h-3.5 text-white/70"
+                        aria-label="Delivered"
+                      />
+                    </span>
+                  );
+                }
+
                 return (
-                  <span className="inline-flex" title="Sending...">
-                    <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin self-center" />
+                  <span className="inline-flex" title="Sent">
+                    <Check
+                      className="w-3.5 h-3.5 text-white/60"
+                      aria-label="Sent"
+                    />
                   </span>
                 );
-              }
-
-              if (isRead) {
-                return (
-                  <span className="inline-flex" title="Seen">
-                    <CheckCheck className="w-3.5 h-3.5 text-sky-300" aria-label="Seen" />
-                  </span>
-                );
-              }
-
-              if (isDelivered) {
-                return (
-                  <span className="inline-flex" title="Delivered">
-                    <CheckCheck className="w-3.5 h-3.5 text-white/70" aria-label="Delivered" />
-                  </span>
-                );
-              }
-
-              return (
-                <span className="inline-flex" title="Sent">
-                  <Check className="w-3.5 h-3.5 text-white/60" aria-label="Sent" />
-                </span>
-              );
-            })()}
+              })()}
           </div>
         </div>
 
-        {/* Hover reaction picker overlay - pops above the message bubble */}
         <div
-          className={`absolute -top-10 ${
-            isMine ? 'right-0' : 'left-0'
-          } z-10 origin-bottom flex items-center gap-1 rounded-full border border-border bg-card/95 backdrop-blur-md px-2 py-1 shadow-md opacity-0 scale-90 translate-y-1 pointer-events-none transition-all duration-150 ease-out group-hover/msg:opacity-100 group-hover/msg:scale-100 group-hover/msg:translate-y-0 group-hover/msg:pointer-events-auto focus-within:opacity-100 focus-within:scale-100 focus-within:translate-y-0 focus-within:pointer-events-auto`}
+          className={`mt-1 flex ${isMine ? 'justify-end' : 'justify-start'}`}
         >
-          {QUICK_REACTIONS.map((emoji) => {
-            const active = groupedReactions.some((g) => g.emoji === emoji && g.mine);
-            return (
+          <Popover open={reactionsOpen} onOpenChange={setReactionsOpen}>
+            <PopoverTrigger asChild>
               <button
-                key={emoji}
                 type="button"
-                onClick={() => onReact(message.id, emoji)}
-                className={`w-7 h-7 rounded-full text-base leading-none flex items-center justify-center transition-transform duration-150 hover:scale-125 active:scale-95 ${
-                  active ? 'bg-brand-500/20' : 'hover:bg-slate-100 dark:hover:bg-white/10'
-                }`}
-                aria-label={`React with ${emoji}`}
+                disabled={reacting || message.id.startsWith('temp-')}
+                aria-label="Add reaction"
+                className="inline-flex h-8 items-center gap-1 rounded-full px-2 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-brand-500 disabled:opacity-40"
               >
-                {emoji}
+                <SmilePlus className="h-4 w-4" />
+                <span className="text-[11px]">React</span>
               </button>
-            );
-          })}
+            </PopoverTrigger>
+            <PopoverContent
+              side="bottom"
+              align={isMine ? 'end' : 'start'}
+              sideOffset={4}
+              className="w-auto max-w-[calc(100vw-2rem)] rounded-2xl p-2 shadow-lg !animate-none transition-opacity duration-150 motion-reduce:transition-none"
+              aria-label="Choose a reaction"
+            >
+              <div className="flex gap-1">
+                {QUICK_REACTIONS.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    aria-label={`React with ${emoji}`}
+                    aria-pressed={groupedReactions.some(
+                      (g) => g.emoji === emoji && g.mine,
+                    )}
+                    onClick={() => {
+                      void react(emoji);
+                    }}
+                    className="flex h-10 w-10 items-center justify-center rounded-xl text-xl transition-colors duration-150 motion-reduce:transition-none hover:bg-muted focus-visible:outline-2 focus-visible:outline-brand-500"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
 
         {/* Reaction chips - attached to message bottom edge */}
         {groupedReactions.length > 0 && (
           <div
-            className={`flex flex-wrap gap-1 -mt-1.5 ${
+            className={`flex flex-wrap gap-1 mt-1 ${
               isMine ? 'justify-end pr-1' : 'pl-1'
             } relative z-[2]`}
           >
@@ -211,16 +285,27 @@ export default function MessageItem({
               <button
                 key={entry.emoji}
                 type="button"
-                onClick={() => onReact(message.id, entry.emoji)}
-                title={entry.mine ? 'You reacted - click to remove' : 'Click to react'}
-                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs shadow-2xs transition-all hover:-translate-y-0.5 active:translate-y-0 ${
+                disabled={reacting}
+                onClick={() => void react(entry.emoji)}
+                aria-pressed={entry.mine}
+                aria-label={`${entry.emoji}, ${entry.count} reactions${entry.mine ? ', including you' : ''}`}
+                title={
+                  entry.mine
+                    ? 'You reacted - click to remove'
+                    : 'Click to react'
+                }
+                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs shadow-2xs transition-colors ${
                   entry.mine
                     ? 'border-brand-500/40 ring-1 ring-brand-500/30 bg-brand-500/15 text-brand-700 dark:text-brand-300'
                     : 'border-border bg-card text-foreground hover:bg-slate-100 dark:hover:bg-white/10'
                 }`}
               >
                 <span className="leading-none text-xs">{entry.emoji}</span>
-                {entry.count > 1 && <span className="font-semibold text-[11px]">{entry.count}</span>}
+                {entry.count > 1 && (
+                  <span className="font-semibold text-[11px]">
+                    {entry.count}
+                  </span>
+                )}
               </button>
             ))}
           </div>

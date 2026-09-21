@@ -46,7 +46,7 @@ export default function MessageCenter({ role }: MessageCenterProps) {
   const [draftEditorText, setDraftEditorText] = useState('');
   const [isApprovingDraft, setIsApprovingDraft] = useState(false);
   const [isRejectingDraft, setIsRejectingDraft] = useState(false);
-  const [isDraftsExpanded, setIsDraftsExpanded] = useState(true);
+  const [isDraftsExpanded, setIsDraftsExpanded] = useState(false);
   const [generatingConversationIds, setGeneratingConversationIds] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<'all' | 'unread' | 'archived'>('all');
   const [hasMore, setHasMore] = useState(true);
@@ -705,11 +705,11 @@ export default function MessageCenter({ role }: MessageCenterProps) {
   }
 
   return (
-    <div className="h-[calc(100vh-6.5rem)] max-h-[calc(100vh-6.5rem)] overflow-hidden">
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 xl:gap-6 h-full">
+    <div className={`${role === 'mentor' || role === 'mentee' ? 'mentor-inbox' : ''} h-[calc(100dvh-6.5rem)] max-h-[calc(100dvh-6.5rem)] overflow-hidden`}>
+      <div className={`grid grid-cols-1 xl:grid-cols-12 h-full ${role === 'mentor' ? 'gap-0' : 'gap-4 xl:gap-6'}`}>
         {/* Sidebar Panel */}
         <div
-          className={`xl:col-span-4 h-full min-h-0 ${
+          className={`inbox-list-pane xl:col-span-4 h-full min-h-0 ${
             activeMobilePane === 'list' ? 'block' : 'hidden xl:block'
           }`}
         >
@@ -737,7 +737,7 @@ export default function MessageCenter({ role }: MessageCenterProps) {
 
         {/* Chat Thread Pane */}
         <div
-          className={`xl:col-span-8 h-full min-h-0 flex flex-col relative ${
+          className={`inbox-thread-pane xl:col-span-8 h-full min-h-0 flex flex-col relative ${
             activeMobilePane === 'chat' ? 'block' : 'hidden xl:block'
           }`}
         >

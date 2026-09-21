@@ -1,3 +1,6 @@
+import '@/styles/mentor-appearance.css';
+import '@/styles/mentee-appearance.css';
+import { MenteeWorkspaceTabs } from '@/components/mentee/MenteeWorkspaceTabs';
 import { Navigation } from '@/components/shared/Navigation';
 import { RoleGuard } from '@/components/shared/RoleGuard';
 import OnboardingGuard from '@/components/shared/OnboardingGuard';
@@ -13,7 +16,7 @@ export default function MenteeLayout({ children }: { children: React.ReactNode }
   return (
     <RoleGuard allowedRoles={['mentee']}>
       <OnboardingGuard>
-        <div className="min-h-screen bg-canvas">
+        <div data-mentee-appearance className="min-h-screen bg-canvas">
           <ActivityTrackerMount />
           <TimezoneSync />
           <WalkthroughMount role="mentee" />
@@ -26,6 +29,7 @@ export default function MenteeLayout({ children }: { children: React.ReactNode }
                   instead of their dashboard. Only the mentee side is gated. */}
               <PausedGate>
                 <ReviewJoinBar />
+                <MenteeWorkspaceTabs />
                 {children}
               </PausedGate>
             </div>

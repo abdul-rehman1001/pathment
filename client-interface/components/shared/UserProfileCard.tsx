@@ -8,7 +8,7 @@ import securityService, { TwoFactorStatus } from '@/lib/services/security-api';
 import { Avatar } from '@/components/shared/Avatar';
 
 export function UserProfileCard() {
-  const { user, requiresTwoFactor } = useAuth();
+  const { user, requiresTwoFactor, activeRole } = useAuth();
   const [twoFactorStatus, setTwoFactorStatus] = useState<TwoFactorStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -40,7 +40,7 @@ export function UserProfileCard() {
   if (!user) return null;
 
   return (
-    <Link href={`/${user.role}/settings`}>
+    <Link href={`/${activeRole || user.role}/settings?tab=security`}>
       <div className="p-4 bg-gradient-to-br from-slate-50 to-slate-100 rounded-lg border border-slate-200 hover:border-slate-300 hover:shadow-sm transition-all cursor-pointer group">
         {/* User Info */}
         <div className="flex items-start justify-between gap-3">

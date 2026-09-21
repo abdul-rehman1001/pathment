@@ -40,7 +40,7 @@ class SubmissionService {
     // (which create their own submission). A plain "Submit Work" submission must
     // never attach to them — otherwise a stale client / bookmarked submit page
     // lets a mentee pile generic text submissions onto an interview or quiz.
-    const taskType = task.roadmapTask?.type;
+    const taskType = task.typeOverride || task.roadmapTask?.type;
     if (taskType === 'interview' || taskType === 'quiz') {
       throw new ValidationError(`This is a ${taskType} task — complete it through the ${taskType}, not a work submission.`);
     }
@@ -1061,7 +1061,7 @@ class SubmissionService {
         // Prefer the per-mentee override so the mentor reviews exactly what the
         // mentee saw, and the max points reflect this assignment's points.
         title: t.titleOverride || t.roadmapTask?.title || 'Task',
-        type: t.roadmapTask?.type || null,
+        type: t.typeOverride || t.roadmapTask?.type || null,
         brief: t.descriptionOverride || t.roadmapTask?.description || null,
         deliverable: t.deliverableOverride || t.roadmapTask?.deliverable || null,
         criteria: (Array.isArray(t.acceptanceCriteriaOverride) && t.acceptanceCriteriaOverride.length)
@@ -1118,7 +1118,7 @@ class SubmissionService {
         clan: clanByMentee.get(t.menteeId) || null,
         roadmapTaskId: t.roadmapTaskId || null,
         title: t.titleOverride || t.roadmapTask?.title || 'Task',
-        type: t.roadmapTask?.type || null,
+        type: t.typeOverride || t.roadmapTask?.type || null,
         revisionCount: t.revisionCount || 0,
         // 'rejected' vs 'changes' — both leave the task at 'revision_needed', so
         // the only signal of the mentor's intent is the latest feedback decision.
@@ -1176,7 +1176,7 @@ class SubmissionService {
         clan: clanByMentee.get(t.menteeId) || null,
         roadmapTaskId: t.roadmapTaskId || null,
         title: t.titleOverride || t.roadmapTask?.title || 'Task',
-        type: t.roadmapTask?.type || null,
+        type: t.typeOverride || t.roadmapTask?.type || null,
         decision: latestFb?.decision === 'approved_notes' ? 'approved_notes' : 'approved',
         rating: t.finalRating ?? latestFb?.rating ?? null,
         pointsAwarded: t.pointsAwarded ?? 0,

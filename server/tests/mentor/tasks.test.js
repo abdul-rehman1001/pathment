@@ -21,6 +21,7 @@ const {
   createRoadmap,
   createRoadmapTask,
   createMatch,
+  createAssignedTask,
   authHeader,
 } = require('../helpers/seed');
 
@@ -47,6 +48,39 @@ describe('Mentor Task Management', () => {
     roadmapTask = await createRoadmapTask({ roadmapId: roadmap.id, title: 'Build Login API' });
 
     await createMatch({ mentorId: mentor.id, menteeId: mentee.id, enrollmentId: enrollment.id, matchedBy: admin.id });
+  });
+
+  describe('per-mentee task type edits', () => {
+    const { models } = require('../../src/db');
+    const taskService = require('../../src/services/taskService');
+    async function assigned(status = 'assigned') {
+      return createAssignedTask({ menteeId: mentee.id, mentorId: mentor.id, enrollmentId: enrollment.id, roadmapTaskId: roadmapTask.id, status });
+    }
+    test.each(['assigned', 'in_progress'])('changes %s work without changing the roadmap or peer assignments', async status => {
+      const task = await assigned(status);
+      const peer = await assigned();
+      const response = await request(app).patch(`/api/tasks/${task.id}`).set('Authorization', authHeader(mentor)).send({ typeOverride: 'reading' });
+      expect(response.status).toBe(200);
+      expect(response.body.data.task.roadmapTask.type).toBe('reading');
+      expect((await roadmapTask.reload()).type).not.toBe('reading');
+      expect((await taskService.getAssignedTaskById(peer.id)).roadmapTask.type).toBe(roadmapTask.type);
+      const reset = await request(app).patch(`/api/tasks/${task.id}`).set('Authorization', authHeader(mentor)).send({ typeOverride: null });
+      expect(reset.body.data.task.roadmapTask.type).toBe(roadmapTask.type);
+    });
+    test.each(['completed', 'submitted', 'revision_needed'])('rejects type changes for %s work', async status => {
+      const task = await assigned(status);
+      await expect(taskService.updateAssignedTask(task.id, mentor.id, 'mentor', { typeOverride: 'video' })).rejects.toThrow();
+      expect((await task.reload()).typeOverride).toBeNull();
+    });
+    test.each(['quiz', 'interview', 'open_source', 'unknown'])('rejects unsupported conversion to %s', async typeOverride => {
+      const task = await assigned();
+      await expect(taskService.updateAssignedTask(task.id, mentor.id, 'mentor', { typeOverride })).rejects.toThrow();
+    });
+    test('preserves submission history when work has returned to in progress', async () => {
+      const task = await assigned('in_progress');
+      await models.TaskSubmission.create({ assignedTaskId: task.id, submissionText: 'Earlier work' });
+      await expect(taskService.updateAssignedTask(task.id, mentor.id, 'mentor', { typeOverride: 'reading' })).rejects.toThrow('submission history');
+    });
   });
 
   // TC-MR03

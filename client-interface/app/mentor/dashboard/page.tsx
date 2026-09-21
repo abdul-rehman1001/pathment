@@ -4,69 +4,80 @@ import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  Users, ClipboardCheck, AlertTriangle, Flag, Loader2, Plus, Inbox, ArrowRight,
+  Users,
+  ClipboardCheck,
+  AlertTriangle,
+  Flag,
+  Loader2,
+  Plus,
+  Inbox,
+  ArrowRight,
 } from 'lucide-react';
+import { useMentorApprovalCounts } from '@/lib/hooks/shared/useNavBadges';
+import { useClan, ALL_CLANS } from '@/lib/context/ClanContext';
 import { useAuth } from '@/lib/context/AuthContext';
-import { useMentorCohort, type CohortMentee, type CohortRisk } from '@/lib/hooks/mentor';
-import { StatsCard } from '@/components/admin/ui';
-import { MenteeCard } from '@/components/mentor/MenteeCard';
-import { AssignTaskDrawer } from '@/components/mentor/AssignTaskDrawer';
+import { useMentorCohort, type CohortRisk } from '@/lib/hooks/mentor';
+import { Avatar } from '@/components/shared/Avatar';
+import {
+  needsMentorAttention,
+  mentorAttentionReason,
+} from '@/lib/mentorAttention';
+import dynamic from 'next/dynamic';
 import { AnnouncementsCard } from '@/components/shared/AnnouncementsCard';
 import { MentorFeedbackCard } from '@/components/mentor/MentorFeedbackCard';
 
-type Filter = 'all' | 'attention' | 'review' | 'risk' | 'going_well';
-
-const FILTERS: { key: Filter; label: string }[] = [
-  { key: 'all', label: 'Everyone' },
-  { key: 'attention', label: 'Needs attention' },
-  { key: 'review', label: 'Awaiting my review' },
-  { key: 'risk', label: 'At risk' },
-  { key: 'going_well', label: 'Going well' },
-];
-
-function matches(m: CohortMentee, f: Filter): boolean {
-  switch (f) {
-    case 'attention': return m.risk !== 'low' || m.openBlockers > 0 || m.pendingApprovals > 0;
-    case 'review': return m.pendingApprovals > 0;
-    case 'risk': return m.risk !== 'low';
-    case 'going_well': return m.risk === 'low' && m.momentum !== 'down';
-    default: return true;
-  }
-}
+const AssignTaskDrawer = dynamic(() =>
+  import('@/components/mentor/AssignTaskDrawer').then(
+    (module) => module.AssignTaskDrawer,
+  ),
+);
 
 export default function MentorCockpit() {
   const router = useRouter();
   const { user } = useAuth();
+  const { activeClanId } = useClan();
+  const approvals = useMentorApprovalCounts(!!user?.id);
+  const approvalCount = approvals.loading
+    ? '…'
+    : approvals.error || !approvals.data
+      ? '—'
+      : activeClanId === ALL_CLANS
+        ? approvals.data.total
+        : (approvals.data.byClan[activeClanId] ?? 0);
   const { cohort, totals, loading, error, refetch } = useMentorCohort();
-  const [filter, setFilter] = useState<Filter>('all');
   const [bulkAssign, setBulkAssign] = useState(false);
 
-  const noTaskCount = useMemo(() => cohort.filter((m) => m.taskCount === 0).length, [cohort]);
+  const noTaskCount = useMemo(
+    () => cohort.filter((m) => m.taskCount === 0).length,
+    [cohort],
+  );
 
   const list = useMemo(() => {
     const order: Record<CohortRisk, number> = { high: 0, watch: 1, low: 2 };
     return [...cohort]
-      .filter((m) => matches(m, filter))
+      .filter(needsMentorAttention)
       .sort((a, b) =>
         order[a.risk] !== order[b.risk]
           ? order[a.risk] - order[b.risk]
-          : b.pendingApprovals - a.pendingApprovals
+          : b.pendingApprovals - a.pendingApprovals,
       );
-  }, [cohort, filter]);
+  }, [cohort]);
 
   return (
-    <div className="space-y-6">
+    <div className="mentor-cockpit space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="mentor-cockpit-header flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-slate-900 mb-2">
             Good to see you{user?.firstName ? `, ${user.firstName}` : ''}
           </h1>
           <p className="text-slate-600">
-            {totals ? `${totals.mentees} mentee${totals.mentees === 1 ? '' : 's'} in your cohort` : 'Your cohort at a glance'}
+            {totals
+              ? `${totals.mentees} mentee${totals.mentees === 1 ? '' : 's'} in your cohort`
+              : 'Your cohort at a glance'}
           </p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="mentor-cockpit-actions flex flex-wrap items-center gap-2">
           <button
             onClick={() => setBulkAssign(true)}
             disabled={cohort.length === 0}
@@ -88,18 +99,182 @@ export default function MentorCockpit() {
       {bulkAssign && (
         <AssignTaskDrawer
           mode="bulk"
-          cohort={cohort.map((m) => ({ id: m.id, name: m.name, level: m.level, risk: m.risk }))}
+          cohort={cohort.map((m) => ({
+            id: m.id,
+            name: m.name,
+            level: m.level,
+            risk: m.risk,
+          }))}
           onClose={() => setBulkAssign(false)}
           onAssigned={refetch}
         />
       )}
 
-      {/* Stat chips */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-        <StatsCard icon={ClipboardCheck} label="Awaiting review" value={totals?.pendingApprovals ?? '…'} colorClass="text-brand-600 bg-brand-50" />
-        <StatsCard icon={AlertTriangle} label="Need attention" value={totals?.atRisk ?? '…'} colorClass="text-red-600 bg-red-50" />
-        <StatsCard icon={Flag} label="Open roadblocks" value={totals?.openBlockers ?? '…'} colorClass="text-amber-600 bg-amber-50" />
-        <StatsCard icon={Users} label="Cohort on-time" value={totals ? `${totals.onTimeRate}%` : '…'} colorClass="text-emerald-600 bg-emerald-50" />
+      <div className="mentor-cockpit-stats grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          {
+            label: 'Awaiting review',
+            value: approvalCount,
+            icon: ClipboardCheck,
+            href: '/mentor/approvals',
+            color: 'text-brand-600 bg-brand-50',
+          },
+          {
+            label: 'Needs attention',
+            value: totals ? list.length : undefined,
+            icon: AlertTriangle,
+            href: '/mentor/mentees?filter=attention',
+            color: 'text-amber-600 bg-amber-50',
+          },
+          {
+            label: 'Open roadblocks',
+            value: totals?.openBlockers,
+            icon: Flag,
+            href: '/mentor/mentees?filter=blockers',
+            color: 'text-amber-600 bg-amber-50',
+          },
+          {
+            label: 'Cohort on-time',
+            value: totals ? `${totals.onTimeRate}%` : undefined,
+            icon: Users,
+            href: '/mentor/reports',
+            color: 'text-emerald-600 bg-emerald-50',
+          },
+        ].map((stat, index) => (
+          <Link
+            key={stat.href}
+            href={stat.href}
+            className={`mentor-stat mentor-stat-${index} group relative isolate overflow-hidden flex min-h-44 flex-col justify-between rounded-2xl p-5 shadow-sm transition-shadow hover:shadow-md focus-visible:outline-2 focus-visible:outline-brand-500`}
+          >
+            <div className="flex min-h-10 items-center justify-between gap-3">
+              <span className="text-sm font-medium text-muted-foreground">
+                {stat.label}
+              </span>
+              <span className="rounded-xl bg-muted p-2.5 text-brand-600 dark:text-brand-300">
+                <stat.icon className="h-5 w-5" />
+              </span>
+            </div>
+            <p className="mt-4 text-4xl font-semibold tracking-tight tabular-nums text-foreground">
+              {loading ? '…' : error ? '—' : (stat.value ?? '—')}
+            </p>
+            <span className="mt-4 flex min-h-11 items-center justify-between border-t border-border pt-3 text-xs font-medium text-muted-foreground group-hover:text-brand-600">
+              {stat.label === 'Awaiting review'
+                ? 'Open review queue'
+                : stat.label === 'Needs attention'
+                  ? 'See who needs support'
+                  : stat.label === 'Open roadblocks'
+                    ? 'Help someone move forward'
+                    : 'Explore cohort progress'}
+              <ArrowRight className="h-4 w-4" />
+            </span>
+          </Link>
+        ))}
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[1.4fr_1fr]">
+        <section className="rounded-3xl border border-border bg-card p-6">
+          <div className="flex items-start justify-between gap-3 mb-5">
+            <div>
+              <h2 className="text-lg font-semibold">Your next check-ins</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                A few people who could use your help today.
+              </p>
+            </div>
+            <Link
+              href="/mentor/mentees?filter=attention"
+              className="shrink-0 text-sm font-medium text-brand-700"
+            >
+              View all →
+            </Link>
+          </div>
+          {loading ? (
+            <Loader2
+              aria-label="Loading priorities"
+              className="my-8 mx-auto animate-spin text-brand-600"
+            />
+          ) : error ? (
+            <div role="alert">
+              <p className="text-sm text-muted-foreground">{error}</p>
+              <button onClick={refetch} className="mt-3 text-brand-700">
+                Try again
+              </button>
+            </div>
+          ) : list.length === 0 ? (
+            <p className="py-8 text-sm text-muted-foreground">
+              {cohort.length
+                ? 'Everyone is on track. A good moment to plan what comes next.'
+                : 'Your mentees will appear here once assigned to your clan.'}
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {list.slice(0, 3).map((m) => (
+                <Link
+                  key={m.id}
+                  href={`/mentor/mentees/${m.id}`}
+                  className="group flex items-center gap-4 p-4 rounded-2xl border border-border bg-muted/30 hover:border-brand-300 hover:bg-muted/60 transition-colors"
+                >
+                  <Avatar name={m.name} src={m.profilePictureUrl} size="md" />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-sm">{m.name}</p>
+                    <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+                      {mentorAttentionReason(m)}
+                    </p>
+                    <p className="mt-2 text-xs font-medium text-brand-700 dark:text-brand-300">
+                      {m.openBlockers
+                        ? 'Help resolve a roadblock'
+                        : m.pendingApprovals
+                          ? 'Review their progress'
+                          : 'Plan a check-in'}{' '}
+                      →
+                    </p>
+                  </div>
+                  <span className="hidden sm:block text-xs text-muted-foreground whitespace-nowrap">
+                    {m.lastActive || 'No activity yet'}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+        <section className="rounded-3xl border border-border bg-card p-6">
+          <h2 className="text-lg font-semibold mb-1">
+            Make time for what matters
+          </h2>
+          <p className="text-sm text-muted-foreground mb-5">
+            Go straight to your next action.
+          </p>
+          {[
+            {
+              href: '/mentor/review',
+              title: 'Run a clan review',
+              description: 'Submissions, attendance and next steps together.',
+            },
+            {
+              href: '/mentor/schedules',
+              title: 'Plan your next session',
+              description: 'Manage meetings and upcoming time with your clan.',
+            },
+            {
+              href: '/mentor/roadmaps',
+              title: 'Build the next learning step',
+              description: 'Roadmaps, assignments, interviews and quizzes.',
+            },
+          ].map((action) => (
+            <Link
+              key={action.href}
+              href={action.href}
+              className="flex items-center justify-between gap-3 rounded-xl bg-muted/60 p-3 mb-2 hover:bg-brand-50 transition-colors"
+            >
+              <div>
+                <p className="text-sm font-medium">{action.title}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {action.description}
+                </p>
+              </div>
+              <ArrowRight className="h-4 w-4 shrink-0 text-brand-600" />
+            </Link>
+          ))}
+        </section>
       </div>
 
       {/* No-tasks nudge — links into the filtered Mentees view to assign work */}
@@ -110,7 +285,9 @@ export default function MentorCockpit() {
         >
           <span className="text-sm text-amber-800 inline-flex items-center gap-2">
             <Inbox className="w-4 h-4 shrink-0" />
-            <strong className="font-semibold">{noTaskCount}</strong> mentee{noTaskCount === 1 ? ' has' : 's have'} no tasks yet — assign work to get them started.
+            <strong className="font-semibold">{noTaskCount}</strong> mentee
+            {noTaskCount === 1 ? ' has' : 's have'} no tasks yet — assign work
+            to get them started.
           </span>
           <span className="text-sm font-medium text-amber-800 inline-flex items-center gap-1 shrink-0">
             Assign <ArrowRight className="w-4 h-4" />
@@ -119,54 +296,10 @@ export default function MentorCockpit() {
       )}
 
       {/* Latest announcements */}
-      <AnnouncementsCard href="/mentor/announcements" />
+      <AnnouncementsCard mentor href="/mentor/announcements" />
 
       {/* Your anonymous mentee feedback (gated until enough responses) */}
       <MentorFeedbackCard />
-
-      {/* Filter tabs */}
-      <div className="flex flex-wrap items-center gap-0 border-b border-slate-200">
-        {FILTERS.map((f) => (
-          <button
-            key={f.key}
-            onClick={() => setFilter(f.key)}
-            className={`-mb-px border-b-2 px-3.5 py-2 text-sm font-medium transition-colors ${
-              filter === f.key
-                ? 'border-brand-600 text-brand-700'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Content */}
-      {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="w-8 h-8 animate-spin text-brand-600" />
-        </div>
-      ) : error ? (
-        <div className="bg-card rounded-2xl border border-slate-200 py-16 text-center">
-          <p className="text-slate-600 mb-3">{error}</p>
-          <button onClick={refetch} className="text-brand-600 hover:text-brand-700 text-sm font-medium">Try again</button>
-        </div>
-      ) : list.length === 0 ? (
-        <div className="bg-card rounded-2xl border border-slate-200 py-16 text-center">
-          <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-          <p className="text-slate-600">
-            {cohort.length === 0
-              ? "No mentees in your cohort yet - they'll appear here once assigned to a clan you mentor."
-              : 'No mentees match this filter - nice and quiet.'}
-          </p>
-        </div>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {list.map((m) => (
-            <MenteeCard key={m.id} m={m} onOpen={() => router.push(`/mentor/mentees/${m.id}`)} />
-          ))}
-        </div>
-      )}
     </div>
   );
 }

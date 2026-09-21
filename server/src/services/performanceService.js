@@ -168,7 +168,7 @@ class PerformanceService {
   weightedOutput(row) {
     if (Array.isArray(row.completedTasks)) {
       return row.completedTasks.reduce((sum, task) => {
-        const type = task.type || task.roadmapTask?.type || 'custom';
+        const type = task.typeOverride || task.type || task.roadmapTask?.type || 'custom';
         const difficulty = task.difficulty || task.roadmapTask?.difficulty || 'medium';
         return sum + taskOutputWeight(type, difficulty);
       }, 0);

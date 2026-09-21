@@ -103,13 +103,13 @@ export default function ConversationList({
   }, [conversations, activeTab, searchQuery]);
 
   return (
-    <div className="flex flex-col h-full bg-card rounded-2xl border border-border overflow-hidden shadow-xs">
+    <div className="conversation-list flex flex-col h-full bg-card rounded-2xl border border-border overflow-hidden shadow-xs">
       {/* Sidebar Header */}
       <div className="p-3 sm:p-4 border-b border-border space-y-3">
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
             <h1 className="text-lg font-bold text-foreground truncate">Messages</h1>
-            <p className="text-xs text-muted-foreground capitalize">{role} workspace</p>
+            <p className="text-xs text-muted-foreground capitalize">{role === 'mentor' ? 'Your clan conversations' : `${role} workspace`}</p>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
             <UserSearchCombobox onSelect={onStartConversation} />
@@ -131,7 +131,7 @@ export default function ConversationList({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search conversations..."
+            aria-label="Search conversations" placeholder="Search by name or email…"
             className="w-full pl-9 pr-3 py-1.5 bg-slate-100/70 dark:bg-black/30 border border-border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
           />
         </div>
@@ -139,7 +139,7 @@ export default function ConversationList({
         {/* Filter tabs */}
         <div className="flex items-center gap-1 p-0.5 bg-slate-100/80 dark:bg-black/40 border border-transparent dark:border-border/60 rounded-xl">
           <button
-            onClick={() => onTabChange('all')}
+            aria-pressed={activeTab === 'all'} onClick={() => onTabChange('all')}
             className={`flex-1 py-1 px-2.5 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-1 ${
               activeTab === 'all'
                 ? 'bg-card text-foreground shadow-2xs font-semibold'
@@ -149,7 +149,7 @@ export default function ConversationList({
             All {allCount !== undefined ? `(${allCount})` : ''}
           </button>
           <button
-            onClick={() => onTabChange('unread')}
+            aria-pressed={activeTab === 'unread'} onClick={() => onTabChange('unread')}
             className={`flex-1 py-1 px-2.5 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-1 ${
               activeTab === 'unread'
                 ? 'bg-card text-foreground shadow-2xs font-semibold'
@@ -164,7 +164,7 @@ export default function ConversationList({
             )}
           </button>
           <button
-            onClick={() => onTabChange('archived')}
+            aria-pressed={activeTab === 'archived'} onClick={() => onTabChange('archived')}
             className={`flex-1 py-1 px-2.5 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-1 ${
               activeTab === 'archived'
                 ? 'bg-card text-foreground shadow-2xs font-semibold'
@@ -265,9 +265,9 @@ export default function ConversationList({
                 {/* Participant + Message detail */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-1 mb-0.5">
-                    <p className={`text-sm truncate ${hasUnread ? 'font-bold text-slate-900 dark:text-slate-100' : 'font-semibold text-slate-800 dark:text-slate-200'}`}>
+                    <button type="button" aria-label={`Open conversation with ${title}`} aria-current={isSelected ? 'true' : undefined} onClick={event => { event.stopPropagation(); onSelectConversation(conversation.id); }} className={`text-left text-sm truncate focus-visible:outline-2 focus-visible:outline-brand-500 ${hasUnread ? 'font-bold text-slate-900 dark:text-slate-100' : 'font-semibold text-slate-800 dark:text-slate-200'}`}>
                       {title}
-                    </p>
+                    </button>
                     <div className="flex items-center gap-1 shrink-0">
                       <span className="text-[10px] text-slate-400">
                         {conversationTime(conversation.lastMessageAt)}

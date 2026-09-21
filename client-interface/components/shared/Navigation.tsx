@@ -43,7 +43,7 @@ function isLinkActive(link: NavLink, pathname: string): boolean {
   if (link.children) {
     return link.children.some((c) => pathname.startsWith(c.path));
   }
-  return pathname === link.path;
+  return (link.activePaths ?? [link.path]).some((path) => pathname === path || pathname.startsWith(`${path}/`));
 }
 
 export default function Navigation({ role }: NavigationProps) {
@@ -54,7 +54,7 @@ export default function Navigation({ role }: NavigationProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
 
-  const { links, pinned, isEditing, toggleEdit, togglePin, moveUp, moveDown, reset, recordUsage } = useNavPreferences(role);
+  const { links, pinned, isEditing, toggleEdit, togglePin, moveUp, moveDown, reset, recordUsage, adaptive, toggleAdaptive } = useNavPreferences(role);
   const { can, canAny, canAccessAdmin, loading: permsLoading } = usePermissions();
 
   // Permission-filtered nav: hide items the user can't use, drop empty groups,
@@ -191,7 +191,7 @@ export default function Navigation({ role }: NavigationProps) {
 
   const renderFlatLink = (link: NavLink, onNavigate?: () => void) => {
     const Icon = link.icon;
-    const isActive = pathname === link.path;
+    const isActive = isLinkActive(link, pathname);
     return (
       <Link
         key={link.path}
@@ -319,7 +319,7 @@ export default function Navigation({ role }: NavigationProps) {
       <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{isEditing ? 'Customize menu' : 'Menu'}</span>
       <div className="flex items-center gap-1">
         {isEditing && (
-          <button onClick={reset} className="text-[11px] text-slate-400 hover:text-slate-600">Reset</button>
+          <><label className="flex items-center gap-1 text-[10px] text-muted-foreground"><input type="checkbox" checked={adaptive} onChange={toggleAdaptive} />Auto-sort</label><button onClick={reset} className="text-[11px] text-slate-400 hover:text-slate-600">Reset</button></>
         )}
         <button onClick={toggleEdit} title={isEditing ? 'Done' : 'Customize'}
           className={`p-1 rounded-lg ${isEditing ? 'text-brand-600 bg-brand-50' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'}`}>

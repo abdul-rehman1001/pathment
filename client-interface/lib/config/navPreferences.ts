@@ -13,14 +13,19 @@ export interface RolePrefs {
   /**
    * True only when the user EXPLICITLY reordered via customize→move. Legacy prefs
    * (older builds auto-froze `order` on pin) lack this, so we ignore their order
-   * and fall back to adaptive - auto-migrating them without clearing storage.
+   * and fall back to the curated default - auto-migrating them without clearing storage.
    */
   manual?: boolean;
+  /** Usage-based ordering is opt-in; absent means the curated default. */
+  adaptive?: boolean;
 }
 export type NavPrefs = Record<string, RolePrefs>;
 
 /** A decaying frecency score per path: `score` as of `last` (epoch ms). */
-export interface UsageEntry { score: number; last: number }
+export interface UsageEntry {
+  score: number;
+  last: number;
+}
 export type RoleUsage = Record<string, UsageEntry>;
 export type NavUsage = Record<string, RoleUsage>;
 
@@ -40,20 +45,36 @@ function decay(score: number, last: number, now: number): number {
 // ── persistence ──────────────────────────────────────────────────────────────
 export function loadNavPrefs(): NavPrefs {
   if (typeof window === 'undefined') return {};
-  try { return JSON.parse(localStorage.getItem(NAV_PREFS_KEY) || '{}') as NavPrefs; } catch { return {}; }
+  try {
+    return JSON.parse(localStorage.getItem(NAV_PREFS_KEY) || '{}') as NavPrefs;
+  } catch {
+    return {};
+  }
 }
 export function saveNavPrefs(prefs: NavPrefs): void {
   if (typeof window === 'undefined') return;
-  try { localStorage.setItem(NAV_PREFS_KEY, JSON.stringify(prefs)); } catch { /* ignore quota */ }
+  try {
+    localStorage.setItem(NAV_PREFS_KEY, JSON.stringify(prefs));
+  } catch {
+    /* ignore quota */
+  }
 }
 
 export function loadNavUsage(): NavUsage {
   if (typeof window === 'undefined') return {};
-  try { return JSON.parse(localStorage.getItem(NAV_USAGE_KEY) || '{}') as NavUsage; } catch { return {}; }
+  try {
+    return JSON.parse(localStorage.getItem(NAV_USAGE_KEY) || '{}') as NavUsage;
+  } catch {
+    return {};
+  }
 }
 export function saveNavUsage(usage: NavUsage): void {
   if (typeof window === 'undefined') return;
-  try { localStorage.setItem(NAV_USAGE_KEY, JSON.stringify(usage)); } catch { /* ignore quota */ }
+  try {
+    localStorage.setItem(NAV_USAGE_KEY, JSON.stringify(usage));
+  } catch {
+    /* ignore quota */
+  }
 }
 
 /** Record one visit to a nav item (decays the old score to now, then +1). */
@@ -68,20 +89,28 @@ export function recordNavUsage(role: string, path: string, now: number): void {
 
 export function clearNavUsage(role: string): void {
   const all = loadNavUsage();
-  if (all[role]) { delete all[role]; saveNavUsage(all); }
+  if (all[role]) {
+    delete all[role];
+    saveNavUsage(all);
+  }
 }
 
 /**
  * Overlay a role's saved prefs + usage on the static config.
  *
  * - If the user has a MANUAL order (from customize mode), honour it exactly.
- * - Otherwise order ADAPTIVELY: blend the curated default rank with each item's
+ * - With explicit opt-in, order ADAPTIVELY: blend the curated default rank with each item's
  *   frecency so the tabs you actually use rise toward the top, and unused ones
  *   keep their sensible default slot.
  * - Pinned items always float to the top, preserving their relative order.
  * New config items the user has never seen are always included.
  */
-export function applyNavPrefs(links: NavLink[], prefs?: RolePrefs, usage?: RoleUsage, now = 0): NavLink[] {
+export function applyNavPrefs(
+  links: NavLink[],
+  prefs?: RolePrefs,
+  usage?: RoleUsage,
+  now = 0,
+): NavLink[] {
   const order = prefs?.order ?? [];
   const pinned = new Set(prefs?.pinned ?? []);
 
@@ -92,9 +121,20 @@ export function applyNavPrefs(links: NavLink[], prefs?: RolePrefs, usage?: RoleU
     const byPath = new Map(links.map((l) => [l.path, l]));
     const seen = new Set<string>();
     ordered = [];
-    order.forEach((p) => { const l = byPath.get(p); if (l && !seen.has(p)) { ordered.push(l); seen.add(p); } });
-    links.forEach((l) => { if (!seen.has(l.path)) { ordered.push(l); seen.add(l.path); } });
-  } else {
+    order.forEach((p) => {
+      const l = byPath.get(p);
+      if (l && !seen.has(p)) {
+        ordered.push(l);
+        seen.add(p);
+      }
+    });
+    links.forEach((l) => {
+      if (!seen.has(l.path)) {
+        ordered.push(l);
+        seen.add(l.path);
+      }
+    });
+  } else if (prefs?.adaptive === true) {
     // Adaptive: baseScore from curated position + frecency-weighted promotion.
     const n = links.length;
     ordered = links
@@ -104,8 +144,10 @@ export function applyNavPrefs(links: NavLink[], prefs?: RolePrefs, usage?: RoleU
         const frec = u ? decay(u.score, u.last, now) : 0;
         return { l, i, blended: base + frec * PROMOTE };
       })
-      .sort((a, b) => (b.blended - a.blended) || (a.i - b.i)) // stable on ties → default order
+      .sort((a, b) => b.blended - a.blended || a.i - b.i) // stable on ties → default order
       .map((x) => x.l);
+  } else {
+    ordered = [...links];
   }
 
   // Pinned float to the top, preserving their relative order in `ordered`.

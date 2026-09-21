@@ -11,22 +11,22 @@ import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { RoadmapStepsDrawer } from '@/components/mentor/RoadmapStepsDrawer';
 import { StepCustomizeModal } from '@/components/mentor/StepCustomizeModal';
 import RichTextEditor from '@/components/shared/RichTextEditor';
-import { MultiDaySelectDropdown } from '@/components/shared';
+import { TaskScheduleFields, initialTaskSchedule, type TaskScheduleDraft } from './TaskScheduleFields';
 import { cleanHtml } from '@/lib/utils/html';
 import { pointsForDifficulty } from '@/lib/config/points';
 import { useFormDraft, clearFormDraft } from '@/lib/hooks/shared/useFormDraft';
 import { interviewApi, type InterviewKitSummary } from '@/lib/services/interview-api';
 import { quizApi, type QuizKitSummary } from '@/lib/services/quiz-api';
 import Link from 'next/link';
-import { Mic, ListChecks, Code2, Repeat, CalendarRange, ChevronDown } from 'lucide-react';
+import { Mic, ListChecks, Code2, CalendarRange, ChevronDown } from 'lucide-react';
 import { OpenSourceOrgPicker } from '@/components/shared/OpenSourceOrgPicker';
 import type { OpenSourceOrg } from '@/lib/services/open-source-orgs-api';
 
 type AssignSource = 'custom' | 'roadmap';
 
-const TYPES = ['assignment', 'project', 'quiz', 'reading', 'video', 'discussion', 'interview', 'open_source', 'recurring'] as const;
+const TYPES = ['assignment', 'project', 'quiz', 'reading', 'video', 'discussion', 'interview', 'open_source'] as const;
 const TYPE_LABEL: Record<string, string> = {
-  assignment: 'Assignment', project: 'Project', quiz: 'Quiz', quizKit: 'Quiz', reading: 'Reading', video: 'Video', discussion: 'Discussion', interview: 'Interview', open_source: 'Open Source', recurring: 'Recurring',
+  assignment: 'Assignment', project: 'Project', quiz: 'Quiz', quizKit: 'Quiz', reading: 'Reading', video: 'Video', discussion: 'Discussion', interview: 'Interview', open_source: 'Open Source',
 };
 const DIFFICULTIES = ['easy', 'medium', 'hard', 'expert'] as const;
 const DUE_PRESETS: { label: string; days: number }[] = [
@@ -104,14 +104,7 @@ export function AssignTaskDrawer({
   const [aiGrading, setAiGrading] = useState(false);
   const selectedKit = kits.find((k) => k.id === kitId) || null;
 
-  // Recurring task state variables
-  const [recType, setRecType] = useState<string>('discussion');
-  const [recDaysOfWeek, setRecDaysOfWeek] = useState<number[]>([1]);
-  const [recTimeLocal, setRecTimeLocal] = useState<string>('09:00');
-  const [recIntervalWeeks, setRecIntervalWeeks] = useState<number>(1);
-  const [recDueOffsetDays, setRecDueOffsetDays] = useState<number>(7);
-  const [recStartsOn, setRecStartsOn] = useState<string>(() => new Date().toISOString().split('T')[0]);
-  const [recEndsOn, setRecEndsOn] = useState<string>('');
+  const [schedule, setSchedule] = useState<TaskScheduleDraft>(initialTaskSchedule);
 
   // Load the mentor's interview kits the first time they pick the Interview type.
   // Guard on a ref (not `kitsLoading`) so toggling loading state doesn't re-run
@@ -177,6 +170,7 @@ export function AssignTaskDrawer({
   const draftKey = `pathment:assign-task:${mode}:${mentee?.id ?? 'bulk'}`;
 
   type AssignDraft = {
+    schedule?: TaskScheduleDraft;
     source: AssignSource;
     roadmapId: string;
     title: string;
@@ -195,14 +189,15 @@ export function AssignTaskDrawer({
   };
 
   const { flush: flushDraft } = useFormDraft<AssignDraft>(draftKey, {
-    source, roadmapId, title, type, description, difficulty, dueDays, dueExact,
+    schedule, source, roadmapId, title, type, description, difficulty, dueDays, dueExact,
     deliverable, criteria, resources, trackId, kitId, quizKitId, selected: [...selected],
   }, (d) => {
     if (!d || typeof d !== 'object') return;
     if (d.source === 'custom' || d.source === 'roadmap') setSource(d.source);
     if (typeof d.roadmapId === 'string') setRoadmapId(d.roadmapId);
     if (typeof d.title === 'string') setTitle(d.title);
-    if (typeof d.type === 'string') setType(d.type);
+    if (typeof d.type === 'string') setType(d.type === 'recurring' ? 'discussion' : d.type);
+    if (d.schedule && ['now', 'once', 'weekly'].includes(d.schedule.mode)) setSchedule({ ...initialTaskSchedule(), ...d.schedule });
     if (typeof d.description === 'string') setDescription(d.description);
     if (typeof d.difficulty === 'string') setDifficulty(d.difficulty);
     if (typeof d.dueDays === 'number') setDueDays(d.dueDays);
@@ -320,7 +315,7 @@ export function AssignTaskDrawer({
   const blockedCount = rawTargetIds.length - targetCount;
   // Single-mode roadmap where the one mentee already has this roadmap.
   const canSubmit = targetCount > 0 && (source === 'custom'
-    ? (!!title.trim() && (type !== 'interview' || !!kitId) && (type !== 'quiz' || !!quizKitId) && (type !== 'recurring' || (recDaysOfWeek.length > 0 && !!recTimeLocal && !!recStartsOn)))
+    ? (!!title.trim() && (type !== 'interview' || !!kitId) && (type !== 'quiz' || !!quizKitId) && (schedule.mode === 'now' || (!!schedule.startsOn && !!schedule.timeLocal && schedule.dueOffsetDays > 0 && (schedule.mode !== 'weekly' || schedule.daysOfWeek.length > 0))))
     : (!!roadmapId && selectedSteps.size > 0));
 
   const submit = async () => {
@@ -347,25 +342,20 @@ export function AssignTaskDrawer({
       }
 
       // ── Assign a custom task ─────────────────────────────────────────────
-      if (type === 'recurring' && recEndsOn && new Date(recEndsOn) < new Date(recStartsOn)) {
-        toast.error("Ends On date must be after Starts On date");
-        return;
-      }
-
       const cleanResources = resources
         .map((r) => ({ title: r.title.trim(), url: r.url.trim() }))
         .filter((r) => r.url)
         .map((r) => ({ title: r.title || r.url, url: r.url }));
       const base = {
         title: title.trim(),
-        description: type === 'recurring' ? '' : cleanHtml(description),
+        description: cleanHtml(description),
         type,
-        difficulty: type === 'recurring' ? undefined : difficulty,
-        dueDate: type === 'recurring' ? undefined : dueISO(),
+        difficulty,
+        dueDate: schedule.mode === 'now' ? dueISO() : undefined,
         // Points are standard by difficulty (derived server-side).
-        deliverable: type === 'recurring' ? undefined : (deliverable.trim() || undefined),
-        acceptanceCriteria: type === 'recurring' ? undefined : cleanCriteria,
-        resources: type === 'recurring' ? undefined : (cleanResources.length ? cleanResources : undefined),
+        deliverable: (deliverable.trim() || undefined),
+        acceptanceCriteria: cleanCriteria,
+        resources: (cleanResources.length ? cleanResources : undefined),
         // Interview tasks carry the kit + options; the runner/grading use these.
         ...(type === 'interview' && kitId
           ? { interview: { kitId, allowRetake, cameraRequired, aiGradingEnabled: aiGrading } }
@@ -376,20 +366,7 @@ export function AssignTaskDrawer({
         ...(type === 'open_source' && openSourceOrgs.length > 0
           ? { openSourceOrgIds: openSourceOrgs.map((o) => o.id) }
           : {}),
-        // Recurring tasks carry options
-        ...(type === 'recurring'
-          ? {
-              recurring: {
-                type: recType,
-                daysOfWeek: recDaysOfWeek,
-                timeLocal: recTimeLocal,
-                intervalWeeks: recIntervalWeeks,
-                dueOffsetDays: recDueOffsetDays,
-                startsOn: recStartsOn,
-                endsOn: recEndsOn || undefined,
-              },
-            }
-          : {}),
+        ...(schedule.mode !== 'now' ? { schedule: { ...schedule, mode: schedule.mode } } : {}),
       };
       if (mode === 'bulk') {
         const res: any = await taskApi.bulkCreateCustomTasks({ ...base, menteeIds: [...selected] });
@@ -401,7 +378,7 @@ export function AssignTaskDrawer({
           return;
         }
         if (failed.length) toast.error(`${failed.length} mentee${failed.length > 1 ? 's' : ''} couldn't be assigned`);
-        toast.success(`Task assigned to ${assigned} mentee${assigned > 1 ? 's' : ''}`);
+        toast.success(`Task ${schedule.mode === 'now' ? 'assigned' : 'scheduled'} for ${assigned} mentee${assigned > 1 ? 's' : ''}`);
       } else {
         await taskApi.createCustomTask({ ...base, menteeId: mentee!.id, trackId: trackId || undefined });
         toast.success(`Task assigned to ${mentee?.name || 'the mentee'}`);
@@ -600,135 +577,28 @@ export function AssignTaskDrawer({
                 </div>
               )}
 
-              {type === 'recurring' && (
-                <div className="rounded-xl border border-brand-200 bg-brand-50/50 dark:bg-brand-500/5 p-4 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-brand-50 dark:bg-brand-500/15 text-brand-700 dark:text-brand-300 text-xs font-semibold border border-brand-200/60 dark:border-brand-500/30">
-                      <Repeat className="w-3.5 h-3.5 text-brand-600" />
-                      Recurring Task Schedule
-                    </div>
-                  </div>
+              <TaskScheduleFields value={schedule} onChange={setSchedule} />
 
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                        Task Type <span className="text-red-500">*</span>
-                      </label>
-                      <select
-                        value={recType}
-                        onChange={(e) => setRecType(e.target.value)}
-                        className={field}
-                      >
-                        <option value="discussion">Discussion</option>
-                        <option value="project">Project</option>
-                        <option value="reading">Reading</option>
-                        <option value="exercise">Exercise</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                        Repeat On (Days of Week) <span className="text-red-500">*</span>
-                      </label>
-                      <MultiDaySelectDropdown
-                        selectedDays={recDaysOfWeek}
-                        onChange={setRecDaysOfWeek}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                        Time <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="time"
-                        value={recTimeLocal}
-                        onChange={(e) => setRecTimeLocal(e.target.value)}
-                        className={field}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                        Frequency <span className="text-red-500">*</span>
-                      </label>
-                      <select
-                        value={recIntervalWeeks}
-                        onChange={(e) => setRecIntervalWeeks(Number(e.target.value))}
-                        className={field}
-                      >
-                        <option value={1}>Every week</option>
-                        <option value={2}>Every 2 weeks</option>
-                        <option value={3}>Every 3 weeks</option>
-                        <option value={4}>Every 4 weeks (Monthly)</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                        Due in (Days) <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={30}
-                        value={recDueOffsetDays}
-                        onChange={(e) => setRecDueOffsetDays(Number(e.target.value))}
-                        className={field}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                        Starts On <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="date"
-                        value={recStartsOn}
-                        onChange={(e) => setRecStartsOn(e.target.value)}
-                        className={field}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                        Ends On <span className="text-slate-400 font-normal">(Optional)</span>
-                      </label>
-                      <input
-                        type="date"
-                        value={recEndsOn}
-                        onChange={(e) => setRecEndsOn(e.target.value)}
-                        className={field}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {type !== 'recurring' && (
+              {(
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Brief</label>
                   <RichTextEditor content={description} onChange={setDescription} placeholder="Optional — what should they do?" minHeight="120px" />
                 </div>
               )}
 
-              {type !== 'recurring' && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
+              <div className="grid grid-cols-2 gap-4">
+                  {schedule.mode === 'now' && <div>
                     <span className="block text-sm font-medium text-slate-700 mb-1.5">Due</span>
                     <div className="flex flex-wrap gap-1.5">
                       {DUE_PRESETS.map((d) => (
                         <button key={d.label} type="button" onClick={() => { setDueDays(d.days); setDueExact(''); }} className={pill(!dueExact && dueDays === d.days)} aria-pressed={!dueExact && dueDays === d.days}>{d.label}</button>
                       ))}
                     </div>
-                    <input type="date" value={dueExact} onChange={(e) => setDueExact(e.target.value)}
+                    <input aria-label="Exact due date" type="date" value={dueExact} onChange={(e) => setDueExact(e.target.value)}
                       min={new Date().toISOString().split('T')[0]}
                       className="mt-1.5 w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500" />
                     <p className="text-[11px] text-slate-400 mt-1">Pick a preset or an exact date.</p>
-                  </div>
+                  </div>}
                   <div>
                     <span className="block text-sm font-medium text-slate-700 mb-1.5">Difficulty</span>
                     <div className="flex flex-wrap gap-1.5">
@@ -738,9 +608,8 @@ export function AssignTaskDrawer({
                     </div>
                   </div>
                 </div>
-              )}
 
-              {type !== 'recurring' && (
+              {(
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Points</label>
@@ -763,7 +632,9 @@ export function AssignTaskDrawer({
                 </div>
               )}
 
-              {type !== 'interview' && type !== 'quiz' && type !== 'recurring' && (<>
+              {type !== 'interview' && type !== 'quiz' && (<details className="rounded-xl border border-border p-4">
+              <summary className="cursor-pointer text-sm font-medium">Deliverable, checks &amp; resources <span className="text-muted-foreground font-normal">(optional)</span></summary>
+              <div className="space-y-4 mt-4">
               <div>
                 <label htmlFor="assign-task-deliverable" className="block text-sm font-medium text-slate-700 mb-1">Deliverable</label>
                 <input id="assign-task-deliverable" value={deliverable} onChange={(e) => setDeliverable(e.target.value)} placeholder="What should they submit?" className={field} />
@@ -809,7 +680,8 @@ export function AssignTaskDrawer({
                   ))}
                 </div>
               </div>
-              </>)}
+              </div>
+              </details>)}
               </>)}
 
               {source === 'roadmap' && (
@@ -897,7 +769,7 @@ export function AssignTaskDrawer({
                           );
                         })}
                       </div>
-                      <input type="date" value={dueExact} onChange={(e) => setDueExact(e.target.value)}
+                      <input aria-label="Exact due date" type="date" value={dueExact} onChange={(e) => setDueExact(e.target.value)}
                         min={new Date().toISOString().split('T')[0]} className={field} />
                       <p className="text-xs text-slate-400 mt-1">&ldquo;Default&rdquo; uses the step&apos;s own timing (+7 days).</p>
                     </div>
@@ -946,7 +818,7 @@ export function AssignTaskDrawer({
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                 {source === 'roadmap'
                   ? (mode === 'bulk' ? `Assign roadmap to ${targetCount}` : 'Assign roadmap')
-                  : (mode === 'bulk' ? `Assign to ${selected.size}` : 'Assign task')}
+                  : (schedule.mode !== 'now' ? `Schedule${mode === 'bulk' ? ` for ${selected.size}` : ' task'}` : mode === 'bulk' ? `Assign to ${selected.size}` : 'Assign task')}
               </button>
             </div>
           </>

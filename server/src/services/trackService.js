@@ -40,7 +40,7 @@ class TrackService {
       list.push({
         id: t.id,
         title: t.roadmapTask?.title || 'Task',
-        type: t.roadmapTask?.type || 'custom',
+        type: t.typeOverride || t.roadmapTask?.type || 'custom',
         status: t.status,
         dueDate: t.dueDate
       });

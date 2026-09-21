@@ -518,7 +518,7 @@ class CohortService {
       (tasksByStatus[key] = tasksByStatus[key] || []).push({
         id: t.id,
         title: t.roadmapTask?.title || 'Task',
-        type: t.roadmapTask?.type || null,
+        type: t.typeOverride || t.roadmapTask?.type || null,
         status: t.status,
         dueDate: t.dueDate,
         isLate: t.isLate,

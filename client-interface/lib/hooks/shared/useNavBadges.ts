@@ -50,15 +50,7 @@ export function useNavBadges({
     [conversations, isMentor, activeClanId]
   );
 
-  const { data: approvalCounts = NO_COUNTS } = useApiQuery<ApprovalCounts>({
-    queryKey: qk.mentor.approvalsCount,
-    queryFn: async () => {
-      const r = await mentorApi.getApprovalsCount() as { data?: ApprovalCounts };
-      return { total: r?.data?.total ?? 0, byClan: r?.data?.byClan ?? {} };
-    },
-    enabled: !!userId && isMentor,
-    staleTime: STALE.short,
-  });
+  const { data: approvalCounts = NO_COUNTS } = useMentorApprovalCounts(!!userId && isMentor);
 
   useEffect(() => {
     if (!isMentor) return;
@@ -87,4 +79,17 @@ export function useNavBadges({
   }, [userId, client, portal]);
 
   return { unreadMessageCount, approvalCounts };
+}
+
+/** Shared lightweight count: cockpit and sidebar use the same approval scope. */
+export function useMentorApprovalCounts(enabled: boolean) {
+  return useApiQuery<ApprovalCounts>({
+    queryKey: qk.mentor.approvalsCount,
+    queryFn: async () => {
+      const r = await mentorApi.getApprovalsCount() as { data?: ApprovalCounts };
+      return { total: r?.data?.total ?? 0, byClan: r?.data?.byClan ?? {} };
+    },
+    enabled,
+    staleTime: STALE.short,
+  });
 }

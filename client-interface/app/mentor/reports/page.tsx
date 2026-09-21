@@ -203,9 +203,9 @@ export default function MentorReports() {
   const printReport = () => window.print();
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 max-w-6xl">
       {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4 rounded-3xl border border-border bg-card p-6">
         <div>
           <h1 className="text-slate-900 mb-1">Cohort report</h1>
           <p className="text-slate-600">A ready-to-share read of how your mentees are doing. Drop it straight into your update.</p>
@@ -213,7 +213,7 @@ export default function MentorReports() {
         <div className="no-print flex flex-wrap items-center gap-2 shrink-0">
           <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl">
             {(['week', 'month'] as const).map((p) => (
-              <button key={p} onClick={() => setPeriod(p)}
+              <button key={p} aria-pressed={period === p} onClick={() => setPeriod(p)}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium capitalize transition-colors ${period === p ? 'bg-card text-brand-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
                 {p}
               </button>

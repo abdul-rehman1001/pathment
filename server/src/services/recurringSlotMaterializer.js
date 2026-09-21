@@ -1,4 +1,6 @@
-const { models } = require('../db');
+const { models, sequelize } = require('../db');
+const { TASK_TYPES } = require('../utils/taskSchedule');
+const { zonedWallClockToUtc } = require('../utils/timezone');
 const { nextOccurrences } = require('../utils/reviewRecurrence');
 
 const HORIZON_DAYS = 14;
@@ -17,13 +19,12 @@ class RecurringSlotMaterializer {
       for (const ms of menteeSchedules) {
         const schedule = Array.isArray(ms.schedule) ? ms.schedule : [];
         const mentorId = ms.assignedBy;
-        if (!mentorId) continue;
 
         for (const slot of schedule) {
           if (slot.kind !== 'recurring' || !slot.recurring) continue;
 
           const rec = slot.recurring;
-          if (!rec.title || !rec.startsOn || rec.dayOfWeek == null || !rec.timeLocal) continue;
+          if (!(rec.mentorId || mentorId) || !rec.title || !rec.startsOn || rec.dayOfWeek == null || !rec.timeLocal) continue;
 
           try {
             // `_processSlotForMentee` returns { createdForSlot, updatedForSlot },
@@ -32,7 +33,7 @@ class RecurringSlotMaterializer {
             // so the "materialized N task(s)" line never printed however much
             // work the tick actually did, and any caller reading the count got
             // a string. `activateSlotForMentor` already unwraps it this way.
-            const result = await this._processSlotForMentee(ms.menteeId, mentorId, slot.id, rec, ms.clanId);
+            const result = await this._processSlotForMentee(ms.menteeId, rec.mentorId || mentorId, slot.id, rec, rec.clanId || ms.clanId);
             createdCount += Number(result?.createdForSlot) || 0;
             updatedCount += Number(result?.updatedForSlot) || 0;
           } catch (err) {
@@ -58,7 +59,7 @@ class RecurringSlotMaterializer {
   async activateSlotForMentor(mentorId, slotId, menteeIds = null) {
     const slug = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'slot';
     const where = Array.isArray(menteeIds) && menteeIds.length
-      ? { menteeId: menteeIds, assignedBy: mentorId }
+      ? { menteeId: menteeIds }
       : { assignedBy: mentorId };
     const menteeSchedules = await models.MenteeSchedule.findAll({ where });
 
@@ -73,13 +74,13 @@ class RecurringSlotMaterializer {
         const num = Number(slotId.replace(/^(slot|block)-/, ''));
         if (num >= 0 && num < schedule.length) slot = schedule[num];
       }
-      if (!slot || slot.kind !== 'recurring' || !slot.recurring) continue;
+      if (!slot || slot.kind !== 'recurring' || !slot.recurring || (slot.recurring.mentorId || ms.assignedBy) !== mentorId) continue;
 
       const rec = slot.recurring;
-      if (!rec.title || !rec.startsOn || rec.dayOfWeek == null || !rec.timeLocal) continue;
+      if (!(rec.mentorId || mentorId) || !rec.title || !rec.startsOn || rec.dayOfWeek == null || !rec.timeLocal) continue;
 
       appliedMentees++;
-      const res = await this._processSlotForMentee(ms.menteeId, mentorId, slot.id || slotId, rec, ms.clanId);
+      const res = await this._processSlotForMentee(ms.menteeId, rec.mentorId || mentorId, slot.id || slotId, rec, rec.clanId || ms.clanId);
       createdTasks += (res?.createdForSlot || 0);
       updatedTasks += (res?.updatedForSlot || 0);
     }
@@ -92,6 +93,16 @@ class RecurringSlotMaterializer {
    * Uses a batch query for existing tasks to minimise DB round-trips.
    */
   async _processSlotForMentee(menteeId, mentorId, slotId, recConfig, clanId = null) {
+    // The scheduler and an activation request may race across server processes.
+    return sequelize.transaction(async transaction => {
+      await sequelize.query('SELECT pg_advisory_xact_lock(hashtext(:key))', {
+        replacements: { key: `task-schedule:${menteeId}:${slotId}` }, transaction
+      });
+      return this._materialize(menteeId, mentorId, slotId, recConfig, clanId);
+    });
+  }
+
+  async _materialize(menteeId, mentorId, slotId, recConfig, clanId = null) {
     const taskService = require('./taskService');
     const now = new Date();
     const horizon = new Date(now.getTime() + HORIZON_DAYS * 86400000);
@@ -111,6 +122,12 @@ class RecurringSlotMaterializer {
       };
       const occs = nextOccurrences(scheduleDef, now, 4).filter((o) => o.start <= horizon);
       rawOccurrences.push(...occs);
+    }
+
+    if (recConfig.mode === 'once') {
+      // Include overdue once-only schedules after worker downtime; unique occurrence keys prevent duplicates.
+      const start = zonedWallClockToUtc(recConfig.startsOn, recConfig.timeLocal, recConfig.timezone || 'UTC');
+      rawOccurrences = start && start <= horizon ? [{ start, dateStr: recConfig.startsOn }] : [];
     }
 
     // Deduplicate by date string
@@ -148,10 +165,12 @@ class RecurringSlotMaterializer {
 
       const title = String(recConfig.title || '').trim() || 'Scheduled Task';
       const rawType = String(recConfig.type || 'discussion').toLowerCase();
-      const type = ['discussion', 'project', 'reading', 'exercise'].includes(rawType) ? rawType : 'discussion';
+      const type = TASK_TYPES.includes(rawType) ? rawType : 'discussion';
 
       const existing = existingMap.get(occurrenceDate);
       if (existing) {
+        // Never rewrite a task someone has begun or reviewed, or lose the saved task recipe.
+        if (recConfig.task || !['assigned', 'not_started'].includes(existing.status)) continue;
         try {
           let updatedAny = false;
           const expectedDesc = `Recurring task (${title}) for ${occurrenceDate}`;
@@ -182,10 +201,11 @@ class RecurringSlotMaterializer {
       try {
         await taskService.createCustomTask(
           {
+            ...recConfig.task,
             menteeId,
             title,
             type,
-            description: `Recurring task (${title}) for ${occurrenceDate}`,
+            description: recConfig.task?.description ?? `Scheduled task (${title}) for ${occurrenceDate}`,
             dueDate,
             scheduleSlotId: slotId,
             occurrenceDate,

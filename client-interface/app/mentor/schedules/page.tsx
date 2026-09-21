@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { TaskScheduleFields } from '@/components/mentor/TaskScheduleFields';
+import { ReviewHistoryCalendar } from '@/components/mentor/ReviewHistoryCalendar';
 import { toast } from 'sonner';
 import {
   CalendarClock, Plus, Trash2, Loader2, Check, X, Clock, User, LayoutGrid, Users, Route, Repeat, Download, Search, Pencil, FileJson, Copy, CalendarRange, Zap, CheckSquare, ChevronDown,
@@ -499,7 +501,7 @@ function FillTab() {
 
       {scope === 'single' && !menteeId ? null
         : loading ? <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-brand-600" /></div>
-        : slots.length === 0 ? <p className="text-sm text-slate-500">No schedule assigned yet. Assign a template first in the Templates tab.</p>
+        : slots.length === 0 ? <p className="text-sm text-slate-500">No schedule yet. Schedule a task from My mentees, or assign a template from the Templates tab.</p>
         : (
           <div className="space-y-3">
             {slots.map((s, idx) => {
@@ -513,7 +515,7 @@ function FillTab() {
                       </div>
                       <div>
                         <h4 className="font-semibold text-slate-900 dark:text-slate-100 text-sm">{s.label}</h4>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">{s.time || 'Flexible'} · {s.days}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">{s.recurring?.task ? `${s.recurring.timeLocal} · ${s.recurring.mode === 'once' ? `Once on ${s.recurring.startsOn}` : 'Weekly'}` : `${s.time || 'Flexible'} · ${s.days}`}</p>
                       </div>
                     </div>
 
@@ -525,7 +527,7 @@ function FillTab() {
                       >
                         <option value="empty">Empty</option>
                         <option value="roadmap">Roadmap chain</option>
-                        <option value="recurring">Recurring task</option>
+                        <option value="recurring">Scheduled task</option>
                       </select>
                       <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2.5 pointer-events-none" />
                     </div>
@@ -535,12 +537,12 @@ function FillTab() {
                   <RoadmapSlotEditor slot={s} menteeId={menteeId || cohort[0]?.id || ''} roadmaps={local} onPatch={(p) => patchSlot(s.id, p)} refreshTick={refreshTick} />
                 )}
 
-                {s.kind === 'recurring' && (
+                {s.kind === 'recurring' && !s.recurring?.task && (
                   <div className="rounded-xl bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800 p-4 space-y-4">
                     <div className="flex items-center justify-between">
                       <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-brand-50 dark:bg-brand-500/15 text-brand-700 dark:text-brand-300 text-xs font-semibold border border-brand-200/60 dark:border-brand-500/30">
                         <Repeat className="w-3.5 h-3.5" />
-                        Recurring Task Schedule
+                        Task timing
                       </div>
                     </div>
 
@@ -662,6 +664,12 @@ function FillTab() {
                     </div>
                   </div>
                 )}
+
+                {s.kind === 'recurring' && s.recurring?.task && <div className="mt-4 space-y-3">
+                  <p className="text-sm font-medium">{s.recurring.title} <span className="text-xs text-muted-foreground capitalize">· {s.recurring.type.replace('_', ' ')}</span></p>
+                  <TaskScheduleFields allowNow={false} value={{ mode: s.recurring.mode || 'weekly', startsOn: s.recurring.startsOn || '', timeLocal: s.recurring.timeLocal || '09:00', timezone: s.recurring.timezone || 'UTC', daysOfWeek: s.recurring.daysOfWeek || [s.recurring.dayOfWeek ?? 1], dueOffsetDays: s.recurring.dueOffsetDays || 7, intervalWeeks: s.recurring.intervalWeeks || 1, endsOn: s.recurring.endsOn || '' }} onChange={value => patchSlot(s.id, { recurring: { ...s.recurring!, ...value, mode: value.mode === 'now' ? 'once' : value.mode } })} />
+                  <p className="text-xs text-muted-foreground">Changes apply to tasks that haven’t been created yet. Existing assignments keep their details.</p>
+                </div>}
 
                 <div className="flex items-center justify-end gap-2.5 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
                   {s.kind !== 'empty' && (
@@ -863,6 +871,7 @@ function RecurringHoursEditor({ onSaved }: { onSaved: () => void }) {
 // ───────────────────────── Availability tab (existing 1:1) ─────────────────────────
 function AvailabilityTab() {
   const { availability, meetings, loading, error, refetch } = useMentorSchedule();
+  const [calendarDate, setCalendarDate] = useState<string | null>(null);
   const [date, setDate] = useState('');
   const [time, setTime] = useState('2:00 PM');
   const [duration, setDuration] = useState(30);
@@ -894,12 +903,56 @@ function AvailabilityTab() {
     } catch { toast.error('Could not cancel'); } finally { setBusyId(null); }
   };
   const upcoming = meetings.filter((m) => m.status === 'scheduled');
+  const dateKey = (startsAt?: string | null) => {
+    if (!startsAt) return '';
+    const date = new Date(startsAt);
+    if (Number.isNaN(date.getTime())) return '';
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  };
+  const visibleMeetings = calendarDate ? upcoming.filter((m) => dateKey(m.startsAt) === calendarDate) : upcoming;
+
 
   if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-7 h-7 animate-spin text-brand-600" /></div>;
   if (error) return <div className="bg-card rounded-2xl border border-slate-200 dark:border-slate-800 py-12 text-center"><p className="text-slate-600 dark:text-slate-400 mb-3">{error}</p><button onClick={refetch} className="text-brand-600 text-sm font-semibold">Try again</button></div>;
 
   return (
     <div className="space-y-6">
+      <section className="bg-card rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
+        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800">
+          <h3 className="text-slate-900 dark:text-slate-100 font-semibold text-sm">Upcoming 1:1s</h3>
+        </div>
+        <div className="p-6 grid gap-5 lg:grid-cols-[minmax(240px,0.8fr)_1fr]">
+          <div><ReviewHistoryCalendar label="Meeting calendar" unit="meeting" initialDate={dateKey(new Date().toISOString())} dates={visibleMeetings.map((m) => dateKey(m.startsAt)).filter(Boolean)} selected={calendarDate} onSelect={setCalendarDate} /><p className="text-xs text-muted-foreground">Times shown in {getBrowserTimeZone()}. Select a highlighted date to filter meetings.</p></div>
+          {visibleMeetings.length === 0 ? <p className="text-xs text-slate-500 dark:text-slate-400">{calendarDate ? 'No meetings on this date.' : 'No upcoming 1:1s.'}</p> : (
+            <div className="space-y-2.5">
+              {visibleMeetings.map((m) => (
+                <div key={m.id} className="flex flex-wrap items-center gap-3 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40">
+                  <div className="w-9 h-9 bg-brand-100 dark:bg-brand-500/20 rounded-full flex items-center justify-center shrink-0">
+                    <span className="text-brand-700 dark:text-brand-300 text-xs font-bold">{m.mentee?.firstName?.[0]}{m.mentee?.lastName?.[0]}</span>
+                  </div>
+                  <div className="min-w-40 flex-1">
+                    <p className="text-xs font-semibold text-slate-900 dark:text-slate-100">{m.mentee?.firstName} {m.mentee?.lastName}</p>
+                    <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      <Clock className="w-3 h-3 text-slate-400" />{formatMeeting(m.startsAt, m.day, m.time)} · {m.durationMins}m
+                    </div>
+                    {m.agenda && <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{m.agenda}</p>}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 w-full">
+                    <button onClick={() => markDone(m.id)} disabled={busyId === m.id} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-xs font-semibold hover:bg-emerald-100 transition-colors disabled:opacity-50">
+                      <Check className="w-3.5 h-3.5" />Mark done
+                    </button>
+                    <button onClick={() => { setCancelReason(''); setCancelFor({ id: m.id, who: `${m.mentee?.firstName ?? ''} ${m.mentee?.lastName ?? ''}`.trim() || 'your mentee' }); }} disabled={busyId === m.id} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 text-xs font-semibold hover:border-red-300 hover:text-red-600 transition-colors disabled:opacity-50">
+                      <X className="w-3.5 h-3.5" />Cancel
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+
       {/* Recurring weekly hours — the primary way to set availability. */}
       <RecurringHoursEditor onSaved={refetch} />
 
@@ -953,39 +1006,6 @@ function AvailabilityTab() {
         )}
       </section>
 
-      <section className="bg-card rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
-        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800">
-          <h3 className="text-slate-900 dark:text-slate-100 font-semibold text-sm">Upcoming 1:1s</h3>
-        </div>
-        <div className="p-6">
-          {upcoming.length === 0 ? <p className="text-xs text-slate-500 dark:text-slate-400">No upcoming 1:1s.</p> : (
-            <div className="space-y-2.5">
-              {upcoming.map((m) => (
-                <div key={m.id} className="flex items-center gap-3 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40">
-                  <div className="w-9 h-9 bg-brand-100 dark:bg-brand-500/20 rounded-full flex items-center justify-center shrink-0">
-                    <span className="text-brand-700 dark:text-brand-300 text-xs font-bold">{m.mentee?.firstName?.[0]}{m.mentee?.lastName?.[0]}</span>
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-semibold text-slate-900 dark:text-slate-100">{m.mentee?.firstName} {m.mentee?.lastName}</p>
-                    <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                      <Clock className="w-3 h-3 text-slate-400" />{formatMeeting(m.startsAt, m.day, m.time)} · {m.durationMins}m
-                    </div>
-                    {m.agenda && <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">{m.agenda}</p>}
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button onClick={() => markDone(m.id)} disabled={busyId === m.id} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-xs font-semibold hover:bg-emerald-100 transition-colors disabled:opacity-50">
-                      <Check className="w-3.5 h-3.5" />Mark done
-                    </button>
-                    <button onClick={() => { setCancelReason(''); setCancelFor({ id: m.id, who: `${m.mentee?.firstName ?? ''} ${m.mentee?.lastName ?? ''}`.trim() || 'your mentee' }); }} disabled={busyId === m.id} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 text-xs font-semibold hover:border-red-300 hover:text-red-600 transition-colors disabled:opacity-50">
-                      <X className="w-3.5 h-3.5" />Cancel
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
 
       <Drawer
         open={!!cancelFor}
@@ -1020,11 +1040,11 @@ function AvailabilityTab() {
 const TABS = [
   { key: 'templates', label: 'Templates', icon: LayoutGrid },
   { key: 'fill', label: 'Fill schedules', icon: Route },
-  { key: 'availability', label: '1:1 Availability', icon: CalendarClock },
+  { key: 'availability', label: 'Calendar & 1:1s', icon: CalendarClock },
 ] as const;
 
 export default function MentorSchedules() {
-  const [tab, setTab] = useState<'templates' | 'fill' | 'availability'>('templates');
+  const [tab, setTab] = useState<'templates' | 'fill' | 'availability'>('availability');
   return (
     <div className="space-y-6">
       <div>

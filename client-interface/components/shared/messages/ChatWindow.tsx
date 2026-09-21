@@ -155,7 +155,7 @@ export default function ChatWindow({
   const recipient = selectedConversation?.participants?.[0];
 
   return (
-    <div className="flex flex-col h-full bg-card rounded-2xl border border-border overflow-hidden shadow-xs">
+    <div className="conversation-thread flex flex-col h-full bg-card rounded-2xl border border-border overflow-hidden shadow-xs">
       {/* Header */}
       <div className="p-3 sm:p-4 border-b border-border flex items-center justify-between bg-card/90 backdrop-blur-sm z-10">
         <div className="flex items-center gap-3 min-w-0">

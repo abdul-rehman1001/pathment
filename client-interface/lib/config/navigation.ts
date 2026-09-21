@@ -1,3 +1,4 @@
+import { menteeWorkspaces } from './menteeWorkspaces';
 import { 
   LayoutDashboard,
   BookOpen,
@@ -36,6 +37,7 @@ import {
   Award,
   type LucideIcon
 } from 'lucide-react';
+import { mentorWorkspaces } from './mentorWorkspaces';
 import { UserRole } from '@/lib/types';
 
 export interface NavChildLink {
@@ -54,6 +56,7 @@ export interface NavLink {
   anyOf?: string[];
   requiresAdminArea?: boolean;
   children?: NavChildLink[];
+  activePaths?: string[];
 }
 
 export const navigationConfig: Record<string, NavLink[]> = {
@@ -119,66 +122,25 @@ export const navigationConfig: Record<string, NavLink[]> = {
     { path: '/mentor/review', icon: CalendarRange, label: 'Clan Review' },
     { path: '/mentor/messages', icon: MessageSquare, label: 'Messages', badge: 'messages' },
     { path: '/mentor/approvals', icon: ClipboardCheck, label: 'Approvals', badge: 'approvals' },
-    {
-      path: 'group:mentees', icon: Users2, label: 'My Mentees',
-      children: [
-        { path: '/mentor/mentees', icon: Users2, label: 'My Mentees' },
-        { path: '/mentor/clan-team', icon: ShieldCheck, label: 'Clan Team' },
-        { path: '/mentor/at-risk', icon: AlertTriangle, label: 'At-risk' },
-        { path: '/mentor/promotions', icon: TrendingUp, label: 'Promotions' },
-        { path: '/mentor/top-performers', icon: Trophy, label: 'Top Performers' },
-      ],
-    },
-    {
-      path: 'group:teaching', icon: Route, label: 'Teaching',
-      children: [
-        { path: '/mentor/roadmaps', icon: Route, label: 'Roadmaps' },
-        { path: '/mentor/interviews', icon: Mic, label: 'Interviews' },
-        { path: '/mentor/quizzes', icon: ListChecks, label: 'Quizzes' },
-        { path: '/mentor/programs', icon: School, label: 'My Programs' },
-        { path: '/mentor/schedules', icon: CalendarClock, label: 'Schedules' },
-        { path: '/mentor/reports', icon: FileText, label: 'Reports' },
-        { path: '/mentor/scores', icon: Gauge, label: 'Progress Scores' },
-        { path: '/mentor/certificates', icon: Award, label: 'Certificates' },
-      ],
-    },
-    {
-      path: 'group:mentor-community', icon: Users, label: 'Community',
-      children: [
-        { path: '/mentor/announcements', icon: Megaphone, label: 'Announcements' },
-        { path: '/mentor/leaderboard', icon: Trophy, label: 'Leaderboard' },
-        { path: '/mentor/community', icon: Users, label: 'Community' },
-        { path: '/mentor/rewards', icon: Gift, label: 'Rewards' },
-        { path: '/mentor/library', icon: BookOpen, label: 'Library' },
-      ],
-    },
+    ...mentorWorkspaces.map((workspace) => ({
+      path: workspace.tabs[0].href,
+      label: workspace.label,
+      icon: ({ 'My mentees': Users2, Curriculum: BookOpen, Recognition: Trophy, Insights: BarChart2, Community: Users } as Record<string, LucideIcon>)[workspace.label],
+      activePaths: workspace.tabs.map((tab) => tab.href),
+    })),
+    { path: '/mentor/schedules', icon: CalendarClock, label: 'Schedule' },
     { path: '/mentor/spec', icon: Compass, label: 'Mentor Handbook' },
     { path: '/mentor/settings', icon: Settings, label: 'Settings' },
   ],
   mentee: [
     { path: '/mentee/dashboard', icon: LayoutDashboard, label: 'This Week' },
-    { path: '/mentee/tasks', icon: ClipboardList, label: 'My Tasks' },
-    { path: '/mentee/roadmap', icon: Route, label: 'My Roadmap' },
-    { path: '/mentee/meetings', icon: CalendarClock, label: 'My Mentor' },
+    ...menteeWorkspaces.map((workspace) => ({
+      path: workspace.tabs[0].href,
+      label: workspace.label,
+      icon: ({ 'My learning': BookOpen, 'My progress': BarChart2, 'My support': CalendarClock, Community: Users } as Record<string, LucideIcon>)[workspace.label],
+      activePaths: workspace.tabs.map((tab) => tab.href),
+    })),
     { path: '/mentee/messages', icon: MessageSquare, label: 'Messages', badge: 'messages' },
-    {
-      path: 'group:mentee-progress', icon: BarChart2, label: 'Progress',
-      children: [
-        { path: '/mentee/daily-log', icon: CalendarCheck, label: 'Daily Log' },
-        { path: '/mentee/blockers', icon: Flag, label: 'Blockers' },
-        { path: '/mentee/progress', icon: BarChart2, label: 'My Progress' },
-        { path: '/mentee/gamification', icon: Trophy, label: 'Points & Badges' },
-        { path: '/mentee/certificates', icon: Award, label: 'My Certificates' },
-      ],
-    },
-    {
-      path: 'group:mentee-community', icon: Users, label: 'Community',
-      children: [
-        { path: '/mentee/community', icon: Users, label: 'Community' },
-        { path: '/mentee/announcements', icon: Megaphone, label: 'Announcements' },
-        { path: '/mentee/library', icon: BookOpen, label: 'Library' },
-      ],
-    },
     { path: '/mentee/settings', icon: Settings, label: 'Settings' },
   ],
 } as const;
@@ -210,6 +172,16 @@ export function getFlatNavItems(role: UserRole): FlatNavItem[] {
         path: link.path, label: link.label, icon: link.icon,
         permission: link.permission, anyOf: link.anyOf, requiresAdminArea: link.requiresAdminArea,
       });
+    }
+  }
+  if (role === 'mentor' || role === 'mentee') {
+    for (const workspace of role === 'mentor' ? mentorWorkspaces : menteeWorkspaces) {
+      const icon = links.find((link) => link.path === workspace.tabs[0].href)!.icon;
+      for (const tab of workspace.tabs) {
+        const existing = out.find((item) => item.path === tab.href);
+        if (existing) { existing.label = tab.label; existing.group = workspace.label; }
+        else out.push({ path: tab.href, label: tab.label, icon, group: workspace.label });
+      }
     }
   }
   return out;

@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const { models } = require('../db');
 const { NotFoundError, ValidationError } = require('../utils/errors/errorTypes');
+const { normalizeTaskSchedule } = require('../utils/taskSchedule');
 const linearRoadmapService = require('./linearRoadmapService');
 const { resolveMenteeClanId, listMenteeClans, clanScopedWhere } = require('./menteeClanScope');
 
@@ -278,41 +279,47 @@ class ScheduleTemplateService {
       if (!rec || !rec.title || !String(rec.title).trim()) {
         throw new ValidationError('Recurring task title is required');
       }
-      let daysOfWeek = [];
-      if (Array.isArray(rec.daysOfWeek) && rec.daysOfWeek.length > 0) {
-        daysOfWeek = rec.daysOfWeek.map(Number).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
-      } else if (rec.dayOfWeek !== undefined && rec.dayOfWeek !== null && rec.dayOfWeek !== '') {
-        daysOfWeek = [Number(rec.dayOfWeek)];
-      }
-      if (!daysOfWeek.length) daysOfWeek = [1];
-      const dayOfWeek = daysOfWeek[0];
+      const savedRecipe = slot.recurring?.task;
+      if (savedRecipe) {
+        const config = normalizeTaskSchedule({ ...slot.recurring, ...rec }, savedRecipe.type);
+        slot.recurring = { ...slot.recurring, ...config, title: String(rec.title).trim(), task: { ...savedRecipe, title: String(rec.title).trim() } };
+      } else {
+        let daysOfWeek = [];
+        if (Array.isArray(rec.daysOfWeek) && rec.daysOfWeek.length > 0) {
+          daysOfWeek = rec.daysOfWeek.map(Number).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
+        } else if (rec.dayOfWeek !== undefined && rec.dayOfWeek !== null && rec.dayOfWeek !== '') {
+          daysOfWeek = [Number(rec.dayOfWeek)];
+        }
+        if (!daysOfWeek.length) daysOfWeek = [1];
+        const dayOfWeek = daysOfWeek[0];
 
-      const timeLocal = rec.timeLocal || slot.recurring?.timeLocal || '09:00';
-      if (!/^\d{2}:\d{2}$/.test(timeLocal)) {
-        throw new ValidationError('timeLocal must be in HH:mm format');
-      }
-      const startsOn = rec.startsOn || slot.recurring?.startsOn || new Date().toISOString().split('T')[0];
-      const endsOn = rec.endsOn ? String(rec.endsOn).split('T')[0] : null;
-      const dueOffsetDays = Number.isInteger(Number(rec.dueOffsetDays)) && Number(rec.dueOffsetDays) > 0 
-        ? Number(rec.dueOffsetDays) 
-        : (slot.recurring?.dueOffsetDays || 7);
-      const intervalWeeks = Number.isInteger(Number(rec.intervalWeeks)) && Number(rec.intervalWeeks) >= 1 
-        ? Math.min(52, Number(rec.intervalWeeks))
-        : (slot.recurring?.intervalWeeks || 1);
+        const timeLocal = rec.timeLocal || slot.recurring?.timeLocal || '09:00';
+        if (!/^\d{2}:\d{2}$/.test(timeLocal)) {
+          throw new ValidationError('timeLocal must be in HH:mm format');
+        }
+        const startsOn = rec.startsOn || slot.recurring?.startsOn || new Date().toISOString().split('T')[0];
+        const endsOn = rec.endsOn ? String(rec.endsOn).split('T')[0] : null;
+        const dueOffsetDays = Number.isInteger(Number(rec.dueOffsetDays)) && Number(rec.dueOffsetDays) > 0
+          ? Number(rec.dueOffsetDays)
+          : (slot.recurring?.dueOffsetDays || 7);
+        const intervalWeeks = Number.isInteger(Number(rec.intervalWeeks)) && Number(rec.intervalWeeks) >= 1
+          ? Math.min(52, Number(rec.intervalWeeks))
+          : (slot.recurring?.intervalWeeks || 1);
 
-      slot.recurring = {
-        title: String(rec.title).trim(),
-        type: rec.type || 'discussion',
-        recurrence: rec.recurrence || 'weekly',
-        dayOfWeek,
-        daysOfWeek,
-        timeLocal,
-        timezone: rec.timezone || slot.recurring?.timezone || ms.timezone || 'UTC',
-        startsOn,
-        endsOn,
-        dueOffsetDays,
-        intervalWeeks
-      };
+        slot.recurring = {
+          title: String(rec.title).trim(),
+          type: rec.type || 'discussion',
+          recurrence: rec.recurrence || 'weekly',
+          dayOfWeek,
+          daysOfWeek,
+          timeLocal,
+          timezone: rec.timezone || slot.recurring?.timezone || ms.timezone || 'UTC',
+          startsOn,
+          endsOn,
+          dueOffsetDays,
+          intervalWeeks
+        };
+      }
       slot.roadmapChain = [];
     } else if (slot.kind === 'empty') {
       slot.roadmapChain = [];

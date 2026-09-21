@@ -1,6 +1,17 @@
 import { apiClient } from './api-client';
 import type { InterviewAssignOptions } from './interview-api';
 
+export interface TaskTimingOptions {
+  mode: 'once' | 'weekly';
+  startsOn: string;
+  timeLocal: string;
+  timezone: string;
+  daysOfWeek?: number[];
+  dueOffsetDays?: number;
+  intervalWeeks?: number;
+  endsOn?: string;
+}
+
 export const taskApi = {
   // Mentee APIs
   getMenteeTasks: (menteeId: string, params?: { status?: string; enrollmentId?: string }) =>
@@ -40,6 +51,7 @@ export const taskApi = {
     type?: string;
     difficulty?: string;
     dueDate?: string;
+    schedule?: TaskTimingOptions;
     pointsBase?: number;
     deliverable?: string;
     acceptanceCriteria?: string[];
@@ -57,6 +69,7 @@ export const taskApi = {
     type?: string;
     difficulty?: string;
     dueDate?: string;
+    schedule?: TaskTimingOptions;
     pointsBase?: number;
     deliverable?: string;
     acceptanceCriteria?: string[];
@@ -80,6 +93,7 @@ export const taskApi = {
   // Edit a mentee's assigned task — per-mentee overrides + note + due date.
   // Pass null/'' for an override field to reset it to the roadmap default.
   updateTask: (taskId: string, data: {
+    typeOverride?: string | null;
     titleOverride?: string | null;
     descriptionOverride?: string | null;
     deliverableOverride?: string | null;

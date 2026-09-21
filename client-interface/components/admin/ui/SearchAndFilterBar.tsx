@@ -1,6 +1,6 @@
-import React from 'react';
-import { Search, X } from 'lucide-react';
-import { SelectMenu } from '@/components/shared/SelectMenu';
+import React from "react";
+import { Search, X } from "lucide-react";
+import { SelectMenu } from "@/components/shared/SelectMenu";
 
 export interface FilterConfig {
   value: string;
@@ -28,21 +28,30 @@ interface SearchAndFilterBarProps {
 export function SearchAndFilterBar({
   search,
   onSearch,
-  placeholder = 'Search…',
+  placeholder = "Search…",
   filters = [],
   activeChips = [],
   onClearAll,
-  className = '',
+  className = "",
 }: SearchAndFilterBarProps) {
+  const gridClass =
+    filters.length === 0
+      ? ""
+      : filters.length === 1
+        ? "sm:grid-cols-3"
+        : "sm:grid-cols-4";
   const hasChips = activeChips.length > 0;
 
   return (
-    <div className={`bg-card rounded-2xl border border-slate-200 p-5 mb-6 ${className}`}>
-      <div className={`grid gap-3 ${filters.length > 0 ? `sm:grid-cols-${Math.min(filters.length + 1, 4)}` : ''}`}>
+    <div
+      className={`bg-card rounded-2xl border border-slate-200 p-5 mb-6 ${className}`}
+    >
+      <div className={`grid gap-3 ${gridClass}`}>
         {/* Search */}
         <div className="relative sm:col-span-2">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           <input
+            aria-label={placeholder}
             type="text"
             value={search}
             onChange={(e) => onSearch(e.target.value)}
@@ -51,7 +60,8 @@ export function SearchAndFilterBar({
           />
           {search && (
             <button
-              onClick={() => onSearch('')}
+              onClick={() => onSearch("")}
+              aria-label="Clear search"
               className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
             >
               <X className="w-4 h-4" />
@@ -67,7 +77,7 @@ export function SearchAndFilterBar({
             onChange={filter.onChange}
             options={filter.options}
             placeholder={filter.placeholder}
-            ariaLabel={filter.placeholder || 'Filter'}
+            ariaLabel={filter.placeholder || "Filter"}
             className="w-full"
           />
         ))}
@@ -83,11 +93,16 @@ export function SearchAndFilterBar({
               className="inline-flex items-center gap-1 px-2.5 py-1 bg-brand-50 text-brand-700 rounded-full text-xs font-medium"
             >
               {chip.label}
-              <button onClick={chip.onRemove}><X className="w-3 h-3" /></button>
+              <button onClick={chip.onRemove}>
+                <X className="w-3 h-3" />
+              </button>
             </span>
           ))}
           {onClearAll && (
-            <button onClick={onClearAll} className="text-xs text-slate-500 hover:text-slate-700 underline ml-1">
+            <button
+              onClick={onClearAll}
+              className="text-xs text-slate-500 hover:text-slate-700 underline ml-1"
+            >
               Clear all
             </button>
           )}

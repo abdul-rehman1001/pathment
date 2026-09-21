@@ -54,12 +54,12 @@ export function AgreementBadge({ nomination }: { nomination: PerformanceNominati
 export function SignalStrip({ signals }: { signals: PerformanceNomination['systemSignals'] }) {
   if (!signals) return null;
   const items = [
-    { label: 'tasks done', value: `${signals.tasksCompleted}/${signals.tasksTotal}` },
+    { label: 'tasks done', value: signals.tasksTotal != null ? `${signals.tasksCompleted}/${signals.tasksTotal}` : String(signals.tasksCompleted) },
     { label: 'roadmap', value: `${signals.completionRate}%` },
     { label: 'on time', value: `${signals.onTimeRate}%` },
     signals.avgRating != null ? { label: 'rating', value: `${signals.avgRating}/5` } : null,
-    signals.attendancePct != null ? { label: 'attendance', value: `${signals.attendancePct}%` } : null,
-    { label: 'open blockers', value: String(signals.openBlockers) },
+    signals.attendancePct != null ? { label: 'attendance', value: signals.attendancePct >= 0 && signals.attendancePct <= 100 ? `${signals.attendancePct}%` : 'Unavailable' } : null,
+    { label: 'open blockers', value: signals.openBlockers != null ? String(signals.openBlockers) : '—' },
   ].filter(Boolean) as Array<{ label: string; value: string }>;
 
   return (

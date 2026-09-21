@@ -1,4 +1,5 @@
 'use client';
+import { stripHtml } from '@/lib/utils/html';
 
 import { useState, useEffect } from 'react';
 import { Loader2, Route, BookOpen, CheckCircle2, Trophy, Clock, Flag, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
@@ -169,7 +170,7 @@ export default function MenteeRoadmapPage() {
             <div>
               <h2 className="text-base font-bold text-slate-900">{activeRoadmap.name}</h2>
               {activeRoadmap.description && (
-                <p className="text-xs text-slate-500 mt-0.5">{activeRoadmap.description}</p>
+                <p className="text-xs text-slate-500 mt-0.5">{stripHtml(activeRoadmap.description)}</p>
               )}
             </div>
             <span className="text-xs font-bold text-slate-600 tabular-nums bg-slate-100 px-3 py-1 rounded-full border border-slate-200 text-center">
