@@ -58,6 +58,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingTierBadge, setUploadingTierBadge] = useState(false);
 
+  const [workspace, setWorkspace] = useState<'design' | 'recipients' | 'history'>(templateId ? 'recipients' : 'design');
   const [zoom, setZoom] = useState(1.0);
 
   const [name, setName] = useState('');
@@ -380,13 +381,12 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
           activeList.forEach(m => {
             const defTier = m.assignedDecision === 'no_certificate' ? NO_CERTIFICATE : m.assignedTier ?? aiSelection(aiEvalMap[m.id]);
             initialTiers[m.id] = defTier;
-            if (defTier) autoSelected.add(m.id);
+            autoSelected.add(m.id);
           });
 
           const mentorDefaultTier = criteria[criteria.length - 1]?.id || 'participation';
           mentorsList.forEach(m => {
             initialTiers[m.id] = mentorDefaultTier;
-            autoSelected.add(m.id);
           });
 
           setAdminTiers(initialTiers);
@@ -984,8 +984,10 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
         </div>
       </div>
 
-      {}
-      <div className="bg-card border border-border rounded-2xl p-6 shadow-xs space-y-5">
+      <nav aria-label="Certificate workspace" className="flex flex-wrap gap-2 rounded-xl border border-border bg-card p-2">
+        {(['design', 'recipients', 'history'] as const).map(tab => <button key={tab} type="button" aria-pressed={workspace === tab} onClick={() => setWorkspace(tab)} className={`rounded-lg px-4 py-2 text-sm font-medium ${workspace === tab ? 'bg-brand-600 text-white' : 'text-muted-foreground hover:bg-muted'}`}>{tab === 'design' ? 'Design & criteria' : tab === 'recipients' ? 'Recipients & approval' : 'Issuance history'}</button>)}
+      </nav>
+      <div hidden={workspace !== 'design'} className="bg-card border border-border rounded-2xl p-6 shadow-xs space-y-5">
         <div className="flex items-start gap-3.5 border-b border-border pb-4">
           <div className="w-8 h-8 rounded-full bg-brand-500/10 flex items-center justify-center font-bold text-brand-500 text-sm">
             1
@@ -1491,16 +1493,15 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
         onEditTier={switchTier}
       />
 
-      <CriteriaTable
+      <div hidden={workspace !== 'design'}><CriteriaTable
         criteria={criteria}
         onAdd={() => openTierModal()}
         onEdit={(tier) => openTierModal(tier as any)}
         onDelete={deleteTier}
         onReorder={setCriteria}
-      />
+      /></div>
 
-      {}
-      <div className="bg-card border border-border rounded-2xl p-6 shadow-xs space-y-5">
+      <div hidden={workspace !== 'recipients'} className="bg-card border border-border rounded-2xl p-6 shadow-xs space-y-5">
         <div className="flex items-start justify-between border-b border-border pb-4">
           <div className="flex items-start gap-3.5">
             <div className="w-8 h-8 rounded-full bg-brand-500/10 flex items-center justify-center font-bold text-brand-500 text-sm">3</div>
@@ -1737,7 +1738,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
 
       {}
       {templateId && (
-        <div className="bg-card border border-border rounded-2xl p-6 shadow-xs space-y-5">
+        <div hidden={workspace !== 'history'} className="bg-card border border-border rounded-2xl p-6 shadow-xs space-y-5">
           <div className="border-b border-border pb-4">
             <h2 className="text-sm font-bold text-foreground">Issuance History & Logs</h2>
             <p className="text-xs text-muted-foreground mt-0.5">Track, regenerate/resend, and revoke/delete issued certificate credentials.</p>

@@ -60,6 +60,7 @@ class CertificateVerificationService {
       });
       const issuedIds = new Set(issued.map(instance => instance.menteeId));
 
+      const approved = new Set((await models.CertificateClanApproval.findAll({ where: { templateId }, attributes: ['clanId'], transaction })).map(row => row.clanId));
       let created = 0;
       let updated = 0;
       for (const result of results) {
@@ -73,6 +74,7 @@ class CertificateVerificationService {
         const existing = await models.CertificateVerification.findOne({ where: { templateId, menteeId }, transaction });
 
         const clanId = clanByMentee.get(menteeId);
+        if (approved.has(clanId)) continue;
         const pendingGradeChanged = !existing || (existing.status !== 'verified' &&
           (existing.aiTier !== aiTier || existing.aiDecision !== aiDecision));
         if (pendingGradeChanged && clanId) {
@@ -225,6 +227,9 @@ class CertificateVerificationService {
       const row = await models.CertificateVerification.findOne({ where: { templateId, menteeId }, transaction, lock: transaction.LOCK.UPDATE });
       if (!row) throw new NotFoundError('There is nothing to verify for this mentee');
       await this._assertCanReview(user, row);
+      if (!(await authzService.hasAdminAccess(user)) && row.clanId && await models.CertificateClanApproval.findOne({ where: { templateId, clanId: row.clanId }, transaction })) {
+        throw new ForbiddenError('These certificate decisions are approved. Only an admin can change them.');
+      }
 
       const aiDecision = row.aiDecision === 'no_certificate' ? 'no_certificate' : (row.aiTier ? 'award' : 'undecided');
       const nextDecision = decision ?? (finalTier ? 'award' : aiDecision);
@@ -251,7 +256,7 @@ class CertificateVerificationService {
           from: { decision: previousDecision, tier: row.finalTier },
           to: { decision: nextDecision, tier }, reason: decisionReason
         }];
-        if (row.clanId) await models.CertificateClanApproval.destroy({ where: { templateId, clanId: row.clanId }, transaction });
+        // Admin edits retain the release and its mentor lock.
       }
       row.decision = nextDecision;
       row.finalTier = tier;

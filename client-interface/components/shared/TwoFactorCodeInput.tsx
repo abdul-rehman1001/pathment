@@ -1,5 +1,7 @@
 'use client';
 
+import '@/styles/public-appearance.css';
+
 import { useState, useRef, useEffect } from 'react';
 import { AlertCircle, Loader2, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
@@ -89,7 +91,7 @@ export function TwoFactorCodeInput({
     <Dialog.Root open={isOpen} onOpenChange={onCancel}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-card shadow-2xl">
+        <Dialog.Content data-public-appearance className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-card shadow-2xl">
           <div className="p-8">
             {/* Header */}
             <div className="mb-6 text-center">
@@ -162,8 +164,8 @@ export function TwoFactorCodeInput({
             </form>
 
             {/* Info Text */}
-            <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-xs text-blue-700">
+            <div className="mt-6 p-4 bg-brand-50 border border-brand-200 rounded-lg">
+              <p className="text-xs text-brand-700">
                 <strong>Tip:</strong> Check your authenticator app (Google Authenticator, Microsoft Authenticator, Authy, etc.) for the 6-digit code.
               </p>
             </div>

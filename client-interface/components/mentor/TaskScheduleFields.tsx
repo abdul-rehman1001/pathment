@@ -29,10 +29,12 @@ export function TaskScheduleFields({
   value,
   onChange,
   allowNow = true,
+  editing = false,
 }: {
   value: TaskScheduleDraft;
   onChange: (value: TaskScheduleDraft) => void;
   allowNow?: boolean;
+  editing?: boolean;
 }) {
   const patch = (change: Partial<TaskScheduleDraft>) =>
     onChange({ ...value, ...change });
@@ -46,7 +48,7 @@ export function TaskScheduleFields({
       <div>
         <h3 className="text-sm font-semibold">When should this happen?</h3>
         <p className="mt-1 text-xs text-muted-foreground">
-          Assign now, plan ahead, or build a weekly habit.
+          {editing ? 'Plan another assignment or set a weekly repeat.' : 'Assign now, plan ahead, or build a weekly habit.'}
         </p>
       </div>
       <div className="flex flex-wrap gap-1 rounded-xl bg-card p-1 border border-border">
@@ -66,7 +68,7 @@ export function TaskScheduleFields({
               onClick={() => patch({ mode })}
               className={`flex-1 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-medium ${value.mode === mode ? 'bg-brand-600 text-white' : 'text-muted-foreground hover:bg-muted'}`}
             >
-              {label}
+              {mode === 'now' && editing ? 'No future assignments' : label}
             </button>
           ))}
       </div>

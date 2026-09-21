@@ -25,7 +25,7 @@ export function useRecipientSelection({
   const [clanFilter, setClanFilter] = useState('all');
   const [reviewFilter, setReviewFilter] = useState<ReviewFilter>('all');
   const [sortBy, setSortBy] = useState<'none' | 'score_desc' | 'score_asc'>('none');
-  const [recipientType, setRecipientType] = useState<'all' | 'mentees' | 'mentors' | 'paused'>('all');
+  const [recipientType, setRecipientType] = useState<'all' | 'mentees' | 'mentors' | 'paused'>('mentees');
   const [selectedMenteeIds, setSelectedMenteeIds] = useState<Set<string>>(new Set());
   const [assignedTiers, setAssignedTiers] = useState<Record<string, string>>({});
 

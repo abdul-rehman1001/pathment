@@ -2,7 +2,7 @@ const { ValidationError } = require('./errors/errorTypes');
 const { zonedWallClockToUtc } = require('./timezone');
 
 const TASK_TYPES = [
-  'assignment',
+  'assignment', 'practical', 'assessment', 'custom',
   'project',
   'quiz',
   'reading',

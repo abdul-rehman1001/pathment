@@ -1,4 +1,4 @@
-const { models } = require('../db');
+const { models, sequelize } = require('../db');
 const { NotFoundError, ForbiddenError, ValidationError } = require('../utils/errors/errorTypes');
 const { Op } = require('sequelize');
 const notificationOrchestrator = require('./notificationOrchestrator');
@@ -624,6 +624,7 @@ class TaskService {
     } else {
       res.openSourceOrgs = [];
     }
+    res.schedule = await require('./taskEditScheduleService').read(task);
     return res;
   }
 
@@ -1194,7 +1195,10 @@ class TaskService {
     if ('dueDate' in data && data.dueDate) {
       task.dueDate = await this._resolveDueDate(task.menteeId, data.dueDate);
     }
-    await task.save();
+    await sequelize.transaction(async transaction => {
+      if ('schedule' in data) await require('./taskEditScheduleService').save(task, data.schedule, userId, transaction);
+      await task.save({ transaction });
+    });
     return this.getAssignedTaskById(taskId);
   }
 

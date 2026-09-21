@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Plus, X } from "lucide-react";
+import { TaskScheduleFields, initialTaskSchedule, type TaskScheduleDraft } from "./TaskScheduleFields";
 import { Drawer } from "@/components/shared/Drawer";
 import RichTextEditor from "@/components/shared/RichTextEditor";
 import taskApi from "@/lib/services/task-api";
@@ -57,6 +58,22 @@ export function TaskEditDrawer({
     })),
   );
   const [resourcesTouched, setResourcesTouched] = useState(false);
+  const [schedule, setSchedule] = useState<TaskScheduleDraft>({ ...initialTaskSchedule(), ...task.schedule, endsOn: task.schedule?.endsOn || '' });
+  const [scheduleTouched, setScheduleTouched] = useState(false);
+  const [scheduleReady, setScheduleReady] = useState(false);
+  const [scheduleError, setScheduleError] = useState(false);
+  useEffect(() => {
+    let active = true;
+    taskApi.getTaskById(task.id).then(response => {
+      if (!active) return;
+      const saved = response.data.task.schedule;
+      setSchedule({ ...initialTaskSchedule(), ...saved, endsOn: saved?.endsOn || '' });
+      setScheduleReady(true);
+    }).catch(() => { if (active) setScheduleError(true); });
+    return () => { active = false; };
+  }, [task.id]);
+  const initialDue = task.dueDate ? String(task.dueDate).slice(0, 10) : '';
+  const [dueDate, setDueDate] = useState(initialDue);
   const [saving, setSaving] = useState(false);
   const saveRef = useRef<() => Promise<void>>(async () => {});
   const draftKey = `pathment:edit-task:${task.id}`;
@@ -124,6 +141,8 @@ export function TaskEditDrawer({
   const save = async () => {
     const payload: Record<string, unknown> = {};
     if (saving) return;
+    if (scheduleTouched) payload.schedule = schedule;
+    if (dueDate !== initialDue && dueDate) payload.dueDate = dueDate;
     if (type !== initial.type) payload.typeOverride = type;
     if (title !== initial.title) payload.titleOverride = title.trim() || null;
     if (cleanHtml(description) !== cleanHtml(initial.description))
@@ -210,6 +229,15 @@ export function TaskEditDrawer({
       }
     >
       <div className="space-y-4">
+        <div>
+          <label htmlFor="edit-task-due" className={label}>Due date for this task</label>
+          <input id="edit-task-due" type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className={field} />
+        </div>
+        {['assigned', 'not_started', 'in_progress'].includes(task.status) && <details className="rounded-xl border border-border p-4" open={scheduleTouched || undefined}>
+          <summary className="cursor-pointer text-sm font-medium">Schedule future assignments{task.schedule ? ' · configured' : ' · optional'}</summary>
+          <p className="my-3 text-xs text-muted-foreground">This task and already-created occurrences stay unchanged. Timing changes apply to future assignments for this mentee. No future assignments stops future repetition; use the due date above for this task.</p>
+          {scheduleReady ? <TaskScheduleFields editing value={schedule} onChange={next => { setSchedule(next); setScheduleTouched(true); }} /> : <p className="text-sm text-muted-foreground">{scheduleError ? 'Could not load scheduling. Close and reopen this task to retry.' : 'Loading schedule…'}</p>}
+        </details>}
         <div>
           <label htmlFor="assigned-task-type" className={label}>
             Task type

@@ -435,6 +435,8 @@ export default function MentorCertificatesPage() {
     const id = typeof mOrId === 'string' ? mOrId : mOrId?.id;
     if (!id) return defaultTier;
 
+    const review = reviewRows?.[id];
+    if (review?.clanId && release?.some(c => c.clanId === review.clanId && c.approved)) return reviewSelection(review);
     if (mentorTiers[id] !== undefined) return mentorTiers[id];
     if (aiSelection(aiEvalMap[id])) return aiSelection(aiEvalMap[id]);
 
@@ -442,7 +444,7 @@ export default function MentorCertificatesPage() {
     if (m?.assignedTier) return m.assignedTier;
 
     return defaultTier;
-  }, [mentorTiers, aiEvalMap, activeMentees]);
+  }, [mentorTiers, aiEvalMap, activeMentees, reviewRows, release]);
 
   const filtered = useMemo(() => {
     let result = [...activeMentees];
@@ -588,7 +590,12 @@ export default function MentorCertificatesPage() {
     toast.success('Reset all filtered mentees to AI recommendations.');
   };
 
+  const isApprovedRecipient = (id: string) => {
+    const clanId = reviewRows?.[id]?.clanId || activeMentees.find(m => m.id === id)?.clanId;
+    return Boolean(clanId && (release ?? []).some(c => c.clanId === clanId && c.approved));
+  };
   const handleTierChange = (menteeId: string, value: string) => {
+    if (isApprovedRecipient(menteeId)) { toast.error('Admin approved — only an admin can change this decision.'); return; }
     setMentorTiers(prev => ({ ...prev, [menteeId]: value }));
 
     const mentee = activeMentees.find(m => m.id === menteeId);
@@ -679,11 +686,11 @@ export default function MentorCertificatesPage() {
     return Array.from(selectedIds)
       .filter(id => {
         const row = reviewRows[id];
-        if (!row) return false;
+        if (!row || isApprovedRecipient(id)) return false;
         return row.status !== 'verified' || reviewSelection(row) !== getEffectiveTier(id);
       })
       .map(id => ({ menteeId: id, finalTier: getEffectiveTier(id) }));
-  }, [selectedIds, reviewRows, getEffectiveTier]);
+  }, [selectedIds, reviewRows, getEffectiveTier, release, activeMentees]);
 
   const executeIssuance = async (recipientsList: Array<{ menteeId: string; tier: string }>) => {
     try {
@@ -1242,6 +1249,7 @@ export default function MentorCertificatesPage() {
                   emptyMessage={search ? 'No mentees match your search.' : 'No active mentees found.'}
                   reviewRows={reviewRows ?? undefined}
                   locked={tableLocked}
+                  isRecipientLocked={isApprovedRecipient}
                 />
               </div>
 

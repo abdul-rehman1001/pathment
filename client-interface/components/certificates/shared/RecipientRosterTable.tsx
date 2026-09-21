@@ -50,6 +50,7 @@ export interface RecipientRosterTableProps {
    * live — these same checkboxes choose who to issue to.
    */
   locked?: boolean;
+  isRecipientLocked?: (id: string) => boolean;
 }
 
 export function RecipientRosterTable({
@@ -70,6 +71,7 @@ export function RecipientRosterTable({
   emptyMessage,
   reviewRows,
   locked = false,
+  isRecipientLocked,
 }: RecipientRosterTableProps) {
   if (loading) {
     return (
@@ -112,6 +114,7 @@ export function RecipientRosterTable({
       {}
       <div className="max-h-[350px] overflow-y-auto divide-y divide-border">
         {filtered.map((m: any) => {
+          const rowLocked = locked || Boolean(isRecipientLocked?.(m.id));
           const review = reviewRows?.[m.id];
           const selectedTier = assignedTiers[m.id] ?? (review ? reviewSelection(review) : m.assignedDecision === 'no_certificate' ? NO_CERTIFICATE : m.assignedTier ?? aiSelection(aiEvalMap[m.id]));
           const recommendation = review?.aiTier || review?.aiDecision === 'no_certificate'
@@ -206,7 +209,7 @@ export function RecipientRosterTable({
                   <select
                     value={selectedTier}
                     onChange={e => handleTierChange(m.id, e.target.value)}
-                    disabled={locked}
+                    disabled={rowLocked}
                     className="w-full appearance-none pr-8 pl-3 py-1.5 bg-transparent text-[11px] font-semibold text-foreground cursor-pointer focus:outline-none disabled:cursor-not-allowed disabled:text-muted-foreground"
                   >
                     <option value="">Select decision</option>
@@ -217,10 +220,11 @@ export function RecipientRosterTable({
                       </option>
                     ))}
                   </select>
-                  {locked
+                  {rowLocked
                     ? <Lock className="absolute right-2.5 w-3 h-3 pointer-events-none text-muted-foreground/60" />
                     : <ChevronDown className="absolute right-2.5 w-3 h-3 pointer-events-none text-muted-foreground/60" />}
                 </div>
+                {isRecipientLocked?.(m.id) && <span className="mt-1 text-[10px] text-brand-700">Admin approved · editing locked</span>}
                 <ReviewNote
                   review={reviewRows?.[m.id]}
                   aiTier={aiSelection(recommendation) || null}

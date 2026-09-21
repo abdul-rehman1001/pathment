@@ -34,6 +34,8 @@ export function VerificationBanner({
   const [reminding, setReminding] = useState(false);
   const [approvingClanId, setApprovingClanId] = useState<string | null>(null);
   const confirm = useConfirm();
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
 
   const reload = useCallback(async () => {
     const res = await certificatesApi.getVerificationSummary(templateId);
@@ -49,7 +51,7 @@ export function VerificationBanner({
     if (!verified) {
       const ok = await confirm({
         title: 'Approve before the review is finished?',
-        description: 'This clan\'s mentors have not signed off every grade yet. Approving now lets them send the certificates as they stand.',
+        description: 'This clan\'s mentors have not signed off every grade yet. Approving now locks mentor edits and lets them send certificates as they stand. Only admins can change approved decisions.',
         confirmLabel: 'Approve anyway',
       });
       if (!ok) return;
@@ -95,6 +97,9 @@ export function VerificationBanner({
   // exactly the moment they were wanted.
   const settled = summary.allVerified && summary.awaitingApproval === 0;
 
+  const matching = summary.clans.filter(c => c.clanName.toLowerCase().includes(search.toLowerCase()));
+  const pages = Math.max(1, Math.ceil(matching.length / 6));
+  const current = Math.min(page, pages);
   return (
     <div className={`space-y-2 rounded-2xl border px-4 py-3 ${
       settled ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-amber-500/30 bg-amber-500/5'
@@ -122,8 +127,12 @@ export function VerificationBanner({
         )}
       </div>
 
-      <ul className="space-y-1 pl-6">
-        {summary.clans.map((clan) => (
+      <p className="text-xs text-muted-foreground">Approval locks mentor edits. Only admins can change approved decisions.</p>
+      <details className="rounded-xl border border-border bg-card p-3">
+      <summary className="cursor-pointer text-sm font-medium">Review clan approvals · {summary.clans.length} clans</summary>
+      <input aria-label="Search certificate clan approvals" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Find a clan…" className="my-3 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+      <ul className="space-y-3">
+        {matching.slice((current - 1) * 6, current * 6).map((clan) => (
           <li key={clan.clanId || clan.clanName} className="flex flex-wrap items-center gap-2 text-[11px]">
             <span className="font-semibold text-foreground">{clan.clanName}</span>
             <span className="text-muted-foreground">
@@ -163,6 +172,9 @@ export function VerificationBanner({
           </li>
         ))}
       </ul>
+      {!matching.length && <p className="py-3 text-sm text-muted-foreground">No matching clans.</p>}
+      <div className="mt-3 flex items-center justify-between text-xs"><button type="button" disabled={current === 1} onClick={() => setPage(current - 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Previous</button><span>{current} / {pages}</span><button type="button" disabled={current === pages} onClick={() => setPage(current + 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Next</button></div>
+      </details>
 
       <div className="flex flex-wrap items-center gap-2 pl-6">
         <button
