@@ -1,6 +1,23 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
+/* Evidence drawers may contain pasted code, tables, or long unbroken URLs.
+   Keep them inside the one drawer scroll region instead of creating a second
+   scrollbar or forcing the panel wider. */
+.evidence-rich {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.evidence-rich pre,
+.evidence-rich table {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.evidence-rich pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 :root {

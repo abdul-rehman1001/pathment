@@ -1,6 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Loader2, ExternalLink, FileText } from "lucide-react";
+import {
+  ChevronDown,
+  ExternalLink,
+  FileText,
+  Loader2,
+  MessageSquareText,
+  Paperclip,
+} from "lucide-react";
 import { Drawer } from "@/components/shared/Drawer";
 import { RichTextReader } from "@/components/shared/RichTextReader";
 import { apiClient } from "@/lib/services/api-client";
@@ -32,6 +39,85 @@ interface Evidence {
 }
 const webUrl = (value: string) =>
   /^https?:\/\//i.test(value) ? value : undefined;
+
+function EvidenceTask({ task }: { task: Evidence["tasks"][number] }) {
+  const submission = task.submission;
+  const links = submission?.urls?.filter((url) => webUrl(url)) ?? [];
+  const files = submission?.files?.filter((file) => webUrl(file.fileUrl)) ?? [];
+  const feedback = submission?.feedback ?? [];
+
+  return (
+    <details className="group overflow-hidden rounded-xl border border-border bg-card">
+      <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 hover:bg-muted/40">
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-semibold">{task.title}</span>
+          <span className="mt-1 block text-xs text-muted-foreground">
+            {task.type} · {task.completedAt
+              ? new Date(task.completedAt).toLocaleDateString()
+              : "Completion date unavailable"}
+            {task.isLate ? " · Submitted late" : " · On time"}
+          </span>
+        </span>
+        <span className="hidden shrink-0 rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground sm:inline">
+          {submission ? "Submission" : "No submission"}
+        </span>
+        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="border-t border-border px-4 py-4">
+        {!submission ? (
+          <p className="text-sm text-muted-foreground">Marked complete; no submission was recorded.</p>
+        ) : (
+          <div className="space-y-3">
+            {submission.text && (
+              <details open className="rounded-lg border border-border bg-muted/20">
+                <summary className="cursor-pointer px-3 py-2 text-sm font-medium">Submission</summary>
+                <div className="border-t border-border px-3 py-3">
+                  <RichTextReader content={submission.text} className="evidence-rich text-sm" />
+                </div>
+              </details>
+            )}
+            {(links.length > 0 || files.length > 0) && (
+              <details className="rounded-lg border border-border">
+                <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm font-medium">
+                  <Paperclip className="h-4 w-4 text-muted-foreground" />
+                  Links & files ({links.length + files.length})
+                </summary>
+                <div className="space-y-2 border-t border-border px-3 py-3">
+                  {links.map((url, index) => (
+                    <a key={`${url}-${index}`} href={webUrl(url)} target="_blank" rel="noopener noreferrer" className="flex items-start gap-2 break-all text-sm text-brand-700 hover:underline">
+                      <ExternalLink className="mt-0.5 h-4 w-4 shrink-0" />{url}
+                    </a>
+                  ))}
+                  {files.map((file) => (
+                    <a key={file.id} href={webUrl(file.fileUrl)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-brand-700 hover:underline">
+                      <FileText className="h-4 w-4 shrink-0" />{file.fileName}
+                    </a>
+                  ))}
+                </div>
+              </details>
+            )}
+            {feedback.length > 0 && (
+              <details className="rounded-lg border border-border">
+                <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm font-medium">
+                  <MessageSquareText className="h-4 w-4 text-muted-foreground" />
+                  Mentor feedback ({feedback.length})
+                </summary>
+                <div className="space-y-3 border-t border-border px-3 py-3">
+                  {feedback.map((item) => (
+                    <div key={item.id} className="border-l-2 border-brand-300 pl-3">
+                      <p className="mb-2 text-xs font-medium text-muted-foreground">{item.rating}/5 · {item.isApproved ? "Approved" : "Changes requested"}</p>
+                      <RichTextReader content={item.feedbackText} className="evidence-rich text-sm" />
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+          </div>
+        )}
+      </div>
+    </details>
+  );
+}
 export function PerformanceEvidenceDrawer({
   nominationId,
   name,
@@ -104,68 +190,7 @@ export function PerformanceEvidenceDrawer({
               </p>
             </div>
           )}
-          {data?.tasks.map((task) => (
-            <article key={task.id} className="rounded-2xl border bg-card p-5">
-              <h3 className="font-semibold">{task.title}</h3>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {task.type} ·{" "}
-                {task.completedAt
-                  ? new Date(task.completedAt).toLocaleDateString()
-                  : "Completion date unavailable"}{" "}
-                · {task.isLate ? "Submitted late" : "On time"}
-              </p>
-              {task.submission ? (
-                <div className="mt-4 space-y-3">
-                  {task.submission.text && (
-                    <RichTextReader content={task.submission.text} />
-                  )}
-                  <div className="space-y-2">
-                    {task.submission.urls
-                      ?.filter((url) => webUrl(url))
-                      .map((url, index) => (
-                        <a
-                          key={`${url}-${index}`}
-                          href={webUrl(url)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-2 break-all text-sm text-brand-700 hover:underline"
-                        >
-                          <ExternalLink className="h-4 w-4 shrink-0" />
-                          {url}
-                        </a>
-                      ))}
-                    {task.submission.files
-                      ?.filter((file) => webUrl(file.fileUrl))
-                      .map((file) => (
-                        <a
-                          key={file.id}
-                          href={webUrl(file.fileUrl)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-2 text-sm text-brand-700 hover:underline"
-                        >
-                          <FileText className="h-4 w-4" />
-                          {file.fileName}
-                        </a>
-                      ))}
-                  </div>
-                  {task.submission.feedback?.map((feedback) => (
-                    <div key={feedback.id} className="rounded-xl bg-muted p-3">
-                      <p className="mb-2 text-xs font-semibold">
-                        Mentor feedback · {feedback.rating}/5 ·{" "}
-                        {feedback.isApproved ? "Approved" : "Changes requested"}
-                      </p>
-                      <RichTextReader content={feedback.feedbackText} />
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="mt-3 text-sm text-muted-foreground">
-                  Marked complete; no submission was recorded.
-                </p>
-              )}
-            </article>
-          ))}
+          {data?.tasks.map((task) => <EvidenceTask key={task.id} task={task} />)}
           {data && data.pages > 1 && (
             <div className="flex items-center justify-between gap-2">
               <button
