@@ -335,7 +335,7 @@ html[data-accent='graphite'] {
 /* TipTap Editor Styles */
 .ProseMirror {
   padding: 0.5rem;
-  min-height: 200px;
+  min-height: var(--editor-min-height, 200px);
   color: var(--color-slate-900);
 }
 
@@ -561,4 +561,16 @@ input::-webkit-credentials-auto-fill-button {
   display: none !important;
   width: 0 !important;
   height: 0 !important;
+}
+/* Legacy side panels share the same arrival motion as Drawer while they migrate
+   to its focus/exit lifecycle. Centered dialogs retain their own animation. */
+@keyframes pathment-panel-enter {
+  from { transform: translate3d(32px, 0, 0); opacity: 0; }
+  to { transform: translate3d(0, 0, 0); opacity: 1; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  [role="dialog"][class*="h-full"]:not([data-shared-drawer]),
+  [class~="fixed"][class~="inset-0"] > [class~="relative"][class~="h-full"]:not([data-shared-drawer]) {
+    animation: pathment-panel-enter 240ms cubic-bezier(.22, 1, .36, 1);
+  }
 }

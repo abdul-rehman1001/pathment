@@ -44,20 +44,20 @@ export default function AdminAnnouncements() {
   };
 
   return (
-    <div className="space-y-6 max-w-3xl">
-      <div>
+    <div className="space-y-6 max-w-5xl">
+      <div className="admin-page-heading">
         <h1 className="text-slate-900 mb-2 flex items-center gap-2"><Megaphone className="w-5 h-5 text-brand-600" /> Announcements</h1>
         <p className="text-slate-600">Broadcast to everyone, a role, a program, or a clan.</p>
       </div>
 
       {/* Composer */}
-      <div className="bg-card rounded-2xl border border-slate-200 p-6 space-y-3">
+      <details className="bg-card rounded-2xl border border-slate-200 p-6 space-y-3"><summary className="cursor-pointer font-semibold text-brand-700">Write an announcement</summary>
         <div className="flex items-center gap-2"><Send className="w-4 h-4 text-brand-500" /><h2 className="text-slate-900">New announcement</h2></div>
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" className={field} />
-        <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={3} placeholder="What do people need to know?" className={`${field} resize-none`} />
+        <input aria-label="Announcement title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" className={field} />
+        <textarea aria-label="Announcement message" value={body} onChange={(e) => setBody(e.target.value)} rows={3} placeholder="What do people need to know?" className={`${field} resize-none`} />
         <div className="flex flex-wrap items-center gap-2">
           <label className="text-sm text-slate-600">To</label>
-          <select value={audience} onChange={(e) => { setAudience(e.target.value as AnnouncementAudience); setTargetId(''); }}
+          <select aria-label="Audience" value={audience} onChange={(e) => { setAudience(e.target.value as AnnouncementAudience); setTargetId(''); }}
             className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500">
             <option value="all">Everyone</option>
             <option value="mentors">All mentors</option>
@@ -66,7 +66,7 @@ export default function AdminAnnouncements() {
             <option value="clan">A clan…</option>
           </select>
           {needsTarget && (
-            <select value={targetId} onChange={(e) => setTargetId(e.target.value)}
+            <select aria-label="Target program or clan" value={targetId} onChange={(e) => setTargetId(e.target.value)}
               className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500">
               <option value="">{`Select a ${audience}…`}</option>
               {targets.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -76,7 +76,7 @@ export default function AdminAnnouncements() {
             {posting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}Post
           </button>
         </div>
-      </div>
+      </details>
 
       <AnnouncementFeed announcements={announcements} loading={loading} error={error} onRefresh={refetch} canManage emptyHint="No announcements yet." />
     </div>

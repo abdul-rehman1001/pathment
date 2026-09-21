@@ -147,6 +147,44 @@ class PerformanceNominationService {
     return this._serialize(await this._withRelations(nomination.id));
   }
 
+  async evidence(id, user, page = 1) {
+    const nomination = await models.PerformanceNomination.findByPk(id);
+    if (!nomination) throw new NotFoundError('Nomination not found');
+    if (await authzService.hasAdminAccess(user)) {
+      await authzService.assertProgramInScope(user, nomination.programId);
+    } else {
+      const clans = await certificateService.getMentorScopedMenteeClans(user, nomination.programId);
+      if (!clans.includes(nomination.clanId)) throw new ForbiddenError('This nomination is outside your clans');
+    }
+    const limit = 10;
+    const currentPage = Math.max(1, Math.floor(Number(page) || 1));
+    const result = await models.AssignedTask.findAndCountAll({
+      where: { menteeId: nomination.menteeId, status: 'completed' },
+      include: [
+        { model: models.Enrollment, as: 'enrollment', attributes: [], where: { programId: nomination.programId }, required: true },
+        { model: models.RoadmapTask, as: 'roadmapTask', attributes: ['title', 'type'], required: false },
+        { model: models.TaskSubmission, as: 'submissions', separate: true, limit: 1, order: [['version', 'DESC']],
+          include: [
+            { model: models.TaskSubmissionFile, as: 'files', attributes: ['id', 'fileName', 'fileUrl'] },
+            { model: models.TaskFeedback, as: 'feedback', attributes: ['id', 'feedbackText', 'rating', 'isApproved'] },
+          ] },
+      ],
+      attributes: ['id', 'titleOverride', 'typeOverride', 'completedAt', 'pointsAwarded', 'isLate'],
+      order: [['completedAt', 'DESC'], ['id', 'ASC']], limit, offset: (currentPage - 1) * limit, distinct: true,
+    });
+    return { total: result.count, page: currentPage, pages: Math.max(1, Math.ceil(result.count / limit)),
+      tasks: result.rows.map(task => ({
+        id: task.id, title: task.titleOverride || task.roadmapTask?.title || 'Task',
+        type: task.typeOverride || task.roadmapTask?.type, completedAt: task.completedAt,
+        points: task.pointsAwarded, isLate: task.isLate,
+        submission: task.submissions?.[0] ? {
+          text: task.submissions[0].submissionText, urls: task.submissions[0].submissionUrls,
+          submittedAt: task.submissions[0].submittedAt, files: task.submissions[0].files,
+          feedback: task.submissions[0].feedback,
+        } : null,
+      })) };
+  }
+
   /** What this user may see: admins everything, mentors their own clans. */
   async list({ user, programId = null, status = null }) {
     const where = {};

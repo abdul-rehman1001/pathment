@@ -1,4 +1,5 @@
 'use client';
+import { matchesAdminTab } from '@/lib/config/adminWorkspaces';
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -43,7 +44,7 @@ function isLinkActive(link: NavLink, pathname: string): boolean {
   if (link.children) {
     return link.children.some((c) => pathname.startsWith(c.path));
   }
-  return (link.activePaths ?? [link.path]).some((path) => pathname === path || pathname.startsWith(`${path}/`));
+  return (link.activePaths ?? [link.path]).some((path) => matchesAdminTab(pathname, path));
 }
 
 export default function Navigation({ role }: NavigationProps) {
@@ -68,7 +69,9 @@ export default function Navigation({ role }: NavigationProps) {
             if (link.requiresAdminArea && !canAccessAdmin) return null;
             if (link.children) {
               const kids = link.children.filter((c) => !c.permission || can(c.permission));
-              return kids.length ? { ...link, children: kids } : null;
+              if (!kids.length) return null;
+              if (link.workspace) return { ...link, preferenceKey: link.path, path: kids[0].path, activePaths: kids.map((child) => child.path), children: undefined };
+              return { ...link, children: kids };
             }
             const okPerm = !link.permission || can(link.permission);
             const okAny = !link.anyOf || canAny(link.anyOf);
@@ -196,7 +199,7 @@ export default function Navigation({ role }: NavigationProps) {
       <Link
         key={link.path}
         href={link.path}
-        onClick={() => { recordUsage(link.path); onNavigate?.(); }}
+        onClick={() => { recordUsage(link.preferenceKey ?? link.path); onNavigate?.(); }}
         className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-150 group ${
           isActive
             ? 'bg-brand-600 text-white shadow-sm shadow-brand-200'

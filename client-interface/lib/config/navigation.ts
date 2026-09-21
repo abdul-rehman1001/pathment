@@ -1,3 +1,4 @@
+import { adminWorkspaces } from './adminWorkspaces';
 import { menteeWorkspaces } from './menteeWorkspaces';
 import { 
   LayoutDashboard,
@@ -57,64 +58,19 @@ export interface NavLink {
   requiresAdminArea?: boolean;
   children?: NavChildLink[];
   activePaths?: string[];
+  workspace?: boolean;
+  preferenceKey?: string;
 }
 
 export const navigationConfig: Record<string, NavLink[]> = {
   admin: [
-    { path: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard', permission: 'analytics.view' },
+    { path: '/admin/dashboard', icon: LayoutDashboard, label: 'Overview', permission: 'analytics.view' },
+    ...adminWorkspaces.map((workspace) => {
+      const icon = ({ Admissions: CalendarRange, People: Users, Learning: BookOpen, Recognition: Trophy, Community: MessageSquarePlus, Insights: BarChart2, Administration: Settings } as Record<string, LucideIcon>)[workspace.label];
+      return { path: `group:admin-${workspace.label.toLowerCase()}`, label: workspace.label, icon, workspace: true,
+        children: workspace.tabs.map((tab) => ({ path: tab.href, label: tab.label, permission: tab.permission, icon })) };
+    }),
     { path: '/admin/messages', icon: MessageSquare, label: 'Messages', badge: 'messages' },
-    {
-      path: 'group:admissions', icon: CalendarRange, label: 'Admissions',
-      children: [
-        { path: '/admin/cohorts', icon: CalendarRange, label: 'Intake', permission: 'intake.manage' },
-        { path: '/admin/assessments', icon: ClipboardCheck, label: 'Assessments', permission: 'assessment.author' },
-        { path: '/admin/invites', icon: UserPlus, label: 'Invites', permission: 'invite.create' },
-      ],
-    },
-    {
-      path: 'group:people', icon: Users, label: 'People & Clans',
-      children: [
-        { path: '/admin/enrollment/overview', icon: Users, label: 'Enrollments', permission: 'mentee.manage' },
-        { path: '/admin/clans', icon: Users2, label: 'Clans', permission: 'clan.create' },
-        { path: '/admin/users/mentors', icon: GraduationCap, label: 'Mentors', permission: 'user.manage' },
-        { path: '/admin/users/mentees', icon: School, label: 'Mentees', permission: 'user.manage' },
-        { path: '/admin/requests', icon: GitPullRequest, label: 'Clan Requests', permission: 'mentee.manage' },
-        { path: '/admin/promotions', icon: TrendingUp, label: 'Promotions', permission: 'user.manage' },
-        { path: '/admin/top-performers', icon: Trophy, label: 'Top Performers', permission: 'user.manage' },
-      ],
-    },
-    {
-      path: 'group:programs', icon: BookOpen, label: 'Programs',
-      children: [
-        { path: '/admin/programs/list', icon: BookOpen, label: 'Programs', permission: 'program.manage' },
-        { path: '/admin/roadmaps', icon: Route, label: 'Roadmaps', permission: 'roadmap.author' },
-        { path: '/admin/schedules', icon: CalendarClock, label: 'Schedules', permission: 'program.manage' },
-        { path: '/admin/certificates', icon: Award, label: 'Certificates', permission: 'program.manage' },
-      ],
-    },
-    {
-      path: 'group:engagement', icon: Megaphone, label: 'Engagement',
-      children: [
-        { path: '/admin/announcements', icon: Megaphone, label: 'Announcements', permission: 'community.moderate' },
-        { path: '/admin/meetings', icon: Video, label: 'Live Meetings', permission: 'analytics.view' },
-        { path: '/admin/changelog', icon: PackageOpen, label: "What's New", permission: 'system.settings' },
-        { path: '/admin/rewards', icon: Gift, label: 'Rewards', permission: 'gamification.manage' },
-        { path: '/admin/moderation', icon: ShieldAlert, label: 'Moderation', permission: 'community.moderate' },
-        { path: '/admin/feedback', icon: MessageSquarePlus, label: 'Feedback', permission: 'feedback.manage' },
-      ],
-    },
-    {
-      path: 'group:analytics', icon: TrendingUp, label: 'Analytics',
-      children: [
-        { path: '/admin/insights', icon: TrendingUp, label: 'Insights', permission: 'analytics.view' },
-        { path: '/admin/review-records', icon: CalendarRange, label: 'Review Records', permission: 'analytics.view' },
-        { path: '/admin/activity', icon: BarChart2, label: 'Activity', permission: 'analytics.view' },
-        { path: '/admin/emails', icon: Mail, label: 'Email Queue', permission: 'system.settings' },
-      ],
-    },
-    { path: '/admin/access', icon: ShieldCheck, label: 'Roles & Access', permission: 'access.manage' },
-    { path: '/admin/library', icon: BookOpen, label: 'Library' },
-    { path: '/admin/mentor-spec', icon: Compass, label: 'Mentor Handbook' },
     { path: '/admin/settings', icon: Settings, label: 'Settings', permission: 'system.settings' },
   ],
   mentor: [

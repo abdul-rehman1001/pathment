@@ -123,7 +123,7 @@ function CohortCard({ cohort }: { cohort: Cohort }) {
           <p className="text-[11px] text-slate-500">accepted</p>
         </div>
       </div>
-      <div className="mt-3 flex items-center justify-end text-xs font-medium text-brand-600 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="mt-3 flex items-center justify-end text-xs font-medium text-brand-600 transition-colors">
         Review applications <ChevronRight className="ml-0.5 w-3.5 h-3.5" />
       </div>
     </Link>
@@ -133,10 +133,13 @@ function CohortCard({ cohort }: { cohort: Cohort }) {
 export default function AdminCohortsPage() {
   const { cohorts, loading, error, refetch } = useCohorts();
   const [creating, setCreating] = useState(false);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const filtered = cohorts.filter(cohort => (statusFilter === 'all' || cohort.status === statusFilter) && `${cohort.name} ${cohort.program?.name || ''}`.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
+      <div className="admin-page-heading flex items-start justify-between gap-4">
         <div>
           <h1 className="text-slate-900 mb-2">Intake</h1>
           <p className="text-slate-600">Run registration in cohorts. Import applicants, review them, and accept them into a program.</p>
@@ -146,6 +149,8 @@ export default function AdminCohortsPage() {
         </button>
       </div>
 
+      <div className="flex flex-wrap gap-3"><input aria-label="Search intakes" value={search} onChange={event => setSearch(event.target.value)} placeholder="Find an intake or program…" className="min-w-48 flex-1 rounded-xl border bg-card px-4 py-3 text-sm"/><select aria-label="Intake status" value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="rounded-xl border bg-card px-4 py-3 text-sm"><option value="all">All statuses</option>{Object.entries(STATUS_META).map(([value, meta]) => <option key={value} value={value}>{meta.label}</option>)}</select></div>
+      {!loading && !error && cohorts.length > 0 && filtered.length === 0 && <p className="rounded-2xl border bg-card p-8 text-center text-muted-foreground">No intakes match these filters.</p>}
       {loading ? (
         <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-brand-600" /></div>
       ) : error ? (
@@ -160,7 +165,7 @@ export default function AdminCohortsPage() {
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {cohorts.map((c) => <CohortCard key={c.id} cohort={c} />)}
+          {filtered.map((c) => <CohortCard key={c.id} cohort={c} />)}
         </div>
       )}
 

@@ -3,6 +3,10 @@ const { successResponse } = require('../utils/responses');
 const service = require('../services/performanceNominationService');
 
 /** The data's own ranking for a clan or a whole programme. */
+const evidence = catchAsync(async (req, res) => {
+  res.json(successResponse('Completed work evidence', await service.evidence(req.params.id, req.user, req.query.page)));
+});
+
 const getRanking = catchAsync(async (req, res) => {
   const data = await service.ranking({
     programId: req.query.programId,
@@ -36,4 +40,4 @@ const decide = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Decision recorded', data));
 });
 
-module.exports = { getRanking, list, nominate, draft, decide };
+module.exports = { evidence, getRanking, list, nominate, draft, decide };

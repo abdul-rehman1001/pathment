@@ -17,6 +17,7 @@ import {
   type UserAccess,
 } from '@/lib/services/access-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
+import { Avatar } from '@/components/shared/Avatar';
 import { Drawer } from '@/components/shared/Drawer';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 
@@ -57,19 +58,20 @@ export default function RolesAccessPage() {
   const [tab, setTab] = useState<'people' | 'roles'>('people');
   return (
     <div className="space-y-6">
-      <div>
+      <div className="admin-page-heading">
         <h1 className="text-slate-900 mb-2 inline-flex items-center gap-2"><ShieldCheck className="w-6 h-6 text-brand-600" /> Roles &amp; Access</h1>
         <p className="text-slate-600">Grant scoped roles to people, and define your own custom roles. Changes take effect immediately.</p>
       </div>
 
-      <div className="flex gap-0 border-b border-slate-200">
+      <div className="inline-flex gap-1 rounded-2xl border border-border bg-card p-1.5">
         {(['people', 'roles'] as const).map((t) => (
           <button
             key={t}
+            aria-pressed={tab === t}
             onClick={() => setTab(t)}
-            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${tab === t ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+            className={`rounded-xl px-4 py-2.5 text-sm font-medium transition-colors ${tab === t ? 'bg-brand-600 text-white' : 'text-muted-foreground hover:bg-muted'}`}
           >
-            {t === 'people' ? 'People' : 'Custom roles'}
+            {t === 'people' ? 'People & access' : 'Custom role templates'}
           </button>
         ))}
       </div>
@@ -136,9 +138,9 @@ function PeopleTab() {
   }, [load]);
 
   return (
-    <div className="grid lg:grid-cols-12 gap-6">
-      <div className="lg:col-span-5">
-        <div className="rounded-2xl border border-slate-200 bg-card p-4">
+    <div className="space-y-5">
+      <div className="min-w-0">
+        <div className="rounded-3xl border border-border bg-card p-5">
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
@@ -170,7 +172,7 @@ function PeopleTab() {
               card always fits without the page itself scrolling (no double scrollbar,
               pagination always visible), and short/filtered lists stay compact instead
               of leaving a big empty gap. */}
-          <div className="mt-2 max-h-[calc(100vh-22rem)] min-h-[14rem] overflow-y-auto divide-y divide-slate-100 pr-1">
+          <div className="mt-4 divide-y divide-border">
             {loading ? (
               <div className="py-8 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-brand-600" /></div>
             ) : users.length === 0 ? (
@@ -180,13 +182,17 @@ function PeopleTab() {
               return (
                 <button
                   key={u.id}
+                  aria-label={`Manage access for ${u.firstName} ${u.lastName}`}
                   onClick={() => setSelected(u)}
                   className={`w-full text-left px-2 py-2.5 rounded-lg flex items-center justify-between gap-2 ${selected?.id === u.id ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-slate-50'}`}
                 >
+                  <Avatar name={`${u.firstName} ${u.lastName}`} size="sm"/>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-slate-900 truncate">{`${u.firstName} ${u.lastName}`.trim() || u.email}</p>
                     <p className="text-xs text-slate-500 truncate">{u.email} · {u.role}</p>
                   </div>
+                  <span className="hidden sm:inline-flex rounded-full bg-muted px-3 py-1 text-xs capitalize">{u.role}</span>
+                  <span className="text-xs font-medium text-brand-700">Manage access →</span>
                   {isBlocked && (
                     <span className="shrink-0 px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide uppercase bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400 border border-rose-200 dark:border-rose-800/50">
                       Blocked
@@ -202,13 +208,8 @@ function PeopleTab() {
           )}
         </div>
       </div>
-      <div className="lg:col-span-7">
-        {selected ? <AccessPanel user={selected} onUpdated={load} /> : (
-          <div className="rounded-2xl border border-dashed border-slate-200 bg-card p-12 text-center text-slate-400">
-            Select someone to view and manage their roles - or <button onClick={() => setInviting(true)} className="text-brand-600 font-medium">invite a new person</button> with a role.
-          </div>
-        )}
-      </div>
+      {selected && <Drawer open onClose={() => setSelected(null)} title="Access details" subtitle="Review existing roles before changing access." width="lg"><AccessPanel key={selected.id} user={selected} onUpdated={load} /></Drawer>}
+
 
       {inviting && <InviteWithAccessDrawer onClose={() => setInviting(false)} onInvited={() => { setInviting(false); setQuery(''); load(); }} />}
     </div>

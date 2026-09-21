@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { models } = require('../db');
+const { models, sequelize } = require('../db');
 const clanService = require('./clanService');
 const cohortService = require('./cohortService');
 
@@ -86,33 +86,62 @@ function deriveStatus({ memberCount, atRisk, avgCompletion, avgOnTime }) {
   };
 }
 
+// Keep task history bounded while calculating an organization-wide snapshot.
+// Only compact metrics survive each batch; completed task objects are discarded.
+const snapshots = new Map();
+const SNAPSHOT_TTL_MS = 30000;
+async function loadSnapshot(programIds = null) {
+  const key = programIds === null ? '*' : [...programIds].sort().join(',');
+  const cached = snapshots.get(key);
+  if (cached && cached.expires > Date.now()) return cached.promise;
+  const entry = { expires: Infinity };
+  entry.promise = (async () => {
+    const clans = await clanService.listClans({ programIds });
+    const byClan = await membershipsByClan(clans);
+    const ids = [...new Set([...byClan.values()].flat().filter(m => m.role === 'mentee').map(m => m.userId))];
+    const rowById = new Map();
+    for (let offset = 0; offset < ids.length; offset += 200) {
+      const batch = ids.slice(offset, offset + 200);
+      const preloads = await cohortService.preloadMenteeData(batch);
+      for (const id of batch) {
+        const row = await cohortService.buildMenteeRow(id, preloads);
+        if (row) {
+          const { completedTasks, ...metrics } = row;
+          rowById.set(row.id, metrics);
+        }
+      }
+    }
+    return { clans, byClan, rowById, generatedAt: new Date().toISOString() };
+  })().then(value => { entry.expires = Date.now() + SNAPSHOT_TTL_MS; return value; }, error => {
+    if (snapshots.get(key) === entry) snapshots.delete(key);
+    throw error;
+  });
+  snapshots.set(key, entry);
+  // Bound retained snapshots. In-flight callers keep their own promise.
+  while (snapshots.size > 4) snapshots.delete(snapshots.keys().next().value);
+  return entry.promise;
+}
+
+function summarizeRows(rows) {
+  const risk = { high: 0, watch: 0, low: 0 };
+  const completion = [0, 0, 0, 0, 0];
+  for (const row of rows) {
+    risk[row.risk] = (risk[row.risk] || 0) + 1;
+    completion[Math.min(4, Math.max(0, Math.floor(row.absoluteProgress / 20)))]++;
+  }
+  return { risk, completion: completion.map((count, index) => ({ label: index === 4 ? '80–100%' : `${index * 20}–${index * 20 + 19}%`, count })) };
+}
+
 class ClanHealthService {
   /**
    * Org-wide health snapshot for the admin dashboard: clans grouped by program,
    * each clan scored from its mentees' real cohort rows. Returns org KPIs plus
    * programs[] → clans[] so the UI can render "clan status, program-wise".
    */
-  async programHealth() {
-    const clans = await clanService.listClans();
-    const byClan = await membershipsByClan(clans);
-
-    // Collect every distinct mentee across clans, then build each row once.
-    const menteeIds = new Set();
-    for (const clan of clans) {
-      for (const m of byClan.get(clan.id) || []) {
-        if (m.role === 'mentee') menteeIds.add(m.userId);
-      }
-    }
-    // Bulk-load once, then build every row from memory — no per-mentee N+1.
-    const preloads = await cohortService.preloadMenteeData([...menteeIds]);
-    const rowList = await Promise.all([...menteeIds].map((id) => cohortService.buildMenteeRow(id, preloads)));
-    const rowById = new Map();
-    for (const row of rowList) {
-      if (row) rowById.set(row.id, row);
-    }
-
+  async programHealth(programIds = null) {
+    const { clans, byClan, rowById, generatedAt } = await loadSnapshot(programIds);
     const programs = new Map(); // programId -> { id, name, status, clans: [] }
-    const orgRows = [];
+    const orgRows = [...rowById.values()];
 
     for (const clan of clans) {
       const memberships = byClan.get(clan.id) || [];
@@ -120,7 +149,6 @@ class ClanHealthService {
       const mentorMemberships = memberships.filter((m) => MENTOR_ROLES.includes(m.role));
 
       const rows = menteeMemberships.map((m) => rowById.get(m.userId)).filter(Boolean);
-      orgRows.push(...rows);
 
       const memberCount = menteeMemberships.length;
       const avgCompletion = avg(rows.map((r) => r.absoluteProgress));
@@ -194,7 +222,7 @@ class ClanHealthService {
     // Flat org-wide "needs attention" rollup: the actual at-risk mentees.
     const atRiskMentees = orgRows
       .filter((r) => r.risk !== 'low')
-      .sort((a, b) => (a.risk === 'high' ? -1 : 1) - (b.risk === 'high' ? -1 : 1))
+      .sort((a, b) => Number(b.risk === 'high') - Number(a.risk === 'high') || a.absoluteProgress - b.absoluteProgress || a.id.localeCompare(b.id))
       .slice(0, 12)
       .map((r) => ({
         id: r.id,
@@ -208,7 +236,35 @@ class ClanHealthService {
         onTimeRate: r.onTimeRate,
       }));
 
-    return { kpis, programs: programList, atRiskMentees };
+    return { kpis, programs: programList, atRiskMentees, summary: summarizeRows(orgRows), generatedAt };
+  }
+
+  async followUps(filters = {}, programIds = null) {
+    const { clans, byClan, rowById, generatedAt } = await loadSnapshot(programIds);
+    const clanForUser = new Map();
+    for (const clan of clans) {
+      if (filters.programId && clan.programId !== filters.programId) continue;
+      if (filters.clanId && clan.id !== filters.clanId) continue;
+      for (const member of byClan.get(clan.id) || []) {
+        if (member.role !== 'mentee') continue;
+        if (!clanForUser.has(member.userId)) clanForUser.set(member.userId, []);
+        clanForUser.get(member.userId).push({ id: clan.id, name: clan.name });
+      }
+    }
+    const search = (filters.search || '').trim().toLowerCase();
+    const rows = [...rowById.values()].filter(row => clanForUser.has(row.id) && row.risk !== 'low' &&
+      (!filters.risk || row.risk === filters.risk) &&
+      (!search || `${row.name} ${row.email}`.toLowerCase().includes(search)))
+      .sort((a,b) => Number(b.risk === 'high') - Number(a.risk === 'high') || a.absoluteProgress - b.absoluteProgress || a.id.localeCompare(b.id));
+    const limit = Math.min(50, Math.max(1, Number(filters.limit) || 20));
+    const pages = Math.max(1, Math.ceil(rows.length / limit));
+    const page = Math.min(pages, Math.max(1, Number(filters.page) || 1));
+    return { total: rows.length, page, limit, pages, generatedAt,
+      rows: rows.slice((page - 1) * limit, page * limit).map(row => ({
+        id: row.id, name: row.name, avatarUrl: row.profilePictureUrl,
+        risk: row.risk, riskReason: row.riskReason, absoluteProgress: row.absoluteProgress,
+        clans: clanForUser.get(row.id),
+      })) };
   }
 
   /**
@@ -216,37 +272,25 @@ class ClanHealthService {
    * plus the fairness lens - org absolute vs relative progress and a per-mentee
    * distribution. "Extensions" = accepted DelayEvents (friction the org granted).
    */
-  async orgInsights() {
-    const clans = await clanService.listClans();
-    const byClan = await membershipsByClan(clans);
-
-    const menteeIds = new Set();
-    for (const clan of clans) {
-      for (const m of byClan.get(clan.id) || []) if (m.role === 'mentee') menteeIds.add(m.userId);
-    }
-    const ids = [...menteeIds];
-    // Bulk-load once, then build every row from memory — no per-mentee N+1.
-    const preloads = await cohortService.preloadMenteeData(ids);
-    const rowList = await Promise.all(ids.map((id) => cohortService.buildMenteeRow(id, preloads)));
-    const rowById = new Map();
-    for (const row of rowList) if (row) rowById.set(row.id, row);
-
+  async orgInsights(programIds = null) {
+    const { clans, byClan, rowById, generatedAt } = await loadSnapshot(programIds);
+    const ids = [...rowById.keys()];
     // Accepted delays = extensions granted, tallied per mentee.
     const extByMentee = new Map();
     if (ids.length) {
       const delays = await models.DelayEvent.findAll({
         where: { menteeId: { [Op.in]: ids }, accepted: true },
-        attributes: ['menteeId'],
+        attributes: ['menteeId', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
+        group: ['menteeId'], raw: true,
       });
-      for (const d of delays) extByMentee.set(d.menteeId, (extByMentee.get(d.menteeId) || 0) + 1);
+      for (const d of delays) extByMentee.set(d.menteeId, Number(d.count));
     }
 
     const clanRows = [];
-    const orgRows = [];
+    const orgRows = [...rowById.values()];
     for (const clan of clans) {
       const menteeMemberships = (byClan.get(clan.id) || []).filter((m) => m.role === 'mentee');
       const rows = menteeMemberships.map((m) => rowById.get(m.userId)).filter(Boolean);
-      orgRows.push(...rows);
 
       const memberCount = menteeMemberships.length;
       const avgCompletion = avg(rows.map((r) => r.absoluteProgress));
@@ -298,6 +342,8 @@ class ClanHealthService {
         clansRed: redClans.length,
         clans: clans.length,
       },
+      summary: summarizeRows(orgRows),
+      generatedAt,
       fairness: { avgAbsolute, avgRelative, gap: avgRelative - avgAbsolute },
       clans: clanRows,
       distribution,

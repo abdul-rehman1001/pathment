@@ -705,8 +705,8 @@ export default function MessageCenter({ role }: MessageCenterProps) {
   }
 
   return (
-    <div className={`${role === 'mentor' || role === 'mentee' ? 'mentor-inbox' : ''} h-[calc(100dvh-6.5rem)] max-h-[calc(100dvh-6.5rem)] overflow-hidden`}>
-      <div className={`grid grid-cols-1 xl:grid-cols-12 h-full ${role === 'mentor' ? 'gap-0' : 'gap-4 xl:gap-6'}`}>
+    <div className={`mentor-inbox h-[calc(100dvh-6.5rem)] max-h-[calc(100dvh-6.5rem)] overflow-hidden`}>
+      <div className={`grid grid-cols-1 xl:grid-cols-12 h-full gap-0`}>
         {/* Sidebar Panel */}
         <div
           className={`inbox-list-pane xl:col-span-4 h-full min-h-0 ${

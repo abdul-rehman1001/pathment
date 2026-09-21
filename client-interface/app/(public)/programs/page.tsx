@@ -21,9 +21,10 @@ export default function PublicProgramsPage() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-12">
-      <div className="max-w-2xl">
-        <h1 className="text-3xl font-semibold text-slate-900">Programs we&apos;re offering</h1>
-        <p className="mt-2 text-slate-600">
+      <div className="public-hero">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-[.18em] text-brand-700">Learn with direction</p>
+        <h1 className="max-w-xl text-4xl font-semibold tracking-tight text-brand-950 sm:text-5xl">Find your next<br />step forward.</h1>
+        <p className="mt-5 max-w-xl text-base leading-relaxed text-slate-600">
           Browse our structured mentorship programs and apply to the ones that fit you. You&apos;ll get a
           personal link to track your application.
         </p>
@@ -45,7 +46,7 @@ export default function PublicProgramsPage() {
             <Link
               key={program.id}
               href={`/programs/${program.id}`}
-              className="group rounded-2xl border border-slate-200 bg-card p-5 hover:border-brand-300 hover:shadow-sm transition-all flex flex-col"
+              className="group rounded-2xl border border-slate-200 bg-card p-6 hover:border-brand-300 hover:shadow-md transition-[border-color,box-shadow] duration-200 flex flex-col"
             >
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium uppercase tracking-wide text-brand-700 bg-brand-50 dark:bg-brand-500/15 rounded-full px-2.5 py-1">
@@ -59,9 +60,9 @@ export default function PublicProgramsPage() {
               </div>
               <h2 className="mt-3 font-semibold text-slate-900 group-hover:text-brand-700">{program.name}</h2>
               {program.description && (
-                <p className="mt-1.5 text-sm text-slate-600 line-clamp-3">{program.description}</p>
+                <p className="mt-2 mb-6 text-sm leading-relaxed text-slate-600 line-clamp-3">{program.description}</p>
               )}
-              <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between text-sm text-slate-500">
+              <div className="mt-auto pt-5 border-t border-slate-100 flex items-center justify-between text-sm text-slate-500">
                 {program.totalDurationWeeks ? (
                   <span className="inline-flex items-center gap-1">
                     <Clock className="w-3.5 h-3.5" /> {program.totalDurationWeeks} weeks

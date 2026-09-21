@@ -80,7 +80,7 @@ export default function AdminCertificatesPage() {
   return (
     <div className="space-y-6">
       {/* Header & Controls */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-border/60 pb-5 gap-4">
+      <div className="admin-page-heading flex flex-col md:flex-row md:items-center justify-between border-b border-border/60 pb-5 gap-4">
         <div>
           <h1 className="text-slate-900 mb-2">Certificates</h1>
           <p className="text-slate-600">Design templates, grade a cohort, and issue credentials clan by clan.</p>

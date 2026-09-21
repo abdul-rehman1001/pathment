@@ -239,7 +239,8 @@ export default function AdminMenteesListPage() {
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="overflow-hidden rounded-3xl border border-border bg-card divide-y divide-border">
+          <div className="hidden sm:grid grid-cols-12 gap-4 bg-muted p-4 text-xs font-semibold text-muted-foreground"><span className="col-span-5">Mentee</span><span className="col-span-3">Clan</span><span className="col-span-3">Background</span><span className="col-span-1 text-right">Details</span></div>
           {mentees.map((row) => {
             const isExpanded = expandedIds.has(row.id);
             const name = `${row.firstName} ${row.lastName}`;
@@ -251,16 +252,12 @@ export default function AdminMenteesListPage() {
             return (
               <div
                 key={row.id}
-                className={`
-                  bg-card border rounded-xl overflow-hidden transition-all duration-200 select-none relative
-                  ${isExpanded ? 'border-brand-500/20 shadow-md bg-slate-50/20' : 'border-border shadow-[0_2px_8px_-3px_rgba(0,0,0,0.05)] hover:border-slate-300 hover:shadow-md'}
-                `}
+                className="bg-card overflow-hidden relative"
               >
                 {/* Header / Summary */}
                 <div
-                  onClick={() => toggleExpand(row.id)}
                   className={`
-                    p-4 cursor-pointer transition-colors duration-200
+                    p-4 transition-colors duration-200
                     ${isExpanded ? 'bg-slate-50/70' : 'hover:bg-slate-50/30'}
                   `}
                 >
@@ -268,6 +265,7 @@ export default function AdminMenteesListPage() {
                     {/* Column 1: Profile info */}
                     <div className="sm:col-span-5 flex items-center gap-3 min-w-0">
                       <AvatarWithInitials
+                        avatarOnly
                         firstName={row.firstName}
                         lastName={row.lastName}
                         email={row.email}
@@ -277,7 +275,7 @@ export default function AdminMenteesListPage() {
                       />
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold text-slate-800 text-sm truncate">{name}</span>
+                          <Link href={`/admin/mentees/${row.id}`} className="font-semibold text-slate-800 text-sm truncate hover:text-brand-700 hover:underline">{name}</Link>
                           {isSuspended && (
                             <span className="px-2 py-0.5 rounded-full bg-rose-50 text-rose-600 text-[10px] font-medium border border-rose-100 uppercase tracking-wider scale-95 origin-left">Suspended</span>
                           )}
@@ -314,9 +312,9 @@ export default function AdminMenteesListPage() {
 
                     {/* Column 4: Toggle Action */}
                     <div className="sm:col-span-1 flex justify-end">
-                      <div className={`p-1.5 rounded-full hover:bg-slate-200/60 transition-all duration-200 ${isExpanded ? 'rotate-180 bg-slate-100' : ''}`}>
+                      <button aria-label={`Details for ${name}`} aria-expanded={isExpanded} onClick={() => toggleExpand(row.id)} className={`p-2 rounded-full hover:bg-slate-200/60 transition-transform duration-150 ${isExpanded ? 'rotate-180 bg-slate-100' : ''}`}>
                         <ChevronDown className="w-4 h-4 text-slate-400" />
-                      </div>
+                      </button>
                     </div>
                   </div>
                 </div>

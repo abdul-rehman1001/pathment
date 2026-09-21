@@ -54,7 +54,7 @@ export default function AdminActivityPage() {
   return (
     <div className="space-y-6">
       {/* Page header */}
-      <div className="flex items-start justify-between flex-wrap gap-4">
+      <div className="admin-page-heading flex items-start justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-slate-900 font-semibold mb-1">Activity</h1>
           <p className="text-slate-500 text-sm">Track daily hours, sessions, and engagement across all mentees</p>

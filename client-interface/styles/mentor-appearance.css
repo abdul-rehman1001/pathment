@@ -1,6 +1,6 @@
-/* Shared mobile-inspired appearance for mentor and mentee portals. Root tokens also reach dialogs/popovers portaled to <body>,
+/* Shared mobile-inspired appearance for admin, mentor and mentee portals. Root tokens also reach dialogs/popovers portaled to <body>,
    and automatically revert when the mentor layout leaves the document. */
-:root:has(:is([data-mentor-appearance], [data-mentee-appearance])) {
+:root:has(:is([data-mentor-appearance], [data-mentee-appearance], [data-admin-appearance])) {
   --canvas: #f3f6f5;
   --background: #ffffff;
   --foreground: #0e1b1a;
@@ -50,7 +50,7 @@
 }
 
 /* Learning portals use one fixed petrol palette, including old accent preferences. */
-:root:has(:is([data-mentor-appearance], [data-mentee-appearance])) {
+:root:has(:is([data-mentor-appearance], [data-mentee-appearance], [data-admin-appearance])) {
   --brand-50: #edf7f4;
   --brand-100: #d8eee7;
   --brand-200: #b2ded1;
@@ -64,7 +64,7 @@
   --brand-950: #03211e;
 }
 
-:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) {
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance], [data-admin-appearance])) {
   --canvas: #0a1211;
   --background: #0a1211;
   --foreground: #e7edec;
@@ -102,41 +102,41 @@
 
 /* These older components explicitly specify dark variants. Unlike the plain
    inverted utilities above, they must retain dark surfaces and light ink. */
-:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .dark\:bg-slate-950,
-:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .dark\:bg-slate-900 {
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance], [data-admin-appearance])) .dark\:bg-slate-950,
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance], [data-admin-appearance])) .dark\:bg-slate-900 {
   background-color: var(--background);
 }
-:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .dark\:bg-slate-800 {
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance], [data-admin-appearance])) .dark\:bg-slate-800 {
   background-color: var(--card);
 }
-:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .dark\:bg-slate-700 {
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance], [data-admin-appearance])) .dark\:bg-slate-700 {
   background-color: var(--muted);
 }
-:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .dark\:text-slate-100,
-:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .dark\:text-slate-200 {
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance], [data-admin-appearance])) .dark\:text-slate-100,
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance], [data-admin-appearance])) .dark\:text-slate-200 {
   color: var(--foreground);
 }
-:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .dark\:text-slate-300,
-:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .dark\:text-slate-400 {
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance], [data-admin-appearance])) .dark\:text-slate-300,
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance], [data-admin-appearance])) .dark\:text-slate-400 {
   color: var(--muted-foreground);
 }
-:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .dark\:border-slate-700,
-:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .dark\:border-slate-800 {
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance], [data-admin-appearance])) .dark\:border-slate-700,
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance], [data-admin-appearance])) .dark\:border-slate-800 {
   border-color: var(--border);
 }
 
 /* Mobile's system typography and petrol hero, applied to the existing cockpit
    rather than introducing a second navigation or a different dashboard flow. */
-:root:has(:is([data-mentor-appearance], [data-mentee-appearance])) body {
+:root:has(:is([data-mentor-appearance], [data-mentee-appearance], [data-admin-appearance])) body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
-:is([data-mentor-appearance], [data-mentee-appearance]) {
+:is([data-mentor-appearance], [data-mentee-appearance], [data-admin-appearance]) {
   --mentor-hero-start: #00514d;
   --mentor-hero-end: #00807a;
   --mentor-hero-text: #ffffff;
   --mentor-hero-muted: #d4e9e5;
 }
-.dark :is([data-mentor-appearance], [data-mentee-appearance]) {
+.dark :is([data-mentor-appearance], [data-mentee-appearance], [data-admin-appearance]) {
   --mentor-hero-start: #0c3f3b;
   --mentor-hero-end: #12615b;
 }
@@ -224,17 +224,17 @@
 
 /* Readable accent links and quiet tinted surfaces in the mentor dark theme.
    Button fills retain their darker teal so white button labels keep contrast. */
-:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .text-brand-500,
-:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .text-brand-600,
-:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .text-brand-700 { color: #98dbcc; }
-:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .bg-brand-50 { background-color: #16372f; }
-:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .bg-brand-100 { background-color: #20493f; }
-:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .border-brand-200,
-:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .border-brand-300 { border-color: #356658; }
-:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .bg-amber-50 { background-color: #302616; }
-:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .text-amber-700,
-:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .text-amber-800 { color: #e9c181; }
-:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance])) .border-amber-200 { border-color: #665133; }
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance], [data-admin-appearance])) .text-brand-500,
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance], [data-admin-appearance])) .text-brand-600,
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance], [data-admin-appearance])) .text-brand-700 { color: #98dbcc; }
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance], [data-admin-appearance])) .bg-brand-50 { background-color: #16372f; }
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance], [data-admin-appearance])) .bg-brand-100 { background-color: #20493f; }
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance], [data-admin-appearance])) .border-brand-200,
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance], [data-admin-appearance])) .border-brand-300 { border-color: #356658; }
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance], [data-admin-appearance])) .bg-amber-50 { background-color: #302616; }
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance], [data-admin-appearance])) .text-amber-700,
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance], [data-admin-appearance])) .text-amber-800 { color: #e9c181; }
+:root.dark:has(:is([data-mentor-appearance], [data-mentee-appearance], [data-admin-appearance])) .border-amber-200 { border-color: #665133; }
 .mentor-inbox .conversation-list > div:first-child > div:first-child { flex-wrap: wrap; }
 .mentor-inbox .conversation-list > div:first-child > div:first-child > div:first-child { min-width: 120px; }
 
@@ -244,6 +244,5 @@
 .mentor-stat-2 { --stat-ink: #79500b; background: linear-gradient(125deg, #fff6d9, #ffeab4); }
 .mentor-stat-3 { --stat-ink: #843c29; background: linear-gradient(125deg, #ffede4, #ffd6c5); }
 .mentor-stat::before { content: ''; position: absolute; z-index: -1; inset: 0; opacity: .15; background-image: radial-gradient(var(--stat-ink) .7px, transparent .7px); background-size: 6px 6px; mask-image: linear-gradient(130deg, #000, transparent 40%, transparent 75%, #000); }
-:root:has(:is([data-mentor-appearance], [data-mentee-appearance])) .mentor-stat * { color: var(--stat-ink); border-color: color-mix(in srgb, var(--stat-ink) 14%, transparent); }
+:root:has(:is([data-mentor-appearance], [data-mentee-appearance], [data-admin-appearance])) .mentor-stat * { color: var(--stat-ink); border-color: color-mix(in srgb, var(--stat-ink) 14%, transparent); }
 .mentor-stat .bg-muted { background: rgb(255 255 255 / .45); }
-.mentor-stat p { font-size: 2.5rem; }

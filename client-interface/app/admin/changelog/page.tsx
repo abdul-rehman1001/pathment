@@ -170,7 +170,7 @@ export default function AdminChangelogPage() {
 
   return (
     <div>
-      <div className="flex items-start justify-between mb-6">
+      <div className="admin-page-heading flex items-start justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-700 flex items-center gap-2">
             <PackageOpen className="w-6 h-6 text-brand-600" /> What's New

@@ -103,13 +103,13 @@ export default function ConversationList({
   }, [conversations, activeTab, searchQuery]);
 
   return (
-    <div className="conversation-list flex flex-col h-full bg-card rounded-2xl border border-border overflow-hidden shadow-xs">
+    <div className="conversation-list flex flex-col h-full bg-card rounded-3xl border border-border overflow-hidden shadow-xs">
       {/* Sidebar Header */}
-      <div className="p-3 sm:p-4 border-b border-border space-y-3">
+      <div className="p-4 sm:p-5 border-b border-border bg-muted/30 space-y-4">
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
             <h1 className="text-lg font-bold text-foreground truncate">Messages</h1>
-            <p className="text-xs text-muted-foreground capitalize">{role === 'mentor' ? 'Your clan conversations' : `${role} workspace`}</p>
+            <p className="text-xs text-muted-foreground capitalize">{role === 'mentor' ? 'Your clan conversations' : role === 'admin' ? 'People, support and coordination' : 'Your conversations'}</p>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
             <UserSearchCombobox onSelect={onStartConversation} />
@@ -236,7 +236,7 @@ export default function ConversationList({
               <div
                 key={conversation.id}
                 onClick={() => onSelectConversation(conversation.id)}
-                className={`w-full text-left p-3.5 transition-all flex items-start gap-3 relative cursor-pointer group ${
+                className={`w-full text-left p-3.5 transition-colors duration-150 flex items-start gap-3 relative cursor-pointer group ${
                   isSelected
                     ? 'bg-brand-500/10'
                     : 'hover:bg-slate-100/60 dark:hover:bg-white/5'

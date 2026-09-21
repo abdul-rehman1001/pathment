@@ -222,13 +222,13 @@ export default function AdminInvitesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-2">
+      <div className="admin-page-heading flex flex-col gap-2">
         <h1 className="text-slate-900 font-semibold">Invites</h1>
         <p className="text-slate-600">Mentor and mentee signup is invite-only. Create one-time invites below.</p>
       </div>
 
       {/* Single invite form */}
-      <div className="bg-card border border-slate-200 rounded-2xl p-6 space-y-4">
+      <details className="bg-card border border-slate-200 rounded-2xl p-6 space-y-4"><summary className="cursor-pointer font-semibold text-brand-700">Invite one person</summary>
         <div className="flex items-center gap-2 text-slate-900">
           <UserPlus className="w-5 h-5 text-brand-600" />
           <h2>Create Invite</h2>
@@ -338,10 +338,10 @@ export default function AdminInvitesPage() {
             </div>
           </div>
         )}
-      </div>
+      </details>
 
       {/* Bulk CSV upload */}
-      <div className="bg-card border border-slate-200 rounded-2xl p-6 space-y-4">
+      <details className="bg-card border border-slate-200 rounded-2xl p-6 space-y-4"><summary className="cursor-pointer font-semibold text-brand-700">Invite a group with CSV</summary>
         <div className="flex items-center justify-between gap-2 text-slate-900">
           <div className="flex items-center gap-2">
             <FileSpreadsheet className="w-5 h-5 text-brand-600" />
@@ -507,7 +507,7 @@ export default function AdminInvitesPage() {
             </button>
           </div>
         )}
-      </div>
+      </details>
 
       {/* Invite inventory */}
       <div className="bg-card border border-slate-200 rounded-2xl p-6 space-y-4">

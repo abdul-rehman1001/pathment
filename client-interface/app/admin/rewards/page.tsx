@@ -26,7 +26,7 @@ export default function AdminRewardsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
+      <div className="admin-page-heading flex items-start justify-between gap-4">
         <div>
           <h1 className="text-slate-900 mb-1 flex items-center gap-2"><GiftIcon className="w-5 h-5 text-brand-600" /> Rewards catalog</h1>
           <p className="text-slate-600 text-sm">Configure the gifts mentees can redeem with earned points. Mentors redeem these for their mentees.</p>

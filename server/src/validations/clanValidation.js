@@ -5,6 +5,14 @@ const Joi = require('joi');
  * crafted `?limit=10000` can never dump the whole table — it 400s instead.
  */
 module.exports = {
+  followUpQuery: Joi.object({
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(50).default(20),
+    programId: Joi.string().uuid().optional(),
+    clanId: Joi.string().uuid().optional(),
+    risk: Joi.string().valid('high', 'watch').optional(),
+    search: Joi.string().trim().max(120).allow('').optional(),
+  }),
   listQuery: Joi.object({
     programId: Joi.string().uuid().optional().allow(null, ''),
     status: Joi.string().valid('active', 'inactive', 'archived').optional().allow(null, ''),

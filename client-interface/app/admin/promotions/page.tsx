@@ -60,12 +60,12 @@ function PromoteDrawer({ candidate, onClose, onDone }: { candidate: AdminPromoti
   const field = 'w-full border border-slate-300 rounded-xl px-3 py-2 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500';
 
   return (
-    <Drawer open onClose={onClose} title={`Promote ${candidate.name}`} subtitle="Grant the mentor role and (optionally) add them to a clan team." width="sm"
+    <Drawer open onClose={onClose} title={`Approve ${candidate.name} as co-mentor`} subtitle="This grants mentoring responsibilities. Choose the clan they will support." width="sm"
       footer={
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm">Cancel</button>
           <button onClick={promote} disabled={saving} className="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium disabled:opacity-50 inline-flex items-center gap-2">
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Crown className="w-4 h-4" />}Promote to co-mentor
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Crown className="w-4 h-4" />}Approve co-mentor
           </button>
         </div>
       }
@@ -164,7 +164,7 @@ export default function AdminPromotions() {
         <div className="mt-4 flex flex-wrap gap-2">
           <button onClick={() => setPromoting(c)} disabled={busy === c.id}
             className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium disabled:opacity-50">
-            <Crown className="w-4 h-4" />Promote
+            <Crown className="w-4 h-4" />Review nomination
           </button>
           <button onClick={() => decline(c)} disabled={busy === c.id}
             className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:border-rose-300 hover:text-rose-600 disabled:opacity-50">
@@ -180,8 +180,8 @@ export default function AdminPromotions() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-slate-900 mb-2 inline-flex items-center gap-2"><TrendingUp className="w-6 h-6 text-brand-600" />Promotions</h1>
-        <p className="text-slate-600">Mentors nominate strong mentees to become co-mentors. Review and grant the final promotion here.</p>
+        <h1 className="text-slate-900 mb-2 inline-flex items-center gap-2"><TrendingUp className="w-6 h-6 text-brand-600" />Co-mentor nominations</h1>
+        <p className="text-slate-600">Invite experienced mentees to help a clan as co-mentors. Review mentor recommendations, readiness and willingness before granting the role. This is a responsibility change, not a performance award.</p>
       </div>
 
       {loading ? (

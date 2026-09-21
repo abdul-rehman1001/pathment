@@ -20,8 +20,22 @@ router.get('/mentor/programs/:programId', authenticate, authorize(['mentor', 'ad
 router.get('/', authenticate, validateQuery(clanSchemas.listQuery), clanController.listClans);
 
 // Org-wide clan-health snapshot + insights (analytics consumers).
+router.get('/follow-ups', authenticate, requirePermissionMinScope(PERMISSIONS.ANALYTICS_VIEW), validateQuery(clanSchemas.followUpQuery), clanController.clanFollowUps);
 router.get('/health', authenticate, requirePermissionMinScope(PERMISSIONS.ANALYTICS_VIEW), clanController.clanHealth);
 router.get('/insights', authenticate, requirePermissionMinScope(PERMISSIONS.ANALYTICS_VIEW), clanController.clanInsights);
+
+// Photo edits deliberately do not grant membership, program or permission changes.
+const avatarService = require('../services/clanAvatarService');
+const upload = require('../middlewares/upload');
+const { catchAsync } = require('../middlewares/errorHandler');
+const { successResponse } = require('../utils/responses');
+const canEditAvatar = catchAsync(async (req, res, next) => { await avatarService.editableClan(req.params.id, req.user); next(); });
+router.post('/:id/avatar', authenticate, validateParams(clanSchemas.idParams), canEditAvatar, upload.singleSafe('file'), catchAsync(async (req, res) => {
+  res.json(successResponse('Clan photo updated', await avatarService.setAvatar(req.params.id, req.user, req.file)));
+}));
+router.delete('/:id/avatar', authenticate, validateParams(clanSchemas.idParams), catchAsync(async (req, res) => {
+  res.json(successResponse('Clan photo removed', await avatarService.removeAvatar(req.params.id, req.user)));
+}));
 
 // Clan detail.
 router.get('/:id', authenticate, validateParams(clanSchemas.idParams), clanController.getClan);

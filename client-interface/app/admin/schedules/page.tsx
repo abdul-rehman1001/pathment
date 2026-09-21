@@ -37,7 +37,7 @@ export default function AdminSchedulesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
+      <div className="admin-page-heading flex items-start justify-between gap-4">
         <div>
           <h1 className="text-slate-900 mb-1 flex items-center gap-2"><CalendarClock className="w-5 h-5 text-brand-600" /> Org Schedule Templates</h1>
           <p className="text-slate-600 text-sm">Author day-shape templates (standups, study blocks, rituals). Mentors import these and fill each slot with a roadmap or recurring task for their mentees.</p>

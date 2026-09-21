@@ -84,7 +84,7 @@ export default function VerifyEmailPage() {
       </div>
 
       {/* Verification Card */}
-      <div className="bg-card rounded-2xl shadow-xl shadow-slate-200/50 p-8 border border-slate-100">
+      <div className="auth-card">
         {/* Icon */}
         <div className="flex justify-center mb-6">
           {status === 'pending' && (
@@ -149,8 +149,8 @@ export default function VerifyEmailPage() {
         {status !== 'success' && status !== 'verifying' && (
           <>
             <div className="mb-6">
-              <label className="block text-slate-700 text-sm mb-2">Email address</label>
-              <input
+              <label htmlFor="verify-email-email" className="block text-slate-700 text-sm mb-2">Email address</label>
+              <input id="verify-email-email" autoComplete="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}

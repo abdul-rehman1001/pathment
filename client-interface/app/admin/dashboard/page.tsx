@@ -1,197 +1,381 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
+import { OrganizationCharts } from "@/components/admin/OrganizationCharts";
+
+import Link from "next/link";
+import { useMemo, useState } from "react";
 import {
-  Plus, Loader2, Users, Users2, AlertTriangle, Gauge, Clock,
-  BookOpen, ArrowUpRight,
-} from 'lucide-react';
-import { StatsCard } from '@/components/admin/ui';
-import { AnnouncementsCard } from '@/components/shared/AnnouncementsCard';
-import { Avatar } from '@/components/shared/Avatar';
+  Users,
+  Users2,
+  ClipboardCheck,
+  Flag,
+  ArrowUpRight,
+  Loader2,
+  Search,
+  CheckCircle2,
+} from "lucide-react";
+import { useClanHealth } from "@/lib/hooks/admin";
+import { usePermissions } from "@/lib/hooks/usePermissions";
+import { AnnouncementsCard } from "@/components/shared/AnnouncementsCard";
+import { Avatar } from "@/components/shared/Avatar";
+import { MetricTile } from "@/components/shared/MetricTile";
+
 import {
-  useClanHealth,
-  type ClanHealthCard,
-  type ProgramHealth,
-  type ClanStatus,
-} from '@/lib/hooks/admin';
-
-const STATUS_META: Record<ClanStatus, { dot: string; border: string; chip: string; bar: string }> = {
-  red:   { dot: 'bg-rose-500',    border: 'border-l-rose-400',    chip: 'bg-rose-50 text-rose-700 border-rose-200',       bar: 'bg-rose-500' },
-  amber: { dot: 'bg-amber-500',   border: 'border-l-amber-400',   chip: 'bg-amber-50 text-amber-700 border-amber-200',    bar: 'bg-amber-500' },
-  green: { dot: 'bg-emerald-500', border: 'border-l-emerald-400', chip: 'bg-emerald-50 text-emerald-700 border-emerald-200', bar: 'bg-emerald-500' },
-};
-
-function ClanCard({ clan }: { clan: ClanHealthCard }) {
-  const meta = STATUS_META[clan.status];
-  return (
-    <Link
-      href={`/admin/clans?clan=${clan.id}`}
-      className={`group block rounded-2xl border border-slate-200 border-l-4 ${meta.border} bg-card p-5 hover:shadow-sm hover:border-brand-300 transition-all`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="font-medium text-slate-900 truncate">{clan.name}</p>
-          <p className="mt-0.5 text-xs text-slate-500">
-            {clan.leadMentor?.name ? `Led by ${clan.leadMentor.name}` : 'No lead mentor'}
-            {clan.mentorCount > 1 ? ` · ${clan.mentorCount} mentors` : ''}
-          </p>
-        </div>
-        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-xs font-medium shrink-0 ${meta.chip}`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
-          {clan.statusLabel}
-        </span>
-      </div>
-
-      {/* Completion bar */}
-      <div className="mt-4">
-        <div className="flex items-center justify-between text-xs text-slate-500 mb-1.5">
-          <span>Avg completion</span>
-          <span className="font-medium text-slate-700">{clan.avgCompletion}%</span>
-        </div>
-        <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
-          <div className={`h-full rounded-full ${meta.bar}`} style={{ width: `${clan.avgCompletion}%` }} />
-        </div>
-      </div>
-
-      {/* Metric grid */}
-      <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-        <div className="rounded-lg bg-slate-50 py-2">
-          <p className="text-sm font-semibold text-slate-900">{clan.memberCount}</p>
-          <p className="text-[11px] text-slate-500">mentees</p>
-        </div>
-        <div className="rounded-lg bg-slate-50 py-2">
-          <p className="text-sm font-semibold text-slate-900">{clan.avgOnTime}%</p>
-          <p className="text-[11px] text-slate-500">on-time</p>
-        </div>
-        <div className={`rounded-lg py-2 ${clan.atRisk > 0 ? 'bg-rose-50 dark:bg-rose-500/10' : 'bg-slate-50'}`}>
-          <p className={`text-sm font-semibold ${clan.atRisk > 0 ? 'text-rose-700 dark:text-rose-300' : 'text-slate-900'}`}>{clan.atRisk}</p>
-          <p className="text-[11px] text-slate-500">at risk</p>
-        </div>
-      </div>
-
-      <p className="mt-3 text-xs text-slate-500">{clan.statusReason}</p>
-    </Link>
-  );
-}
-
-function ProgramGroup({ program }: { program: ProgramHealth }) {
-  return (
-    <section className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-brand-50 flex items-center justify-center shrink-0">
-            <BookOpen className="w-4 h-4 text-brand-600" />
-          </div>
-          <div className="min-w-0">
-            <h2 className="text-slate-900 font-medium truncate">{program.name}</h2>
-            <p className="text-xs text-slate-500">
-              {program.clanCount} clan{program.clanCount === 1 ? '' : 's'} · {program.memberCount} mentee{program.memberCount === 1 ? '' : 's'}
-              {program.atRisk > 0 ? (
-                <span className="text-rose-600"> · {program.atRisk} at risk</span>
-              ) : ''}
-            </p>
-          </div>
-        </div>
-        <Link
-          href={program.id === 'unassigned' ? '/admin/clans' : `/admin/programs/${program.id}`}
-          className="text-sm text-brand-600 hover:text-brand-700 flex items-center gap-1 shrink-0"
-        >
-          View <ArrowUpRight className="w-3.5 h-3.5" />
-        </Link>
-      </div>
-
-      {program.clans.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-200 bg-card py-8 text-center text-sm text-slate-500">
-          No clans in this program yet.
-        </div>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {program.clans.map((c) => <ClanCard key={c.id} clan={c} />)}
-        </div>
-      )}
-    </section>
-  );
-}
+  filterClanQueue,
+  CLAN_PAGE_SIZE as PAGE_SIZE,
+  type Queue,
+} from "@/lib/utils/admin-clan-queue";
 
 export default function AdminDashboardPage() {
-  const { kpis, programs, atRiskMentees, loading, error, refetch } = useClanHealth();
+  const { kpis, programs, atRiskMentees, loading, error, refetch, summary } =
+    useClanHealth();
+  const { can } = usePermissions();
+  const [queue, setQueue] = useState<Queue>("attention");
+  const [query, setQuery] = useState("");
+  const [programId, setProgramId] = useState("");
+  const [page, setPage] = useState(1);
+  const clans = useMemo(
+    () =>
+      programs.flatMap((program) =>
+        program.clans.map((clan) => ({
+          ...clan,
+          programName: program.name,
+          programId: program.id,
+        })),
+      ),
+    [programs],
+  );
+  const attention = clans.filter((clan) => clan.status !== "green");
+  const pending = clans.reduce((sum, clan) => sum + clan.pendingApprovals, 0);
+  const blockers = clans.reduce((sum, clan) => sum + clan.openBlockers, 0);
+  const filtered = useMemo(
+    () => filterClanQueue(clans, { programId, query, queue }),
+    [clans, programId, query, queue],
+  );
+  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pages);
+  const visible = filtered.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
+  const selectQueue = (next: Queue) => {
+    setQueue(next);
+    setPage(1);
+  };
+  const priorityMentees = [...atRiskMentees]
+    .sort(
+      (a, b) =>
+        Number(b.risk === "high") - Number(a.risk === "high") ||
+        a.absoluteProgress - b.absoluteProgress,
+    )
+    .slice(0, 5);
+
+  if (loading)
+    return (
+      <div className="flex justify-center py-24" role="status">
+        <Loader2 className="h-7 w-7 animate-spin text-brand-600" />
+        <span className="sr-only">Loading organization overview</span>
+      </div>
+    );
+  if (error)
+    return (
+      <div className="admin-page-heading">
+        <div>
+          <h1>Overview unavailable</h1>
+          <p className="mt-2 text-muted-foreground">{error}</p>
+        </div>
+        <button
+          onClick={refetch}
+          className="rounded-xl bg-brand-600 px-4 py-2 text-white"
+        >
+          Try again
+        </button>
+      </div>
+    );
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="space-y-6">
+      <header className="admin-overview-hero flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-slate-900 font-semibold mb-2">Clan health</h1>
-          <p className="text-slate-600">How every clan is tracking, program by program.</p>
+          <p className="text-xs uppercase tracking-widest mb-2">
+            Organization overview
+          </p>
+          <h1>Focus on what moves things forward</h1>
+          <p className="mt-2">
+            {kpis?.programs ?? programs.length} program
+            {(kpis?.programs ?? programs.length) === 1 ? "" : "s"} ·{" "}
+            {kpis?.clans ?? clans.length} clans · {kpis?.avgOnTime ?? 0}%
+            on-time delivery
+          </p>
         </div>
-        <Link href="/admin/programs/list?create=1">
-          <button className="inline-flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white px-5 py-2.5 rounded-xl transition-colors">
-            <Plus className="w-4 h-4" />
-            Create program
-          </button>
-        </Link>
+        {can("intake.manage") && (
+          <Link
+            href="/admin/cohorts"
+            className="inline-flex items-center gap-2 rounded-xl border border-white/30 bg-white/10 px-4 py-3 text-sm font-medium text-white hover:bg-white/20"
+          >
+            Manage admissions <ArrowUpRight className="h-4 w-4" />
+          </Link>
+        )}
+      </header>
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+        <div>
+          <MetricTile
+            label="Active mentees"
+            value={kpis?.activeMentees ?? 0}
+            icon={Users}
+            tone={0}
+            hint={`${kpis?.avgCompletion ?? 0}% average completion`}
+            compact
+          />
+        </div>
+        <a href="#clan-queue" onClick={() => selectQueue("attention")}>
+          <MetricTile
+            label="Clans needing support"
+            value={attention.length}
+            icon={Users2}
+            tone={3}
+            hint="Review priority clans →"
+            compact
+          />
+        </a>
+        <a href="#clan-queue" onClick={() => selectQueue("reviews")}>
+          <MetricTile
+            label="Pending approvals"
+            value={pending}
+            icon={ClipboardCheck}
+            tone={1}
+            hint="Find the responsible clan →"
+            compact
+          />
+        </a>
+        <a href="#clan-queue" onClick={() => selectQueue("blockers")}>
+          <MetricTile
+            label="Open roadblocks"
+            value={blockers}
+            icon={Flag}
+            tone={2}
+            hint="See where support is needed →"
+            compact
+          />
+        </a>
       </div>
-
-      {/* KPI strip */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-        <StatsCard icon={Users} label="Active mentees" value={kpis?.activeMentees ?? '…'} colorClass="text-brand-600 bg-brand-50" />
-        <StatsCard icon={Gauge} label="Avg completion" value={kpis ? `${kpis.avgCompletion}%` : '…'} colorClass="text-emerald-600 bg-emerald-50" />
-        <StatsCard icon={Clock} label="Avg on-time" value={kpis ? `${kpis.avgOnTime}%` : '…'} colorClass="text-sky-600 bg-sky-50" />
-        <StatsCard icon={AlertTriangle} label="At risk" value={kpis?.atRisk ?? '…'} colorClass="text-rose-600 bg-rose-50" />
-      </div>
-
-      <AnnouncementsCard href="/admin/announcements" />
-
-      {/* Org-wide at-risk rollup */}
-      {atRiskMentees.length > 0 && (
-        <div className="rounded-2xl border border-slate-200 bg-card">
-          <div className="px-6 py-4 border-b border-slate-200 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-rose-500" />
-            <h2 className="text-slate-900 font-medium">Needs attention</h2>
-            <span className="text-xs text-slate-500">({atRiskMentees.length})</span>
+      <OrganizationCharts summary={summary} />
+      <section
+        id="clan-queue"
+        className="scroll-mt-6 rounded-3xl border border-border bg-card overflow-hidden"
+      >
+        <div className="p-5 sm:p-6 space-y-4">
+          <div className="flex flex-wrap justify-between items-center gap-3">
+            <div>
+              <h2 className="text-lg">Clan priorities</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Highest concern first. Review a focused list, then open a clan
+                to act.
+              </p>
+            </div>
+            {can("clan.create") && (
+              <Link
+                href="/admin/clans"
+                className="text-sm font-medium text-brand-700 dark:text-brand-300"
+              >
+                Manage all clans →
+              </Link>
+            )}
           </div>
-          <div className="divide-y divide-slate-100">
-            {atRiskMentees.map((m) => (
-              <div key={m.id} className="flex items-center gap-3 px-6 py-3">
-                <Avatar name={m.name} src={m.avatarUrl} initials={m.avatar} size="md" href={`/admin/mentees/${m.id}`} />
+          <div
+            className="flex flex-wrap gap-2"
+            aria-label="Clan priority filters"
+          >
+            {(
+              [
+                ["attention", "Needs attention"],
+                ["reviews", "Pending approvals"],
+                ["blockers", "Roadblocks"],
+                ["all", "All clans"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                aria-pressed={queue === id}
+                onClick={() => selectQueue(id)}
+                className={`rounded-full px-4 py-2 text-sm font-medium ${queue === id ? "bg-brand-600 text-white" : "bg-muted text-muted-foreground hover:text-foreground"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <label className="relative flex-1 min-w-48">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <input
+                aria-label="Search clans or lead mentors"
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  setPage(1);
+                }}
+                placeholder="Search clans or lead mentors…"
+                className="w-full rounded-xl border border-border bg-card py-2.5 pl-9 pr-3 text-sm"
+              />
+            </label>
+            <select
+              aria-label="Filter by program"
+              value={programId}
+              onChange={(event) => {
+                setProgramId(event.target.value);
+                setPage(1);
+              }}
+              className="max-w-full rounded-xl border border-border bg-card px-3 py-2 text-sm"
+            >
+              <option value="">All programs</option>
+              {programs.map((program) => (
+                <option key={program.id} value={program.id}>
+                  {program.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        {visible.length ? (
+          <div className="overflow-x-auto">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Clan & lead mentor</th>
+                  <th>Status</th>
+                  <th>Mentees</th>
+                  <th>Approvals</th>
+                  <th>Roadblocks</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((clan) => (
+                  <tr key={clan.id}>
+                    <td>
+                      <div className="font-semibold">
+                        {can("clan.create") ? (
+                          <Link
+                            className="text-brand-700 dark:text-brand-300 hover:underline"
+                            href={`/admin/clans?clan=${clan.id}`}
+                          >
+                            {clan.name}
+                          </Link>
+                        ) : (
+                          clan.name
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {clan.leadMentor?.name || "No lead mentor assigned"} ·{" "}
+                        {clan.programName}
+                      </p>
+                    </td>
+                    <td>
+                      <span
+                        className={`inline-block rounded-full px-2.5 py-1 text-xs font-medium ${clan.status === "red" ? "bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300" : clan.status === "amber" ? "bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-300" : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"}`}
+                      >
+                        {clan.statusLabel}
+                      </span>
+                      <p className="mt-1 max-w-xs text-xs text-muted-foreground">
+                        {clan.statusReason}
+                      </p>
+                    </td>
+                    <td className="tabular-nums">{clan.memberCount}</td>
+                    <td className="tabular-nums">{clan.pendingApprovals}</td>
+                    <td className="tabular-nums">{clan.openBlockers}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="p-10 text-center">
+            <CheckCircle2 className="mx-auto mb-3 h-8 w-8 text-brand-600" />
+            <p className="font-medium">No clans in this view</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Try another filter or search to explore the rest of your
+              organization.
+            </p>
+          </div>
+        )}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-6 py-4 text-sm">
+          <span className="text-muted-foreground">
+            {filtered.length
+              ? `${(currentPage - 1) * PAGE_SIZE + 1}–${Math.min(currentPage * PAGE_SIZE, filtered.length)} of ${filtered.length} clans`
+              : "0 clans"}
+          </span>
+          <div className="flex gap-2">
+            <button
+              disabled={currentPage === 1}
+              onClick={() => setPage(currentPage - 1)}
+              className="rounded-lg border border-border px-3 py-1.5 disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <button
+              disabled={currentPage === pages}
+              onClick={() => setPage(currentPage + 1)}
+              className="rounded-lg border border-border px-3 py-1.5 disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      </section>
+      {priorityMentees.length > 0 && (
+        <section className="rounded-3xl border border-border bg-card p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div>
+              <h2 className="text-lg">Mentees to follow up with</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Five priority cases · open the full queue to filter by clan or urgency ·{" "}
+                {kpis?.atRisk ?? atRiskMentees.length} mentees flagged overall.
+              </p>
+            </div>
+            {can("user.manage") && (
+              <Link
+                href="/admin/follow-ups"
+                className="text-sm font-medium text-brand-700 dark:text-brand-300"
+              >
+                Browse all follow-ups →
+              </Link>
+            )}
+          </div>
+          <div className="divide-y divide-border">
+            {priorityMentees.map((mentee) => (
+              <div key={mentee.id} className="flex gap-3 py-4 items-center">
+                <Avatar
+                  name={mentee.name}
+                  src={mentee.avatarUrl}
+                  initials={mentee.avatar}
+                  size="md"
+                />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-slate-900 truncate">{m.name}</p>
-                  <p className="text-xs text-slate-500 truncate">{m.program} · {m.riskReason}</p>
+                  <p className="font-medium text-sm">
+                    {can("user.manage") ? (
+                      <Link
+                        href={`/admin/mentees/${mentee.id}`}
+                        className="hover:underline"
+                      >
+                        {mentee.name}
+                      </Link>
+                    ) : (
+                      mentee.name
+                    )}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {mentee.riskReason}
+                  </p>
                 </div>
-                <span className={`hidden sm:inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-xs font-medium ${
-                  m.risk === 'high' ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-amber-50 text-amber-700 border-amber-200'
-                }`}>
-                  {m.risk === 'high' ? 'At risk' : 'Watch'}
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {mentee.absoluteProgress}% complete
                 </span>
-                <span className="text-xs text-slate-500 w-12 text-right shrink-0">{m.absoluteProgress}%</span>
               </div>
             ))}
           </div>
-        </div>
+        </section>
       )}
-
-      {/* Programs → clans */}
-      {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="w-8 h-8 animate-spin text-brand-600" />
-        </div>
-      ) : error ? (
-        <div className="bg-card rounded-2xl border border-slate-200 py-16 text-center">
-          <p className="text-slate-600 mb-3">{error}</p>
-          <button onClick={refetch} className="text-brand-600 hover:text-brand-700 text-sm font-medium">Try again</button>
-        </div>
-      ) : programs.length === 0 ? (
-        <div className="bg-card rounded-2xl border border-slate-200 py-16 text-center">
-          <Users2 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-          <p className="text-slate-600">No clans yet. Create a program and form clans to see their health here.</p>
-          <Link href="/admin/clans" className="mt-3 inline-block text-brand-600 hover:text-brand-700 text-sm font-medium">
-            Go to Clans
-          </Link>
-        </div>
-      ) : (
-        <div className="space-y-10">
-          {programs.map((p) => <ProgramGroup key={p.id} program={p} />)}
-        </div>
+      {can("community.moderate") && (
+        <AnnouncementsCard href="/admin/announcements" limit={2} />
       )}
     </div>
   );

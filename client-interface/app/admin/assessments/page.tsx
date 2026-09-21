@@ -34,7 +34,7 @@ export default function AdminAssessmentsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
+      <div className="admin-page-heading flex items-start justify-between gap-4">
         <div>
           <h1 className="text-slate-900 mb-2">Assessments</h1>
           <p className="text-slate-600">Build mixed-type assessments (quiz, text, file, link) and attach them to a cohort&apos;s intake.</p>

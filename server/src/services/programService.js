@@ -1,3 +1,4 @@
+const { programMentorCounts } = require('./programMentorCounts');
 const { sequelize, models } = require('../db');
 const { Op } = require('sequelize');
 const { 
@@ -163,12 +164,6 @@ class ProgramService {
           model: models.User,
           as: 'creator',
           attributes: ['id', 'firstName', 'lastName', 'email']
-        },
-        {
-          model: models.Enrollment,
-          as: 'enrollments',
-          attributes: ['id'],
-          required: false
         }
       ],
       limit,
@@ -177,47 +172,21 @@ class ProgramService {
       distinct: true
     });
 
-    // Add completion field and mentor count to each program
-    const programsWithCompletion = await Promise.all(rows.map(async program => {
-      const programJSON = program.toJSON();
-      
-      // Count unique mentors with an active match in this program.
-      const [mentorCount, completionResult] = await Promise.all([
-        models.MentorMenteeMatch.count({
-          distinct: true,
-          col: 'mentor_id',
-          where: { status: 'active' },
-          include: [{
-            model: models.Enrollment,
-            as: 'enrollment',
-            where: { programId: program.id },
-            attributes: [],
-            required: true
-          }]
-        }),
-        models.Enrollment.findOne({
-          where: {
-            programId: program.id,
-            status: { [Op.in]: ['matched', 'active', 'in_progress', 'program_completed'] }
-          },
-          attributes: [
-            [sequelize.fn('AVG', sequelize.col('overall_progress_percentage')), 'avgProgress']
-          ],
-          raw: true
-        })
-      ]);
-
-      const completion = Math.round(parseFloat(completionResult?.avgProgress) || 0);
-
-      return {
-        ...programJSON,
-        completion,
-        _count: {
-          enrollments: program.enrollments?.length || 0,
-          mentors: mentorCount
-        }
-      };
-    }));
+    const mentorCounts = await programMentorCounts(rows.map(program => program.id));
+    // Aggregate enrollment counts in SQL instead of materializing every enrollee.
+    const enrollmentStats = rows.length ? await sequelize.query(`
+      SELECT program_id, COUNT(*)::integer AS count,
+        ROUND(AVG(CASE WHEN status IN ('matched','active','in_progress','program_completed')
+          THEN overall_progress_percentage END)) AS completion
+      FROM enrollments WHERE program_id IN (:ids) GROUP BY program_id`, {
+      replacements: { ids: rows.map(program => program.id) }, type: require('sequelize').QueryTypes.SELECT,
+    }) : [];
+    const statsByProgram = new Map(enrollmentStats.map(row => [row.program_id, row]));
+    const programsWithCompletion = rows.map(program => {
+      const stats = statsByProgram.get(program.id);
+      return { ...program.toJSON(), completion: Number(stats?.completion) || 0,
+        _count: { enrollments: Number(stats?.count) || 0, mentors: mentorCounts.get(program.id) || 0 } };
+    });
 
     return {
       programs: programsWithCompletion,
@@ -303,18 +272,7 @@ class ProgramService {
 
     // Count unique mentors and compute average completion in parallel
     const [mentorCount, completionResult] = await Promise.all([
-      models.MentorMenteeMatch.count({
-        distinct: true,
-        col: 'mentor_id',
-        where: { status: 'active' },
-        include: [{
-          model: models.Enrollment,
-          as: 'enrollment',
-          where: { programId: program.id },
-          attributes: [],
-          required: true
-        }]
-      }),
+      programMentorCounts([program.id]).then(counts => counts.get(program.id) || 0),
       models.Enrollment.findOne({
         where: {
           programId: program.id,

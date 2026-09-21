@@ -1,5 +1,6 @@
 'use client';
 
+import type { CSSProperties } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
@@ -172,7 +173,7 @@ export default function RichTextEditor({
       </div>
 
       {/* Editor Content */}
-      <div className="p-4" style={{ minHeight }}>
+      <div className="p-4" style={{ minHeight, '--editor-min-height': minHeight } as CSSProperties}>
         <EditorContent editor={editor} />
       </div>
     </div>

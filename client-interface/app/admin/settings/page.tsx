@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { User, Bell, Shield, Loader2, Save, KeyRound, Palette, Lock } from 'lucide-react';
 import { useAdminSettings } from '@/lib/hooks/admin';
-import { PageHeader, TabBar } from '@/components/admin/ui';
+import { PageHeader } from '@/components/admin/ui';
 import SecurityTab from '@/components/shared/SecurityTab';
 import { LocationDetailsFields } from '@/components/settings/LocationDetailsFields';
 import { ProfilePhotoField } from '@/components/settings/ProfilePhotoField';
@@ -16,7 +16,7 @@ import { PhoneField } from '@/components/shared/PhoneField';
 
 const TABS = [
   { id: 'profile', label: 'Profile', icon: User },
-  { id: 'appearance', label: 'Appearance', icon: Palette },
+  { id: 'appearance', label: 'Display', icon: Palette },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'ai', label: 'AI Connections', icon: KeyRound },
   { id: 'review-lock', label: 'Review Lock', icon: Lock },
@@ -57,12 +57,12 @@ function AdminSettingsInner() {
     <div className="space-y-6">
       <PageHeader title="Admin Settings" subtitle="Manage your admin profile and preferences" />
 
-      <div className="bg-card rounded-2xl border border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <TabBar tabs={TABS} activeTab={activeTab} onChange={setActiveTab} />
-        </div>
+      <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
+        <nav aria-label="Settings sections" className="flex gap-1 overflow-x-auto lg:flex-col lg:items-stretch">
+          {TABS.map(tab => <button key={tab.id} onClick={() => setActiveTab(tab.id)} aria-current={activeTab === tab.id ? 'page' : undefined} className={`inline-flex items-center gap-3 whitespace-nowrap rounded-xl px-4 py-3 text-left text-sm font-medium ${activeTab === tab.id ? 'bg-brand-600 text-white' : 'text-muted-foreground hover:bg-muted'}`}><tab.icon className="h-4 w-4" />{tab.label}</button>)}
+        </nav>
 
-        <div className="p-8">
+        <div className="rounded-3xl border border-border bg-card p-4 sm:p-8">
           {activeTab === 'profile' && (
             <div className="space-y-6">
               <ProfilePhotoField />

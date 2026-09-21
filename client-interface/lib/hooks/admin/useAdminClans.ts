@@ -18,6 +18,7 @@ export interface ClanMembershipRow {
 }
 
 export interface Clan {
+  avatarUrl?: string | null;
   id: string;
   name: string;
   description?: string;

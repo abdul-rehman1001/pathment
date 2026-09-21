@@ -1,0 +1,93 @@
+[data-admin-appearance] main h1 {
+  font-size: clamp(1.5rem, 2.5vw, 1.9rem);
+  font-weight: 650;
+  letter-spacing: -0.035em;
+}
+[data-admin-appearance] main h2 {
+  font-weight: 600;
+}
+.admin-page-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background: var(--card);
+  padding: 24px;
+}
+.admin-page-heading p {
+  max-width: 70ch;
+  line-height: 1.6;
+}
+.admin-table {
+  width: 100%;
+  text-align: left;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+.admin-table th {
+  background: var(--muted);
+  padding: 14px 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+.admin-table td {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+}
+.admin-table tbody tr:hover {
+  background: color-mix(in srgb, var(--muted) 60%, transparent);
+}
+.admin-table caption {
+  padding: 18px 20px;
+  text-align: left;
+  font-weight: 600;
+}
+.admin-overview-hero {
+  border-radius: 26px;
+  background: linear-gradient(110deg, #00514d, #007d77);
+  padding: 28px;
+  color: white;
+}
+.admin-overview-hero h1 {
+  color: white;
+}
+.admin-overview-hero p {
+  color: #d4e9e5;
+}
+[data-admin-appearance]
+  main
+  :is(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--brand-500);
+  outline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-admin-appearance] * {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+[data-admin-appearance] [data-page-header] {
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 24px;
+  background: var(--card);
+}
+[data-admin-appearance] main table {
+  font-size: 0.875rem;
+}
+[data-admin-appearance] main thead {
+  background: var(--muted);
+}
+[data-admin-appearance] main th {
+  font-weight: 600;
+}
+[data-admin-appearance] main td {
+  vertical-align: middle;
+}

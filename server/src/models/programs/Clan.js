@@ -21,6 +21,7 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(150),
       allowNull: false
     },
+    avatarUrl: { type: DataTypes.TEXT, allowNull: true, field: 'avatar_url' },
     description: {
       type: DataTypes.TEXT
     },

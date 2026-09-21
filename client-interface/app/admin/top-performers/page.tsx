@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Award, Loader2, Trophy, Users } from 'lucide-react';
+import { PerformanceEvidenceDrawer } from '@/components/admin/PerformanceEvidenceDrawer';
 import { Avatar } from '@/components/shared/Avatar';
 import { SelectMenu } from '@/components/shared/SelectMenu';
 import { AgreementBadge, SignalStrip } from '@/components/top-performers/AgreementBadge';
@@ -71,7 +72,7 @@ export default function AdminTopPerformersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="admin-page-heading flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-slate-900 mb-2 inline-flex items-center gap-2">
             <Trophy className="w-6 h-6 text-brand-600" /> Top performers
@@ -150,6 +151,7 @@ function NominationCard({
   onDecide: (status: 'shortlisted' | 'awarded' | 'declined') => void;
   readOnly?: boolean;
 }) {
+  const [evidenceOpen, setEvidenceOpen] = useState(false);
   const name = nomination.mentee
     ? `${nomination.mentee.firstName} ${nomination.mentee.lastName}`.trim()
     : 'Mentee';
@@ -182,6 +184,9 @@ function NominationCard({
       </div>
 
       <SignalStrip signals={nomination.systemSignals} />
+      <button onClick={() => setEvidenceOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-4 py-2.5 text-sm font-semibold text-brand-700 hover:bg-brand-100">Review completed work & submissions →</button>
+      {evidenceOpen && <PerformanceEvidenceDrawer nominationId={nomination.id} name={name} onClose={() => setEvidenceOpen(false)} />}
+
 
       {nomination.decisionNote && (
         <p className="text-[11px] text-muted-foreground">

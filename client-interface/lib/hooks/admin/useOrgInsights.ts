@@ -1,4 +1,6 @@
 'use client';
+import type { OrganizationSummary } from '@/components/admin/OrganizationCharts';
+
 
 import { qk, useApiQuery } from '@/lib/query';
 import { clanApi } from '@/lib/services/clan-api';
@@ -29,6 +31,8 @@ export interface InsightDistributionRow {
 }
 
 export interface OrgInsights {
+  summary?: OrganizationSummary;
+  generatedAt?: string;
   kpis: {
     activeMentees: number;
     avgCompletion: number;

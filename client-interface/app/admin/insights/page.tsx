@@ -1,184 +1,84 @@
 'use client';
 
-import { Loader2, TrendingDown, Flag, CalendarClock, Scale } from 'lucide-react';
+import Link from 'next/link';
+import { useState } from 'react';
+import { Loader2 } from 'lucide-react';
+import { OrganizationCharts } from '@/components/admin/OrganizationCharts';
 import { PageHeader } from '@/components/admin/ui';
 import { useOrgInsights, type InsightStatus } from '@/lib/hooks/admin';
 
-const STATUS_DOT: Record<InsightStatus, string> = {
-  red: 'bg-red-500', amber: 'bg-amber-500', green: 'bg-emerald-500',
+const STATUS_LABEL: Record<InsightStatus, string> = {
+  red: 'High priority', amber: 'Watch', green: 'Healthy',
 };
 const STATUS_BADGE: Record<InsightStatus, string> = {
-  red: 'bg-red-50 text-red-700', amber: 'bg-amber-50 text-amber-700', green: 'bg-emerald-50 text-emerald-700',
+  red: 'bg-rose-50 text-rose-700', amber: 'bg-amber-50 text-amber-700', green: 'bg-emerald-50 text-emerald-700',
 };
+const PAGE_SIZE = 8;
 
 export default function AdminInsights() {
+  const [view, setView] = useState<'overview' | 'clans'>('overview');
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState('all');
+  const [page, setPage] = useState(1);
   const { insights, loading, error, refetch } = useOrgInsights();
 
-  if (loading) {
-    return <div className="flex items-center justify-center py-24"><Loader2 className="w-8 h-8 animate-spin text-brand-600" /></div>;
-  }
-  if (error || !insights) {
-    return (
-      <div className="bg-card rounded-2xl border border-slate-200 py-16 text-center">
-        <p className="text-slate-600 mb-3">{error || 'No insights available.'}</p>
-        <button onClick={refetch} className="text-brand-600 hover:text-brand-700 text-sm font-medium">Try again</button>
-      </div>
-    );
-  }
+  if (loading) return <div role="status" className="flex items-center justify-center gap-2 py-24 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" />Loading insights…</div>;
+  if (error || !insights) return <div className="rounded-xl border bg-card p-8 text-center"><p>{error || 'No insights available.'}</p><button onClick={refetch} className="mt-3 text-sm text-brand-700">Try again</button></div>;
 
-  const { kpis, fairness, clans, distribution, redClans } = insights;
-  const gap = fairness.gap;
+  const { kpis, clans, fairness } = insights;
+  const filtered = clans.filter(clan => (status === 'all' || clan.status === status) && `${clan.name} ${clan.program}`.toLowerCase().includes(search.trim().toLowerCase()));
+  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pages);
+  const visible = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   return (
-    <div className="space-y-6">
-      <PageHeader title="Insights" subtitle="Outcomes, fairness and clan comparisons across the org" />
-
-      {/* Fairness digest - the org's headline story */}
-      <div className="rounded-2xl border border-brand-200 bg-gradient-to-br from-brand-50 dark:from-brand-500/10 to-card p-5 flex flex-wrap items-start gap-3">
-        <span className="w-9 h-9 rounded-xl bg-brand-100 flex items-center justify-center shrink-0">
-          <Scale className="w-5 h-5 text-brand-600" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-600">Fairness lens</p>
-          <p className="mt-1 text-sm leading-relaxed text-slate-700">
-            <strong className="text-slate-900">{kpis.clans - kpis.clansRed} of {kpis.clans} clans healthy</strong>
-            {kpis.clansRed > 0 ? <> · {redClans.slice(0, 3).join(', ')}{redClans.length > 3 ? ` +${redClans.length - 3}` : ''} need attention</> : <> · none in the red</>}.
-            {' '}Org relative progress runs{' '}
-            <strong className="text-brand-700 tabular-nums">{gap >= 0 ? `${gap} pts above` : `${Math.abs(gap)} pts below`}</strong>{' '}
-            absolute, so mentors are logging real constraints rather than hiding them.
-          </p>
+    <div className="space-y-5">
+      <PageHeader title="Insights" subtitle={`${kpis.activeMentees.toLocaleString()} active mentees · ${kpis.clans.toLocaleString()} clans · current snapshot`} />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="inline-flex gap-1 rounded-xl border border-border bg-card p-1" aria-label="Insight views">
+          {(['overview', 'clans'] as const).map(item => <button key={item} aria-pressed={view === item} onClick={() => setView(item)} className={`rounded-lg px-4 py-2 text-sm font-medium ${view === item ? 'bg-brand-600 text-white' : 'text-muted-foreground hover:bg-muted'}`}>{item === 'overview' ? 'At a glance' : 'Compare clans'}</button>)}
         </div>
+        <Link href="/admin/follow-ups" className="text-sm font-medium text-brand-700 hover:underline">Open follow-up queue →</Link>
       </div>
 
-      {/* KPI strip */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {[
-          { label: 'Avg completion', value: `${kpis.avgCompletion}%`, accent: 'bg-sky-500' },
-          { label: 'Extensions granted', value: String(kpis.totalExtensions), accent: 'bg-amber-500' },
-          { label: 'Open roadblocks', value: String(kpis.totalOpenBlockers), accent: 'bg-red-500' },
-          { label: 'Clans in red', value: String(kpis.clansRed), accent: 'bg-red-500' },
-        ].map((s) => (
-          <div key={s.label} className="relative overflow-hidden rounded-2xl bg-card border border-slate-200 p-5">
-            <span className={`absolute left-0 top-0 h-full w-1 ${s.accent}`} />
-            <div className="text-xs text-slate-500">{s.label}</div>
-            <div className="mt-1.5 text-2xl font-semibold text-slate-900 tabular-nums">{s.value}</div>
+      {view === 'overview' ? <>
+        <section className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-card p-4">
+          <div>
+            <h2 className="font-semibold text-foreground">{kpis.clansRed ? `${kpis.clansRed.toLocaleString()} ${kpis.clansRed === 1 ? 'clan needs' : 'clans need'} priority attention` : 'No clans in the highest concern group'}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{kpis.avgCompletion}% average completion · {kpis.totalOpenBlockers.toLocaleString()} open roadblocks</p>
           </div>
-        ))}
-      </div>
-
-      {/* Clan comparison - worst first */}
-      <div className="bg-card rounded-2xl border border-slate-200">
-        <div className="px-6 py-5 border-b border-slate-100">
-          <h2 className="text-slate-900">Clan comparison</h2>
-          <p className="text-xs text-slate-400 mt-0.5">All {clans.length} clans, worst first.</p>
+          <button onClick={() => { setStatus(kpis.clansRed ? 'red' : 'all'); setPage(1); setView('clans'); }} className="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted">Review clans →</button>
+        </section>
+        <OrganizationCharts summary={insights.summary} />
+        <details className="rounded-xl border border-border bg-card p-4">
+          <summary className="cursor-pointer text-sm font-medium">How adjustments affect progress</summary>
+          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">Recorded progress averages {fairness.avgAbsolute}%; adjusted progress averages {fairness.avgRelative}%. There are {kpis.totalExtensions.toLocaleString()} approved extensions. Adjustments provide context, not a ranking of individual mentees.</p>
+        </details>
+      </> : <section className="overflow-hidden rounded-xl border border-border bg-card">
+        <div className="flex flex-wrap gap-3 border-b border-border p-4">
+          <input aria-label="Search clan comparisons" value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="Find a clan or program…" className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+          <select aria-label="Filter clans by health" value={status} onChange={event => { setStatus(event.target.value); setPage(1); }} className="rounded-lg border border-border bg-background px-3 py-2 text-sm">
+            <option value="all">All health states</option><option value="red">High priority</option><option value="amber">Watch</option><option value="green">Healthy</option>
+          </select>
         </div>
-        {clans.length === 0 ? (
-          <p className="px-6 py-10 text-center text-sm text-slate-400">No clans yet.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-sm">
-              <thead>
-                <tr className="border-b border-slate-100">
-                  {['Clan', 'Members', 'Completion', 'On-time', 'Fair', 'Extensions', 'Roadblocks', 'At-risk'].map((h, i) => (
-                    <th key={h} className={`px-4 py-2.5 text-[11px] font-medium uppercase tracking-wide text-slate-400 ${i === 0 ? 'text-left' : 'text-right'}`}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {clans.map((c) => (
-                  <tr key={c.id} className="hover:bg-slate-50/60">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${STATUS_DOT[c.status]}`} />
-                        <span className="font-medium text-slate-900">{c.name}</span>
-                        <span className={`px-1.5 py-0.5 rounded-md text-[11px] font-medium ${STATUS_BADGE[c.status]}`}>{c.statusLabel}</span>
-                        <span className="text-xs text-slate-400 hidden md:inline">· {c.program}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-slate-600">{c.memberCount}</td>
-                    <td className="px-4 py-3 text-right tabular-nums text-slate-900">{c.avgCompletion}%</td>
-                    <td className={`px-4 py-3 text-right tabular-nums ${c.avgOnTime < 60 ? 'text-red-600' : 'text-slate-900'}`}>{c.avgOnTime}%</td>
-                    <td className="px-4 py-3 text-right tabular-nums text-brand-700">{c.avgRelative}%</td>
-                    <td className="px-4 py-3 text-right tabular-nums text-slate-600">{c.extensions}</td>
-                    <td className={`px-4 py-3 text-right tabular-nums ${c.openBlockers >= 5 ? 'text-red-600' : 'text-slate-600'}`}>{c.openBlockers}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">
-                      <span className={c.atRisk > 0 ? 'text-red-600 font-medium' : 'text-slate-400'}>{c.atRisk}</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* Absolute vs relative - the fairness distribution */}
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="bg-card rounded-2xl border border-slate-200 p-6 lg:col-span-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Org cohort average</p>
-          <div className="mt-4 space-y-4">
-            <div>
-              <div className="mb-1 flex items-center justify-between text-xs text-slate-500"><span>Absolute</span><span className="tabular-nums font-medium text-slate-700">{fairness.avgAbsolute}%</span></div>
-              <div className="h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-slate-400 rounded-full" style={{ width: `${fairness.avgAbsolute}%` }} /></div>
-            </div>
-            <div>
-              <div className="mb-1 flex items-center justify-between text-xs text-slate-500"><span>Relative (fair)</span><span className="tabular-nums font-medium text-brand-700">{fairness.avgRelative}%</span></div>
-              <div className="h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-brand-500 rounded-full" style={{ width: `${fairness.avgRelative}%` }} /></div>
-            </div>
-          </div>
-          <p className="mt-4 text-xs leading-relaxed text-slate-500">
-            The cohort runs <strong className="text-brand-700 tabular-nums">{Math.abs(gap)} pts</strong> {gap >= 0 ? 'higher' : 'lower'} on
-            relative progress, so logged delays and roadblocks are shifting the picture.
-          </p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <caption className="sr-only">Clan comparison, highest concern first</caption>
+            <thead className="bg-muted/40 text-xs text-muted-foreground"><tr>{['Clan', 'Completion', 'Needs follow-up', ''].map((label, index) => <th key={index} scope="col" className={`px-4 py-3 font-medium ${index === 0 ? 'text-left' : 'text-right'}`}>{label || <span className="sr-only">Action</span>}</th>)}</tr></thead>
+            <tbody className="divide-y divide-border">{visible.map(clan => <tr key={clan.id} className="hover:bg-muted/30">
+              <td className="px-4 py-3"><div className="flex flex-wrap items-center gap-2"><span className="font-medium">{clan.name}</span><span className={`rounded-md px-2 py-0.5 text-xs ${STATUS_BADGE[clan.status]}`}>{STATUS_LABEL[clan.status]}</span></div><p className="mt-1 text-xs text-muted-foreground">{clan.program} · {clan.memberCount.toLocaleString()} mentees</p></td>
+              <td className="px-4 py-3 text-right tabular-nums">{clan.avgCompletion}%</td>
+              <td className="px-4 py-3 text-right tabular-nums">{clan.atRisk.toLocaleString()}</td>
+              <td className="px-4 py-3 text-right"><Link href={`/admin/follow-ups?clanId=${encodeURIComponent(clan.id)}`} aria-label={`View follow-ups for ${clan.name}`} className="whitespace-nowrap text-brand-700 hover:underline">Follow-ups →</Link></td>
+            </tr>)}</tbody>
+          </table>
+          {!visible.length && <p className="p-8 text-center text-sm text-muted-foreground">No clans match these filters.</p>}
         </div>
-
-        <div className="bg-card rounded-2xl border border-slate-200 p-6 lg:col-span-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-400 mb-3">By mentee, widest fairness gap first</p>
-          {distribution.length === 0 ? (
-            <p className="text-sm text-slate-400">No mentees to show.</p>
-          ) : (
-            <div className="space-y-3">
-              {distribution.map((m) => (
-                <div key={m.id} className="flex items-center gap-3">
-                  <div className="w-28 shrink-0 truncate text-xs font-medium text-slate-700">{m.name}</div>
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="w-3 shrink-0 text-[9px] uppercase text-slate-400">A</span>
-                      <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-slate-400 rounded-full" style={{ width: `${m.absolute}%` }} /></div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="w-3 shrink-0 text-[9px] uppercase text-slate-400">R</span>
-                      <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-brand-500 rounded-full" style={{ width: `${m.relative}%` }} /></div>
-                    </div>
-                  </div>
-                  <div className={`w-10 shrink-0 text-right text-[11px] tabular-nums ${m.gap > 0 ? 'text-brand-600' : 'text-slate-400'}`}>
-                    {m.gap >= 0 ? '+' : ''}{m.gap}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border p-4 text-xs text-muted-foreground">
+          <p aria-live="polite">{filtered.length ? `${(currentPage - 1) * PAGE_SIZE + 1}–${Math.min(currentPage * PAGE_SIZE, filtered.length)} of ${filtered.length.toLocaleString()} clans` : '0 clans'} · highest concern first</p>
+          <div className="flex items-center gap-3"><button disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Previous</button><span>{currentPage} / {pages}</span><button disabled={currentPage === pages} onClick={() => setPage(currentPage + 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Next</button></div>
         </div>
-      </div>
-
-      {/* Trend summary */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <div className="bg-card rounded-2xl border border-slate-200 p-5">
-          <div className="flex items-center gap-2"><CalendarClock className="w-4 h-4 text-amber-500" /><span className="text-xs text-slate-500">Extensions granted</span></div>
-          <div className="mt-2 text-2xl font-semibold text-slate-900 tabular-nums">{kpis.totalExtensions}</div>
-          <p className="mt-1 text-xs text-slate-400">Accepted delays across all clans.</p>
-        </div>
-        <div className="bg-card rounded-2xl border border-slate-200 p-5">
-          <div className="flex items-center gap-2"><Flag className="w-4 h-4 text-red-500" /><span className="text-xs text-slate-500">Open roadblocks</span></div>
-          <div className="mt-2 text-2xl font-semibold text-slate-900 tabular-nums">{kpis.totalOpenBlockers}</div>
-          <p className="mt-1 text-xs text-slate-400">{clans.length ? `Densest in ${[...clans].sort((a, b) => b.openBlockers - a.openBlockers)[0].name}.` : '-'}</p>
-        </div>
-        <div className="bg-card rounded-2xl border border-slate-200 p-5">
-          <div className="flex items-center gap-2"><TrendingDown className="w-4 h-4 text-red-500" /><span className="text-xs text-slate-500">Clans in red</span></div>
-          <div className="mt-2 text-2xl font-semibold text-slate-900 tabular-nums">{kpis.clansRed}</div>
-          <p className="mt-1 text-xs text-slate-400">{redClans.length ? redClans.join(', ') : 'No clan in the red.'}</p>
-        </div>
-      </div>
+      </section>}
     </div>
   );
 }

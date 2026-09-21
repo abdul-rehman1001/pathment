@@ -22,15 +22,19 @@ export function StatsCard({
   colorClass = 'text-brand-600 bg-brand-50',
 }: StatsCardProps) {
   return (
-    <div className="bg-card rounded-2xl border border-slate-200 p-5">
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-sm text-slate-500">{label}</p>
-        <div className={`p-2 rounded-xl ${colorClass}`}>
-          <Icon className="w-4 h-4" />
+    <div className="h-full rounded-xl border border-border bg-card p-4">
+      <div className="flex items-start gap-3">
+        <span className={`shrink-0 rounded-lg p-2 ${colorClass}`}>
+          <Icon className="h-4 w-4" aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-medium leading-5 text-muted-foreground">{label}</p>
+          <p className="mt-1 break-words text-2xl font-semibold leading-8 tracking-tight text-foreground tabular-nums">
+            {typeof value === 'number' ? value.toLocaleString() : value}
+          </p>
+          {sub && <p className="mt-1 text-xs leading-4 text-muted-foreground">{sub}</p>}
         </div>
       </div>
-      <p className="text-3xl font-bold text-slate-900">{value}</p>
-      {sub && <p className="text-xs text-slate-500 mt-1">{sub}</p>}
     </div>
   );
 }

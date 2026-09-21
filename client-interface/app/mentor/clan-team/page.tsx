@@ -11,6 +11,7 @@ import { clanRequestsApi } from '@/lib/services/clan-requests-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { formatRelativeTime } from '@/lib/utils/date';
 import Link from 'next/link';
+import { ClanAvatarEditor } from '@/components/shared/ClanAvatarEditor';
 import { Drawer } from '@/components/shared/Drawer';
 import { Avatar } from '@/components/shared/Avatar';
 import { CoMentorPermissionsDrawer } from '@/components/shared/CoMentorPermissionsDrawer';
@@ -24,6 +25,7 @@ interface Member {
   user: { id: string; firstName: string; lastName: string; email: string; role: string; profilePictureUrl?: string | null };
 }
 interface ClanDetail {
+  avatarUrl?: string | null;
   id: string;
   name: string;
   program?: { id: string; name: string };
@@ -255,6 +257,7 @@ function ClanTeamCard({ clanId, myRole }: { clanId: string; myRole: string }) {
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-card p-5">
+      <div className="mb-4"><ClanAvatarEditor clanId={clanId} name={clan.name} avatarUrl={clan.avatarUrl} onChanged={load} /></div>
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="font-semibold text-slate-900">{clan.name}</h2>

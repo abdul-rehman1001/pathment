@@ -12,7 +12,7 @@ const { ValidationError, NotFoundError } = require('../utils/errors/errorTypes')
  * Org-wide clan-health snapshot grouped by program for the admin dashboard.
  */
 const clanHealth = catchAsync(async (req, res) => {
-  const health = await clanHealthService.programHealth();
+  const health = await clanHealthService.programHealth(await authzService.adminProgramScope(req.user));
   res.status(200).json(successResponse('Clan health retrieved', health));
 });
 
@@ -20,8 +20,13 @@ const clanHealth = catchAsync(async (req, res) => {
  * GET /api/clans/insights  (admin)
  * Worst-first clan comparison + the org fairness lens (absolute vs relative).
  */
+const clanFollowUps = catchAsync(async (req, res) => {
+  const data = await clanHealthService.followUps(req.query, await authzService.adminProgramScope(req.user));
+  res.status(200).json(successResponse('Follow-ups retrieved', data));
+});
+
 const clanInsights = catchAsync(async (req, res) => {
-  const insights = await clanHealthService.orgInsights();
+  const insights = await clanHealthService.orgInsights(await authzService.adminProgramScope(req.user));
   res.status(200).json(successResponse('Clan insights retrieved', insights));
 });
 
@@ -433,6 +438,7 @@ module.exports = {
   resendClanInvite,
   revokeClanInvite,
   listClans,
+  clanFollowUps,
   clanHealth,
   clanInsights,
   myMemberships,

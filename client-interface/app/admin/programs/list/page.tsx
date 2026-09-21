@@ -210,12 +210,12 @@ export default function ProgramListPage() {
             {programs.map((program) => (
               <div
                 key={program.id}
-                className="bg-card rounded-2xl border border-slate-200 p-6 hover:shadow-lg hover:shadow-slate-200/50 transition-shadow"
+                className="bg-card rounded-3xl border border-slate-200 border-l-4 border-l-brand-500 p-6 hover:border-brand-300 transition-colors"
               >
                 <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                   {/* Program Info */}
                   <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
+                    <div className="flex flex-wrap items-center gap-3 mb-2">
                       <Link
                         href={`/admin/programs/${program.id}`}
                         className="text-base font-semibold text-slate-900 hover:text-brand-600 transition-colors"
@@ -264,7 +264,7 @@ export default function ProgramListPage() {
                   </div>
 
                   {/* Stats + Actions */}
-                  <div className="flex items-center gap-6">
+                  <div className="flex flex-wrap items-center gap-6 rounded-2xl bg-muted/50 p-4">
                     <div className="text-center">
                       <p className="text-2xl font-bold text-slate-900">{program._count?.enrollments ?? 0}</p>
                       <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">

@@ -1,4 +1,6 @@
 'use client';
+import type { OrganizationSummary } from '@/components/admin/OrganizationCharts';
+
 
 import { qk, useApiQuery } from '@/lib/query';
 import { clanApi } from '@/lib/services/clan-api';
@@ -60,6 +62,8 @@ export interface ClanHealthKpis {
 }
 
 export interface UseClanHealthReturn {
+  summary?: OrganizationSummary;
+  generatedAt?: string;
   kpis: ClanHealthKpis | null;
   programs: ProgramHealth[];
   atRiskMentees: AtRiskMentee[];
@@ -69,6 +73,8 @@ export interface UseClanHealthReturn {
 }
 
 interface HealthData {
+  summary?: OrganizationSummary;
+  generatedAt?: string;
   kpis: ClanHealthKpis | null;
   programs: ProgramHealth[];
   atRiskMentees: AtRiskMentee[];
@@ -82,7 +88,7 @@ export function useClanHealth(): UseClanHealthReturn {
     queryFn: async () => {
       const res = await clanApi.health();
       const d = res?.data ?? {};
-      return { kpis: d.kpis ?? null, programs: d.programs ?? [], atRiskMentees: d.atRiskMentees ?? [] };
+      return { summary: d.summary, generatedAt: d.generatedAt, kpis: d.kpis ?? null, programs: d.programs ?? [], atRiskMentees: d.atRiskMentees ?? [] };
     },
     errorMessage: 'Failed to load clan health',
   });

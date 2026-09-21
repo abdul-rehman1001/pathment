@@ -43,6 +43,7 @@ export default function AdminRoadmapsPage() {
   const [programs, setPrograms] = useState<ProgramOpt[]>([]);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<OrgRoadmap | null>(null);
+  const [search, setSearch] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
 
   useEffect(() => {
@@ -61,7 +62,7 @@ export default function AdminRoadmapsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
+      <div className="admin-page-heading flex items-start justify-between gap-4">
         <div>
           <h1 className="text-slate-900 mb-1 flex items-center gap-2"><Route className="w-5 h-5 text-brand-600" /> Org Roadmaps</h1>
           <p className="text-slate-600 text-sm">Author the shared roadmap library. Mentors import published roadmaps and assign them to mentees.</p>
@@ -72,6 +73,9 @@ export default function AdminRoadmapsPage() {
         </button>
       </div>
 
+      <input aria-label="Search roadmaps" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Find a roadmap by name or skill…" className="w-full rounded-xl border bg-card px-4 py-3 text-sm" />
+
+      {!loading && roadmaps.length > 0 && !roadmaps.some(r => [r.name, ...(r.skillTags || [])].join(' ').toLowerCase().includes(search.toLowerCase())) && <p className="rounded-2xl border bg-card p-8 text-center text-muted-foreground">No roadmaps match your search.</p>}
       {loading ? (
         <div className="flex items-center justify-center py-16"><Loader2 className="w-8 h-8 animate-spin text-brand-600" /></div>
       ) : roadmaps.length === 0 ? (
@@ -82,7 +86,7 @@ export default function AdminRoadmapsPage() {
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
-          {roadmaps.map((r) => (
+          {roadmaps.filter((r) => [r.name, ...(r.skillTags || [])].join(' ').toLowerCase().includes(search.toLowerCase())).map((r) => (
             <div key={r.id} className="bg-card rounded-2xl border border-slate-200 p-5 flex flex-col">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -103,11 +107,11 @@ export default function AdminRoadmapsPage() {
                 {r.steps.length === 0 ? (
                   <p className="text-sm text-slate-400 py-2">No steps yet. Edit this roadmap to add some.</p>
                 ) : (
-                  [...r.steps].sort((a, b) => a.taskOrder - b.taskOrder).map((s, i) => <StepLine key={s.id} step={s} n={i + 1} />)
+                  <details><summary className="cursor-pointer py-2 text-sm font-medium text-brand-700">Preview {r.steps.length} steps</summary><div className="max-h-72 overflow-y-auto">{[...r.steps].sort((a, b) => a.taskOrder - b.taskOrder).map((s, i) => <StepLine key={s.id} step={s} n={i + 1} />)}</div></details>
                 )}
               </div>
 
-              <div className="mt-4 flex items-center gap-2">
+              <div className="mt-4 flex flex-wrap items-center gap-2">
                 <button onClick={() => setEditing(r)}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
                   <Pencil className="w-3.5 h-3.5" /> Edit
@@ -122,7 +126,7 @@ export default function AdminRoadmapsPage() {
                   {r.published ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                   {r.published ? 'Unpublish' : 'Publish'}
                 </button>
-                <button onClick={async () => { if (!(await confirm({ title: `Delete "${r.name}"?`, description: 'Imported mentor copies are unaffected.', variant: 'danger', confirmLabel: 'Delete' }))) return; setBusy(r.id); try { await remove(r.id); toast.success('Deleted'); } catch { toast.error('Could not delete'); } finally { setBusy(null); } }}
+                <button aria-label={`Delete ${r.name}`} onClick={async () => { if (!(await confirm({ title: `Delete "${r.name}"?`, description: 'Imported mentor copies are unaffected.', variant: 'danger', confirmLabel: 'Delete' }))) return; setBusy(r.id); try { await remove(r.id); toast.success('Deleted'); } catch { toast.error('Could not delete'); } finally { setBusy(null); } }}
                   disabled={busy === r.id}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:text-red-600 hover:border-red-200 disabled:opacity-50 ml-auto">
                   <Trash2 className="w-3.5 h-3.5" />
