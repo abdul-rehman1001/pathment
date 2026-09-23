@@ -61,13 +61,18 @@ async function columnExists(db, table, column, transaction) {
 
 async function addOrganizationColumn(db, table, defaultOrgId, transaction) {
   if (!await tableExists(db, table, transaction)) return;
-  if (!await columnExists(db, table, 'organization_id', transaction)) {
-    await db.query(`ALTER TABLE "${table}" ADD COLUMN organization_id UUID`, { transaction });
+  // PostgreSQL 11+ stores a constant ADD COLUMN default as missing-value
+  // metadata instead of rewriting every existing row. Large audit tables would
+  // otherwise double in size during backfill and exceed small Heroku plans.
+  // Drop the write default in the same transaction: old rows retain ownership,
+  // while future writes still have to supply an explicit workspace.
+  if (await columnExists(db, table, 'organization_id', transaction)) {
+    throw new Error(`Migration 110: ${table} already has organization_id; manual reconciliation required.`);
   }
-  await db.query(`UPDATE "${table}" SET organization_id=:id WHERE organization_id IS NULL`, {
+  await db.query(`ALTER TABLE "${table}" ADD COLUMN organization_id UUID NOT NULL DEFAULT CAST(:id AS uuid)`, {
     replacements: { id: defaultOrgId }, transaction,
   });
-  await db.query(`ALTER TABLE "${table}" ALTER COLUMN organization_id SET NOT NULL`, { transaction });
+  await db.query(`ALTER TABLE "${table}" ALTER COLUMN organization_id DROP DEFAULT`, { transaction });
   await db.query(`CREATE INDEX IF NOT EXISTS "${table}_organization_id_idx" ON "${table}" (organization_id)`, { transaction });
   await db.query(`DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='${table}_organization_id_fkey' AND conrelid='public.${table}'::regclass) THEN

@@ -1,6 +1,11 @@
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, `../.env.${process.env.NODE_ENV || 'development'}`) });
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+// Schema sync may duplicate unique indexes and cannot safely upgrade live data.
+if (process.env.NODE_ENV === 'production' || process.env.HEROKU_APP_NAME || process.env.DYNO) {
+  console.error('Schema sync is disabled on deployed environments. Use db:migrate.');
+  process.exit(1);
+}
 const { sequelize, models } = require('../src/db');
 
 /**
@@ -27,7 +32,7 @@ async function syncDatabase() {
     // Sync all models
     // Options:
     // { force: true }  - Drops tables if they exist, then creates them (WARNING: Data loss!)
-    // { alter: true }  - Tries to alter existing tables to match models (safer)
+    // { alter: true }  - Development only; may rebuild constraints and create duplicate indexes
     // { }              - Creates tables only if they don't exist (safest)
 
     const syncOptions = process.argv.includes('--force') 

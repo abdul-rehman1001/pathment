@@ -164,6 +164,10 @@ async function start() {
       require('./workers/emailWorker').start();
     }
 
+    if (process.env.DATA_RETENTION_ENABLED === 'true') {
+      require('./workers/dataRetentionWorker').start();
+    }
+
     // Start HTTP + Socket.IO server
     initSocket(server);
     

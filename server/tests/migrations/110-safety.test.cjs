@@ -66,7 +66,16 @@ test('migration 110 safety in an exclusively owned PostgreSQL cluster', async t 
     });
     let org;
     await t.test('concurrent runs backfill every table and all 1601 users once', async () => {
+      // A real production audit log can exceed the storage headroom available
+      // for an UPDATE backfill. Ownership must not expand the existing heap.
+      await query(`ALTER TABLE audit_logs ADD COLUMN payload TEXT;
+        INSERT INTO audit_logs (payload) SELECT repeat('audit record ', 80) FROM generate_series(1, 10000)`);
+      const heapBefore = (await rows("SELECT pg_relation_size('audit_logs')::text AS bytes"))[0].bytes;
       await Promise.all([up({ db, maintenance: true }), up({ db, maintenance: true })]);
+      assert.equal((await rows("SELECT pg_relation_size('audit_logs')::text AS bytes"))[0].bytes, heapBefore,
+        'Backfill must not rewrite or duplicate the audit log heap');
+      assert.equal((await rows("SELECT column_default FROM information_schema.columns WHERE table_name='audit_logs' AND column_name='organization_id'"))[0].column_default, null,
+        'New writes must not silently inherit DevWeekends');
       org = (await rows('SELECT id FROM organizations'))[0].id;
       assert.equal((await rows('SELECT count(*)::int AS n FROM organization_memberships'))[0].n, 1601);
       assert.equal((await rows("SELECT count(*)::int AS n FROM organization_memberships WHERE role='owner'"))[0].n, 1);

@@ -13,7 +13,7 @@ module.exports = (sequelize, DataTypes) => {
     token: {
       type: DataTypes.STRING(255),
       allowNull: false,
-      unique: true
+      unique: 'refresh_tokens_token_key'
     },
     expiresAt: {
       type: DataTypes.DATE,
@@ -51,7 +51,6 @@ module.exports = (sequelize, DataTypes) => {
     underscored: true,
     updatedAt: false,
     indexes: [
-      { fields: ['token'] },
       { fields: ['user_id'] },
       { fields: ['user_id', 'revoked_at'] }
     ]
