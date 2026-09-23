@@ -8,7 +8,7 @@ import { TwoFactorCodeInput } from '@/components/shared/TwoFactorCodeInput';
 import { extractApiErrorMessage, getRateLimit, formatRetryAfter, getErrorCode } from '@/lib/utils/api-error';
 import { Mail, Lock, ArrowRight, AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { workspacePath } from '@/lib/services/workspace-scope';
+import { workspaceLandingPath, workspacePath } from '@/lib/services/workspace-scope';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -20,6 +20,7 @@ export default function LoginPage() {
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
   // Rate-limit cooldown: timestamp (ms) until which login is blocked, + a 1s tick.
   const [cooldownUntil, setCooldownUntil] = useState(0);
   const [now, setNow] = useState(() => Date.now());
@@ -49,10 +50,11 @@ export default function LoginPage() {
 
   // Redirect if already logged in
   useEffect(() => {
-    if (!isLoading && user && !requiresTwoFactor) {
-      router.push(returnTo ? workspacePath(returnTo) : workspacePath('/'));
+    if (!isLoading && user && !requiresTwoFactor && !redirecting) {
+      const destination = returnTo ? workspacePath(returnTo) : workspaceLandingPath(user);
+      router.replace(destination);
     }
-  }, [user, isLoading, requiresTwoFactor, router, returnTo]);
+  }, [user, isLoading, requiresTwoFactor, redirecting, router, returnTo]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,9 +65,11 @@ export default function LoginPage() {
     try {
       const result = await login(formData, rememberMe);
       // Use returned result instead of state to avoid stale value race.
-      if (!result.requiresTwoFactor) {
+      if (!result.requiresTwoFactor && result.user) {
+        const destination = returnTo ? workspacePath(returnTo) : workspaceLandingPath(result.user);
+        setRedirecting(true);
         toast.success('Welcome back!');
-        router.push(returnTo ? workspacePath(returnTo) : workspacePath('/'));
+        router.replace(destination);
       }
     } catch (err: unknown) {
       const code = getErrorCode(err);
@@ -86,25 +90,21 @@ export default function LoginPage() {
   };
 
   const handle2FAVerify = async (code: string) => {
-    await verify2FA(code, rememberMe);
+    const verifiedUser = await verify2FA(code, rememberMe);
     // After successful 2FA, resume where they were (or the dashboard).
-    if (user) {
-      router.push(returnTo ? workspacePath(returnTo) : workspacePath('/'));
-    }
+    const destination = returnTo ? workspacePath(returnTo) : workspaceLandingPath(verifiedUser);
+    setRedirecting(true);
+    router.replace(destination);
   };
 
   // Show loading while checking auth
-  if (isLoading) {
+  if (isLoading || redirecting || (user && !requiresTwoFactor)) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div role="status" className="flex min-h-64 flex-col items-center justify-center gap-3 text-slate-600">
+        <Loader2 className="h-8 w-8 animate-spin text-brand-600" aria-hidden="true" />
+        <span>{redirecting || user ? 'Opening your workspace…' : 'Checking your account…'}</span>
       </div>
     );
-  }
-
-  // Don't render login form if user is logged in and doesn't require 2FA (redirect will happen via useEffect)
-  if (user && !requiresTwoFactor) {
-    return null;
   }
 
   // If user is pending 2FA verification, only show the 2FA modal

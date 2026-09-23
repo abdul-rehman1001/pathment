@@ -32,8 +32,8 @@ interface AuthContextType {
   availableRoles: UserRole[];
   /** Switch the active role view (no-op if not one of the user's capabilities). */
   setActiveRole: (role: UserRole) => void;
-  login: (credentials: LoginCredentials, rememberMe?: boolean) => Promise<{ requiresTwoFactor: boolean }>;
-  verify2FA: (code: string, rememberMe?: boolean) => Promise<void>;
+  login: (credentials: LoginCredentials, rememberMe?: boolean) => Promise<{ requiresTwoFactor: boolean; user?: User }>;
+  verify2FA: (code: string, rememberMe?: boolean) => Promise<User>;
   register: (data: RegisterData) => Promise<RegistrationResult>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -189,7 +189,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(user);
       setRequiresTwoFactor(false);
       setTemporaryToken(null);
-      return { requiresTwoFactor: false };
+      return { requiresTwoFactor: false, user };
     } catch (error) {
       const status = getHttpStatus(error);
       // Invalid credentials are expected user input errors; keep console clean.
@@ -228,10 +228,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       tokenStore.setSession({ token: accessToken, refreshToken, user: currentUser }, rememberMe);
       resetAuthSession();
+      setUser(currentUser);
 
       // Clear 2FA state
       setRequiresTwoFactor(false);
       setTemporaryToken(null);
+      return currentUser;
     } catch (error) {
       const status = getHttpStatus(error);
       if (status !== 400 && status !== 401) {

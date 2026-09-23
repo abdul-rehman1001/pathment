@@ -61,6 +61,17 @@ test('redirects stay inside the selected workspace', () => {
   assert.equal(scope.workspacePath(handoff.safeHandoffDestination('/w/other/mentor/dashboard?q=1#x'), 'acme'), '/w/acme/mentor/dashboard?q=1#x');
 });
 
+test('login resolves directly to the selected role dashboard', () => {
+  const f = fixture('https://app.pathment.me/w/acme/login');
+  const user = { role: 'mentee', capabilities: ['mentee', 'mentor'] };
+  assert.equal(f.scope.workspaceLandingPath(user), '/w/acme/mentee/dashboard');
+  f.localStorage.setItem('activeRole', 'mentor');
+  assert.equal(f.scope.workspaceLandingPath(user), '/w/acme/mentor/dashboard');
+  f.localStorage.setItem('activeRole', 'admin');
+  assert.equal(f.scope.workspaceLandingPath(user), '/w/acme/mentee/dashboard');
+  assert.equal(f.scope.workspaceLandingPath({ role: 'mentee', capabilities: [] }), '/w/acme/workspaces');
+});
+
 test('proxy workspace cookie takes precedence over stale storage on short links', () => {
   const localStorage = storage();
   localStorage.setItem('pathment-active-workspace', 'deleted-workspace');

@@ -48,6 +48,27 @@ export function workspacePath(path: string, slug = activeWorkspaceSlug()): strin
   return `/w/${slug}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
+type WorkspaceUser = {
+  role: 'admin' | 'mentor' | 'mentee';
+  capabilities?: Array<'admin' | 'mentor' | 'mentee'>;
+};
+
+/** Resolve the first authenticated screen without bouncing through `/`. */
+export function workspaceLandingPath(user: WorkspaceUser): string {
+  const capabilities = user.capabilities ?? [user.role];
+  let stored: WorkspaceUser['role'] | null = null;
+  try {
+    const value = localStorage.getItem('activeRole');
+    if (value === 'admin' || value === 'mentor' || value === 'mentee') stored = value;
+  } catch { /* The user's account role remains a safe fallback. */ }
+  const role = stored && capabilities.includes(stored)
+    ? stored
+    : capabilities.includes(user.role)
+      ? user.role
+      : capabilities[0];
+  return workspacePath(role ? `/${role}/dashboard` : '/workspaces');
+}
+
 export function workspaceScopeHeaders(): Record<string, string> {
   const slug = activeWorkspaceSlug();
   return slug ? { 'X-Pathment-Workspace': slug } : {};
