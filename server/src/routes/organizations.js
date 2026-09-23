@@ -8,6 +8,7 @@ router.post('/', authenticateAccount, controller.create);
 router.get('/me', authenticateAccount, controller.listMine);
 router.use(authenticate);
 router.get('/current', controller.current);
+router.get('/demo', controller.demo);
 router.patch('/current', controller.updateCurrent);
 router.post('/current/plan-request', controller.requestPlan);
 

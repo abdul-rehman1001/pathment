@@ -32,4 +32,33 @@ const requestPlan = catchAsync(async (req, res) => {
   res.json(successResponse('Plan change requested', { subscription }));
 });
 
-module.exports = { current, listMine, create, listPlans, updateCurrent, requestPlan };
+const demo = catchAsync(async (req, res) => {
+  if (!require('../utils/stagingWorkspaceDemo').isDemo(req.organization)) {
+    throw new (require('../utils/errors/errorTypes').NotFoundError)('Workspace demo not available');
+  }
+  const { models } = require('../db');
+  // Explicit ownership predicates in addition to ORM hooks. Never return global
+  // profile fields, counters, credentials or another workspace's membership.
+  const memberships = await models.OrganizationMembership.findAll({
+    where: { organizationId: req.organizationId, status: 'active' },
+    include: [{ model: models.User, as: 'user', attributes: ['id', 'firstName', 'lastName'] }],
+    order: [['joinedAt', 'ASC']],
+  });
+  const programs = await models.Program.findAll({
+    where: { organizationId: req.organizationId }, attributes: ['id', 'name'],
+  });
+  const clans = await models.Clan.findAll({
+    where: { organizationId: req.organizationId }, attributes: ['id', 'name', 'programId'],
+  });
+  const roles = await models.ClanMembership.findAll({
+    where: { organizationId: req.organizationId }, attributes: ['userId', 'role', 'clanId'],
+  });
+  res.set('Cache-Control', 'no-store');
+  res.json(successResponse('Restricted workspace demo', {
+    members: memberships.map(m => ({ id: m.userId, name: `${m.user.firstName} ${m.user.lastName}`,
+      workspaceRole: m.role, clanRoles: roles.filter(r => r.userId === m.userId).map(r => r.role) })),
+    programs, clans,
+  }));
+});
+
+module.exports = { demo, current, listMine, create, listPlans, updateCurrent, requestPlan };

@@ -28,7 +28,8 @@ class OrganizationService {
     if (['suspended', 'archived'].includes(organization.status)) {
       throw new ForbiddenError('This workspace is unavailable');
     }
-    if (!this.workspaceCreationEnabled() && organization.slug !== this.defaultSlug()) {
+    if (!this.workspaceCreationEnabled() && organization.slug !== this.defaultSlug() &&
+        !require('../utils/stagingWorkspaceDemo').isDemo(organization)) {
       throw new ForbiddenError('Additional workspaces are not available during the workspace rollout');
     }
   }

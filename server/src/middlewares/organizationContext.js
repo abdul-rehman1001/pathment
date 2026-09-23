@@ -21,6 +21,10 @@ module.exports = catchAsync(async (req, _res, next) => {
   if (!organization) organization = await organizationService.bySlug(organizationService.defaultSlug());
   if (!organization) throw new AppError('The default workspace has not been initialized. Contact your administrator.', 503, 'WORKSPACE_NOT_INITIALIZED');
   organizationService.assertWorkspaceAvailable(organization);
+  const demo = require('../utils/stagingWorkspaceDemo');
+  if (demo.isDemo(organization) && !demo.allows(req.method, req.path)) {
+    throw new AppError('This staging demo supports workspace identity, members and plans only. Other modules are awaiting isolation validation.', 403, 'WORKSPACE_DEMO_RESTRICTED');
+  }
   if (organization) {
     req.organization = organization;
     req.organizationId = organization.id;

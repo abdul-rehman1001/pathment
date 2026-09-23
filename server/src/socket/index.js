@@ -60,6 +60,9 @@ async function socketAuthMiddleware(socket, next) {
     if (!organization) organization = await organizationService.bySlug(organizationService.defaultSlug());
     if (!organization) return next(new Error('Workspace not found'));
     await organizationService.assertWorkspaceAvailable(organization);
+    if (require('../utils/stagingWorkspaceDemo').isDemo(organization)) {
+      throw new Error('Realtime modules are unavailable in the restricted workspace demo');
+    }
     await organizationService.assertMembership(user.id, organization.id);
 
     socket.user = user;
