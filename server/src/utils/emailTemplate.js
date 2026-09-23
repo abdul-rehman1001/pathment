@@ -20,7 +20,7 @@ const BRAND = '#2563eb';
 const esc = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-const siteUrl = () => (process.env.CLIENT_URL || 'https://pathment.me').replace(/\/$/, '');
+const siteUrl = () => require('../utils/applicationUrl')();
 const footerAddress = () => process.env.EMAIL_FOOTER_ADDRESS || 'Pathment';
 
 /**

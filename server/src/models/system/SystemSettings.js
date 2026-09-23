@@ -5,10 +5,11 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true
     },
+    organizationId: { type: DataTypes.UUID, allowNull: false, field: 'organization_id' },
     settingKey: {
       type: DataTypes.STRING(100),
       allowNull: false,
-      unique: true,
+      unique: false,
       field: 'setting_key'
     },
     settingValue: {
@@ -40,12 +41,14 @@ module.exports = (sequelize, DataTypes) => {
     underscored: true,
     indexes: [
       { fields: ['setting_key'] },
-      { fields: ['category'] }
+      { fields: ['category'] },
+      { unique: true, fields: ['organization_id', 'setting_key'] }
     ]
   });
 
   SystemSettings.associate = (models) => {
     SystemSettings.belongsTo(models.User, { foreignKey: 'last_modified_by', as: 'modifier', onDelete: 'SET NULL' });
+    SystemSettings.belongsTo(models.Organization, { foreignKey: 'organization_id', as: 'organization' });
   };
 
   return SystemSettings;

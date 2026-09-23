@@ -1631,7 +1631,7 @@ class CertificateService {
       });
     }
 
-    const clientUrl = (process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
+    const clientUrl = require('../utils/applicationUrl')();
 
     for (const inst of instances) {
       const mentee = menteeMap.get(inst.menteeId);

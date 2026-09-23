@@ -21,6 +21,7 @@ import {
   MessageSquarePlus,
   ShieldCheck,
   Search,
+  Building2,
 } from 'lucide-react';
 import { NavLink } from '@/lib/config/navigation';
 import { useNavPreferences } from '@/lib/hooks/shared';
@@ -34,6 +35,8 @@ import { FeedbackDrawer } from './FeedbackDrawer';
 import { NotificationDrawer } from './NotificationDrawer';
 import { ChangelogDrawer } from './ChangelogDrawer';
 import { UserProfileCard } from './UserProfileCard';
+import { useOrganization } from '@/lib/context/OrganizationContext';
+import { logicalPathname, workspacePath } from '@/lib/services/workspace-scope';
 
 interface NavigationProps {
   role: UserRole;
@@ -48,9 +51,10 @@ function isLinkActive(link: NavLink, pathname: string): boolean {
 }
 
 export default function Navigation({ role }: NavigationProps) {
-  const pathname = usePathname();
+  const pathname = logicalPathname(usePathname());
   const router = useRouter();
   const { logout, user, availableRoles, setActiveRole } = useAuth();
+  const { current: organization, organizations, switchTo: switchOrganization } = useOrganization();
   const { clans, activeClanId, setActiveClanId, menteeClans, menteeActiveClanId, setMenteeActiveClanId } = useClan();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -100,7 +104,8 @@ export default function Navigation({ role }: NavigationProps) {
   const toggleGroup = (path: string) => {
     setOpenGroups((prev) => {
       const next = new Set(prev);
-      next.has(path) ? next.delete(path) : next.add(path);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
       return next;
     });
   };
@@ -112,7 +117,7 @@ export default function Navigation({ role }: NavigationProps) {
         setOpenGroups((prev) => new Set([...prev, link.path]));
       }
     });
-  }, [pathname]);
+  }, [pathname, links]);
 
   // The badge follows the sidebar clan picker so it always matches the page:
   // 'All clans' = the full queue, otherwise just that clan's share.
@@ -124,7 +129,7 @@ export default function Navigation({ role }: NavigationProps) {
 
   const handleLogout = async () => {
     await logout();
-    router.push('/login');
+    router.push(workspacePath('/login'));
   };
 
   // ── Role switcher (multi-capability users) ────────────────────────────────
@@ -132,7 +137,7 @@ export default function Navigation({ role }: NavigationProps) {
     if (target === role) return;
     setActiveRole(target);
     setMobileMenuOpen(false);
-    router.push(`/${target}/dashboard`);
+    router.push(workspacePath(`/${target}/dashboard`));
   };
 
   const renderRoleSwitcher = () => {
@@ -198,7 +203,7 @@ export default function Navigation({ role }: NavigationProps) {
     return (
       <Link
         key={link.path}
-        href={link.path}
+        href={workspacePath(link.path)}
         onClick={() => { recordUsage(link.preferenceKey ?? link.path); onNavigate?.(); }}
         className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-150 group ${
           isActive
@@ -270,7 +275,7 @@ export default function Navigation({ role }: NavigationProps) {
               return (
                 <Link
                   key={child.path}
-                  href={child.path}
+                  href={workspacePath(child.path)}
                   onClick={() => { recordUsage(child.path); onNavigate?.(); }}
                   className={`flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-150 group ${
                     isActive
@@ -385,7 +390,7 @@ export default function Navigation({ role }: NavigationProps) {
               </button>
             </span>
             <Link
-              href={`/${role}/settings`}
+              href={workspacePath(`/${role}/settings`)}
               title="Settings"
               aria-label="Settings"
               className={`flex-1 flex items-center justify-center p-2 rounded-xl transition-colors ${pathname.startsWith(`/${role}/settings`) ? 'bg-brand-50 text-brand-700' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
@@ -395,6 +400,24 @@ export default function Navigation({ role }: NavigationProps) {
           </div>
 
           {/* Role switcher (only for users who hold more than one role view) */}
+          {organization && (
+            <div className="px-3 pt-3">
+              {organizations.length > 1 ? (
+                <SelectMenu
+                  value={organization.slug}
+                  onChange={switchOrganization}
+                  options={organizations.map((org) => ({ value: org.slug, label: org.name }))}
+                  ariaLabel="Organization"
+                />
+              ) : (
+                <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700">
+                  <Building2 className="h-4 w-4 text-brand-600" />
+                  <span className="truncate">{organization.name}</span>
+                </div>
+              )}
+            </div>
+          )}
+
           {availableRoles && availableRoles.length > 1 && (
             <div className="px-3 pt-3">{renderRoleSwitcher()}</div>
           )}
@@ -459,7 +482,7 @@ export default function Navigation({ role }: NavigationProps) {
               <NotificationDrawer userId={user.id} />
             )}
             <Link
-              href={`/${role}/settings`}
+              href={workspacePath(`/${role}/settings`)}
               title="Settings"
               aria-label="Settings"
               className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors"

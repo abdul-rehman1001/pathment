@@ -1,3 +1,4 @@
+const { workspaceMemberStatuses } = require('./workspaceMemberStatus');
 const { models } = require('../db');
 const { Op, fn, col } = require('sequelize');
 const { catchAsync } = require('../middlewares/errorHandler');
@@ -14,10 +15,8 @@ const getAllMentees = catchAsync(async (req, res) => {
   const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
   const offset = (pageNum - 1) * limitNum;
 
-  // Include suspended users so they stay visible and can be UNsuspended — only
-  // hide pending/deleted accounts. (Filtering to active-only made a just-suspended
-  // person vanish, so there was no row left to un-suspend.)
-  const where = { role: 'mentee', status: { [Op.in]: ['active', 'suspended'] } };
+  // Directory visibility is membership-scoped by User hooks; role remains global.
+  const where = { role: 'mentee' };
 
   // A program_admin sees only mentees enrolled in their programs (org admins: all).
   const programScope = await authzService.adminProgramScope(req.user, {
@@ -71,6 +70,7 @@ const getAllMentees = catchAsync(async (req, res) => {
   // Attach each mentee's current clan (+ its program) so the UI can offer an
   // accurate "move clan" with a cross-program warning. One batched query.
   const menteeIds = mentees.map((m) => m.id);
+  const workspaceStatuses = await workspaceMemberStatuses(menteeIds);
   const memberships = menteeIds.length
     ? await models.ClanMembership.findAll({
         where: { userId: { [Op.in]: menteeIds }, role: 'mentee', status: 'active' },
@@ -85,6 +85,7 @@ const getAllMentees = catchAsync(async (req, res) => {
   }
   const rows = mentees.map((m) => {
     const json = m.toJSON();
+    json.status = workspaceStatuses.get(m.id);
     json.currentClan = clanByUser.get(m.id) || null;
     return json;
   });
@@ -144,6 +145,7 @@ const getMenteeById = catchAsync(async (req, res) => {
   });
 
   if (!mentee) throw new NotFoundError('Mentee not found');
+  const workspaceStatuses = await workspaceMemberStatuses([id]);
 
   // ── Mentor resolution is CLAN-based (the live data model) ──
   // This org assigns a mentee by placing them in a clan, NOT by creating a
@@ -274,6 +276,7 @@ const getMenteeById = catchAsync(async (req, res) => {
     : 0;
 
   const menteeJson = mentee.toJSON();
+  menteeJson.status = workspaceStatuses.get(id);
   const lastActive = menteeJson.menteeProfile?.lastActivityDate || mentee.lastLoginAt || null;
 
   // How they were admitted — read THROUGH the application they registered from,

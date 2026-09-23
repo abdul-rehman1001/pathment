@@ -5,6 +5,7 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true
     },
+    organizationId: { type: DataTypes.UUID, allowNull: false, field: 'organization_id' },
     tokenHash: {
       type: DataTypes.STRING(255),
       allowNull: false,
@@ -94,6 +95,7 @@ module.exports = (sequelize, DataTypes) => {
       as: 'inviter',
       onDelete: 'CASCADE'
     });
+    RegistrationInvite.belongsTo(models.Organization, { foreignKey: 'organization_id', as: 'organization' });
     RegistrationInvite.belongsTo(models.User, {
       foreignKey: 'used_by',
       as: 'usedByUser',

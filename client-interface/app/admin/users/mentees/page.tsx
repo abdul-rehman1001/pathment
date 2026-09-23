@@ -99,14 +99,14 @@ export default function AdminMenteesListPage() {
   const [editUser, setEditUser] = useState<MenteeListItem | null>(null);
 
   const handleDelete = async (id: string, name: string) => {
-    if (!(await confirm({ title: `Delete ${name}?`, description: `This permanently removes all their enrollments and data and cannot be undone.`, variant: 'danger', confirmLabel: 'Delete' }))) return;
+    if (!(await confirm({ title: `Remove ${name} from this workspace?`, description: `This removes their workspace access. Their account, records, and access to other workspaces are preserved.`, variant: 'danger', confirmLabel: 'Remove' }))) return;
     try {
       setDeleteLoading(id);
       await menteeApi.deleteUser(id);
-      toast.success(`${name} has been deleted.`);
+      toast.success(`${name} has been removed from this workspace.`);
       refetch();
     } catch (err: unknown) {
-      toast.error(extractApiErrorMessage(err, 'Could not delete user'));
+      toast.error(extractApiErrorMessage(err, 'Could not remove workspace member'));
     } finally {
       setDeleteLoading(null);
     }
@@ -133,10 +133,10 @@ export default function AdminMenteesListPage() {
       setSuspendLoading(row.id);
       if (isSuspended) {
         await menteeApi.unsuspendUser(row.id);
-        toast.success(`${name} has been unsuspended.`);
+        toast.success(`${name} has been reactivated in this workspace.`);
       } else {
         await menteeApi.suspendUser(row.id);
-        toast.success(`${name} has been suspended.`);
+        toast.success(`${name} has been suspended in this workspace.`);
       }
       handleCloseSuspendModal();
       refetch();
@@ -424,7 +424,7 @@ export default function AdminMenteesListPage() {
                       <button
                         onClick={() => handleOpenSuspendModal(row)}
                         disabled={suspendLoading === row.id}
-                        title={isSuspended ? 'Unsuspend' : 'Suspend'}
+                        title={isSuspended ? 'Reactivate workspace membership' : 'Suspend workspace membership'}
                         className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white border rounded-lg shadow-2xs transition-colors disabled:opacity-50 ${
                           isSuspended
                             ? 'text-green-700 border-green-200 hover:bg-green-50'
@@ -440,16 +440,17 @@ export default function AdminMenteesListPage() {
                       </button>
                       <button
                         onClick={() => setEditUser(row)}
-                        title="Edit user"
+                        title="View shared account details"
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg shadow-2xs transition-colors"
                       >
                         <Pencil className="w-3.5 h-3.5" />
-                        Edit
+                        Account
                       </button>
                       <button
                         onClick={() => handleDelete(row.id, name)}
                         disabled={deleteLoading === row.id}
-                        title="Delete permanently"
+                        title="Remove from workspace"
+                        aria-label="Remove workspace membership"
                         className="inline-flex items-center justify-center w-8 h-8 text-slate-400 bg-white border border-slate-200 hover:text-rose-600 hover:bg-rose-50 hover:border-rose-200 rounded-lg shadow-2xs transition-colors disabled:opacity-50"
                       >
                         {deleteLoading === row.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
@@ -474,8 +475,8 @@ export default function AdminMenteesListPage() {
             </AlertDialogTitle>
             <AlertDialogDescription>
               {suspendRow?.status === 'suspended'
-                ? `You are about to unsuspend ${suspendRow.firstName} ${suspendRow.lastName}. They will be able to log in again.`
-                : `You are about to suspend ${suspendRow?.firstName} ${suspendRow?.lastName}. They will be logged out immediately and cannot log in until unsuspended.`}
+                ? `You are about to unsuspend ${suspendRow.firstName} ${suspendRow.lastName}. They will regain access to this workspace.`
+                : `You are about to suspend ${suspendRow?.firstName} ${suspendRow?.lastName}. They will lose access to this workspace. Their other workspaces remain accessible.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

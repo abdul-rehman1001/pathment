@@ -5,6 +5,7 @@ module.exports = (sequelize, DataTypes) => {
    */
   const Document = sequelize.define('Document', {
     id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    organizationId: { type: DataTypes.UUID, allowNull: false, field: 'organization_id' },
     title: { type: DataTypes.STRING(200), allowNull: false },
     category: {
       type: DataTypes.STRING(20),
@@ -27,6 +28,10 @@ module.exports = (sequelize, DataTypes) => {
     timestamps: true,
     indexes: [{ fields: ['category'] }, { fields: ['pinned'] }]
   });
+
+  Document.associate = (models) => {
+    Document.belongsTo(models.Organization, { foreignKey: 'organization_id', as: 'organization' });
+  };
 
   return Document;
 };

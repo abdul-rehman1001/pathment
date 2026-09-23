@@ -5,6 +5,8 @@ const { saveResults } = require('../services/certificateEvaluationStore');
 const { enrichEvaluationResults } = require('../utils/certificateUtils');
 const { emitToUser } = require('../socket');
 const logger = require('../utils/logger');
+const { runWithRequestContext } = require('../utils/auditContext');
+const organizationService = require('../services/organizationService');
 
 // ==================== WORKER CONFIGURATION ====================
 
@@ -19,9 +21,30 @@ let aiEvalRunning = false;
 
 // ==================== AI EVALUATION WORKER LOGIC ====================
 
-async function checkRunCompletion(runId, triggeredBy) {
+// Resolve ownership from persisted data, never the poller's ambient context or
+// a default workspace. This scopes delivery only; queue isolation is separate.
+async function emitEvaluationEvent(templateId, triggeredBy, event, payload) {
+  try {
+    const template = await models.CertificateTemplate.findByPk(templateId, {
+      attributes: ['organizationId'], skipOrganizationScope: true,
+    });
+    if (!template?.organizationId) {
+      logger.warn('[Certificate Worker] Skipping realtime event: template ownership unavailable');
+      return;
+    }
+    await runWithRequestContext({ organizationId: template.organizationId, userId: triggeredBy }, async () => {
+      await organizationService.assertMembership(triggeredBy, template.organizationId);
+      emitToUser(triggeredBy, event, payload);
+    });
+  } catch (error) {
+    // Notification failure must not retry already-persisted evaluation work.
+    logger.warn(`[Certificate Worker] Skipping realtime event: ${error.message}`);
+  }
+}
+
+async function checkRunCompletion(runId, triggeredBy, templateId) {
   const stats = await models.AIEvaluationQueue.findAll({
-    where: { runId },
+    where: { runId, templateId, triggeredBy },
     attributes: [
       'status',
       [sequelize.fn('COUNT', sequelize.col('id')), 'count']
@@ -44,14 +67,13 @@ async function checkRunCompletion(runId, triggeredBy) {
 
   if (pending === 0 && processing === 0) {
     const finishedJobs = await models.AIEvaluationQueue.findAll({
-      where: { runId, status: 'completed' },
+      where: { runId, templateId, triggeredBy, status: 'completed' },
       attributes: ['menteeId', 'result', 'templateId', 'createdAt'],
       raw: true
     });
 
     const results = finishedJobs.filter(j => j.result).map(j => ({ ...j.result, mentee_id: j.menteeId, evaluatedAt: j.createdAt }));
     const enrichedResults = await enrichEvaluationResults(results);
-    const templateId = finishedJobs[0]?.templateId ?? null;
 
     if (templateId) {
       await saveResults(templateId, enrichedResults);
@@ -64,7 +86,7 @@ async function checkRunCompletion(runId, triggeredBy) {
       // certificateVerificationService.sendToClans.
     }
 
-    emitToUser(triggeredBy, 'ai-eval:complete', {
+    await emitEvaluationEvent(templateId, triggeredBy, 'ai-eval:complete', {
       runId,
       results: enrichedResults,
       ranAt: new Date().toISOString(),
@@ -133,7 +155,7 @@ async function processBatchJobs(batchJobs) {
       const mentee = menteeMap.get(job.menteeId);
       const result = job.result;
 
-      emitToUser(triggeredBy, 'ai-eval:progress', {
+      await emitEvaluationEvent(job.templateId, job.triggeredBy, 'ai-eval:progress', {
         runId,
         menteeId: job.menteeId,
         result: {
@@ -148,7 +170,7 @@ async function processBatchJobs(batchJobs) {
     }
 
     logger.info(`[Certificate Worker - AI Eval] Micro-batch completed (${completedCount}/${totalCount})`);
-    await checkRunCompletion(runId, triggeredBy);
+    await checkRunCompletion(runId, triggeredBy, templateId);
   } catch (batchError) {
     logger.error(`[Certificate Worker - AI Eval] Micro-batch failed: ${batchError.stack || batchError.message}`);
     // A progress/notification failure after commit must not undo completed jobs.
@@ -185,7 +207,7 @@ async function processBatchJobs(batchJobs) {
           raw: true
         });
 
-        emitToUser(triggeredBy, 'ai-eval:progress', {
+        await emitEvaluationEvent(job.templateId, job.triggeredBy, 'ai-eval:progress', {
           runId:    job.runId,
           menteeId: job.menteeId,
           result: {

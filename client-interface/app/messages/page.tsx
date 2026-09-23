@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/context/AuthContext';
+import { logicalPathname, workspacePath } from '@/lib/services/workspace-scope';
 
 export default function LegacyMessagesRedirectPage() {
   const router = useRouter();
@@ -20,8 +21,8 @@ export default function LegacyMessagesRedirectPage() {
     const targetPath = `/${role}/messages${query ? `?${query}` : ''}`;
 
     // Prevent loops if the path is already correct.
-    if (pathname !== targetPath) {
-      router.replace(targetPath);
+    if (logicalPathname(pathname) !== targetPath) {
+      router.replace(workspacePath(targetPath));
     }
   }, [pathname, router, searchParams, user?.role]);
 

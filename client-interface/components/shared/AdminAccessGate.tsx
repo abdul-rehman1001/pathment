@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { Lock, Loader2 } from 'lucide-react';
 import { usePermissions } from '@/lib/hooks/usePermissions';
 import { getFlatNavItems } from '@/lib/config/navigation';
+import { logicalPathname, workspacePath } from '@/lib/services/workspace-scope';
 
 /**
  * Per-section permission gate for the admin area. The sidebar already HIDES
@@ -34,7 +35,7 @@ function sectionOf(pathname: string): string {
 }
 
 export function AdminAccessGate({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
+  const pathname = logicalPathname(usePathname());
   const { can, canAccessAdmin, loading } = usePermissions();
 
   const required = useMemo(() => SECTION_PERMISSION[sectionOf(pathname || '')], [pathname]);
@@ -66,7 +67,7 @@ export function AdminAccessGate({ children }: { children: React.ReactNode }) {
         under Roles &amp; Access, or head back to a section you can use.
       </p>
       <Link
-        href={fallback}
+        href={workspacePath(fallback)}
         className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
       >
         Go back

@@ -1,6 +1,7 @@
 import { io, type Socket } from 'socket.io-client';
 import { tokenStore } from './token-store';
 import { onAccessTokenRefreshed, refreshAccessToken } from './auth-session';
+import { activeWorkspaceSlug } from './workspace-scope';
 
 let socket: Socket | null = null;
 let unsubscribeRefresh: (() => void) | null = null;
@@ -23,7 +24,7 @@ export function connectSocket(accessToken: string): Socket {
     // was rejected and real-time (live-review banners, messages) stayed dead
     // until a full page reload.
     auth: (cb: (data: Record<string, unknown>) => void) => {
-      cb({ token: tokenStore.getToken() || accessToken });
+      cb({ token: tokenStore.getToken() || accessToken, workspace: activeWorkspaceSlug() });
     },
     withCredentials: true,
   });

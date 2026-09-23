@@ -12,6 +12,7 @@ import { useAuth } from '@/lib/context/AuthContext';
 import { useClan, ALL_CLANS } from '@/lib/context/ClanContext';
 import { scopeConversationsToClan } from '@/lib/utils/clan-scope';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
+import { workspacePath } from '@/lib/services/workspace-scope';
 import type { ChatMessage, ConversationSummary, MessageReaction, SearchableUser } from '@/lib/types/messaging';
 
 import ConversationList from './ConversationList';
@@ -201,7 +202,7 @@ export default function MessageCenter({ role }: MessageCenterProps) {
           if (conversation?.id) {
             await loadMessages(conversation.id);
             setActiveMobilePane('chat');
-            router.replace(`/${role}/messages?conversationId=${conversation.id}`);
+            router.replace(workspacePath(`/${role}/messages?conversationId=${conversation.id}`));
           }
         } else {
           const initialConversationId = queryConversationId || null;

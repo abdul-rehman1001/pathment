@@ -6,6 +6,24 @@ const { AuthenticationError } = require('../utils/errors/errorTypes');
 const { catchAsync } = require('../middlewares/errorHandler');
 
 class AuthController {
+  createDomainHandoff = catchAsync(async (req, res) => {
+    require('../utils/domainHandoff').assertHandoffOrigin(req);
+    res.set('Cache-Control', 'no-store');
+    const result = await authService.createDomainHandoff(req.user, req.organization, req.body);
+    res.status(201).json(successResponse('Secure workspace handoff created', result, 201));
+  });
+
+  consumeDomainHandoff = catchAsync(async (req, res) => {
+    require('../utils/domainHandoff').assertHandoffOrigin(req, true);
+    res.set('Cache-Control', 'no-store');
+    const result = await authService.consumeDomainHandoff(req.body.token, req.body.workspace, req.organization, req.body.codeVerifier);
+    res.status(200).json(successResponse('Workspace session transferred', {
+      user: result.user,
+      rememberSession: result.rememberSession,
+      tokens: { accessToken: result.accessToken, refreshToken: result.refreshToken },
+    }));
+  });
+
   /**
    * Register a new user
    * POST /api/auth/register

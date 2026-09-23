@@ -7,6 +7,7 @@ import { UserRole } from '@/lib/types';
 import { getFlatNavItems, FlatNavItem } from '@/lib/config/navigation';
 import { usePermissions } from '@/lib/hooks/usePermissions';
 import { useNavPreferences } from '@/lib/hooks/shared';
+import { workspacePath } from '@/lib/services/workspace-scope';
 
 /**
  * Global quick-search / command palette (⌘K). Lists every page the current user
@@ -68,7 +69,7 @@ export function CommandPalette({ role }: { role: UserRole }) {
 
   const go = useCallback((item: FlatNavItem) => {
     recordUsage(item.path);
-    router.push(item.path);
+    router.push(workspacePath(item.path));
     close();
   }, [recordUsage, router, close]);
 

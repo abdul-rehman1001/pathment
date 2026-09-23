@@ -5,6 +5,11 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true
     },
+    organizationId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      field: 'organization_id'
+    },
     createdBy: {
       type: DataTypes.UUID,
       allowNull: false,
@@ -128,6 +133,7 @@ module.exports = (sequelize, DataTypes) => {
 
   Program.associate = (models) => {
     Program.belongsTo(models.User, { foreignKey: 'created_by', as: 'creator' });
+    Program.belongsTo(models.Organization, { foreignKey: 'organization_id', as: 'organization' });
     Program.belongsTo(models.Program, { foreignKey: 'cloned_from', as: 'parent' });
     Program.hasMany(models.Roadmap, { foreignKey: 'program_id', as: 'roadmaps' });
     Program.hasMany(models.Enrollment, { foreignKey: 'program_id', as: 'enrollments' });

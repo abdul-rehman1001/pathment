@@ -11,8 +11,7 @@ import { NextResponse } from 'next/server';
  * On a phone with the app installed and verified, the OS takes these URLs
  * before the network does and none of this code runs. What is here is the
  * browser path: a desktop, or a phone without the app. Both end up on the
- * customer's own web app, which is the behaviour that existed before this host
- * did.
+ * the shared app host with the workspace encoded in the path.
  *
  * The tenant is carried in the link rather than looked up, so a redirect never
  * waits on the API. Someone resetting a password should not be held up by a
@@ -23,12 +22,10 @@ import { NextResponse } from 'next/server';
 /**
  * Where a customer's web app lives, by convention.
  *
- * Every tenant is a subdomain today, so the convention is the whole mapping:
- * no config file, no lookup, and nothing to deploy when a customer joins. The
- * day somebody brings their own domain this becomes a cached call to the API,
- * and not before.
+ * Every workspace uses the same frontend deployment. Nothing is deployed and
+ * no DNS record is created when a customer joins.
  */
-const site = (slug: string) => `https://${slug}.pathment.me`;
+const site = (slug: string) => `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.pathment.me'}/w/${slug}`;
 
 /**
  * Anything outside this is refused.

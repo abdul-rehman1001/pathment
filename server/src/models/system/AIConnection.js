@@ -7,6 +7,7 @@ module.exports = (sequelize, DataTypes) => {
    */
   const AIConnection = sequelize.define('AIConnection', {
     id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    organizationId: { type: DataTypes.UUID, allowNull: false, field: 'organization_id' },
     provider: {
       type: DataTypes.STRING(20),
       allowNull: false,

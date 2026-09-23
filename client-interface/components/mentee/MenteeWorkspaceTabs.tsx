@@ -2,12 +2,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { menteeWorkspaces } from "@/lib/config/menteeWorkspaces";
+import { logicalPathname, workspacePath } from "@/lib/services/workspace-scope";
 
 const matchesMentorPath = (pathname: string, href: string) =>
   pathname === href || pathname.startsWith(`${href}/`);
 
 export function MenteeWorkspaceTabs() {
-  const pathname = usePathname();
+  const pathname = logicalPathname(usePathname());
   const workspace = menteeWorkspaces.find((group) =>
     group.tabs.some((tab) => matchesMentorPath(pathname, tab.href)),
   );
@@ -24,7 +25,7 @@ export function MenteeWorkspaceTabs() {
         {workspace.tabs.map((tab) => (
           <Link
             key={tab.href}
-            href={tab.href}
+            href={workspacePath(tab.href)}
             aria-current={
               matchesMentorPath(pathname, tab.href) ? "page" : undefined
             }

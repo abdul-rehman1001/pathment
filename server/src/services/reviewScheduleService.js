@@ -24,7 +24,7 @@ const { renderEmail, plainText } = require('../utils/emailTemplate');
  */
 
 const HORIZON_DAYS = 14;                     // materialise this far ahead
-const clientUrl = () => (process.env.CLIENT_URL || 'https://pathment.me').replace(/\/$/, '');
+const clientUrl = () => require('../utils/applicationUrl')();
 const orgEmail = () => process.env.RESEND_FROM_EMAIL || 'noreply@pathment.me';
 const escHtml = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 

@@ -5,6 +5,7 @@ module.exports = (sequelize, DataTypes) => {
    */
   const OrgPolicy = sequelize.define('OrgPolicy', {
     id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    organizationId: { type: DataTypes.UUID, allowNull: false, field: 'organization_id' },
     title: { type: DataTypes.STRING(200), allowNull: false },
     category: { type: DataTypes.STRING(60), allowNull: true },
     body: { type: DataTypes.TEXT, allowNull: false },
@@ -14,6 +15,10 @@ module.exports = (sequelize, DataTypes) => {
     underscored: true,
     timestamps: true
   });
+
+  OrgPolicy.associate = (models) => {
+    OrgPolicy.belongsTo(models.Organization, { foreignKey: 'organization_id', as: 'organization' });
+  };
 
   return OrgPolicy;
 };

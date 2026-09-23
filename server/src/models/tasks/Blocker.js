@@ -10,6 +10,7 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true
     },
+    organizationId: { type: DataTypes.UUID, allowNull: false, field: 'organization_id' },
     menteeId: {
       type: DataTypes.UUID,
       allowNull: false,

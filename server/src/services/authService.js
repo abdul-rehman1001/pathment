@@ -106,12 +106,30 @@ class AuthService {
       throw new ValidationError('This invite has no clan to join');
     }
 
+    const organizationService = require('./organizationService');
+    const organizationId = invite.organizationId || await organizationService.currentId();
+    const existingWorkspaceMembership = await models.OrganizationMembership.findOne({
+      where: { organizationId, userId: actor.id, status: 'active' },
+    });
+    if (!existingWorkspaceMembership) {
+      await sequelize.transaction(async (transaction) => {
+        await organizationService.assertLimit(organizationId, 'members', null, { transaction });
+        await models.OrganizationMembership.findOrCreate({
+          where: { organizationId, userId: actor.id },
+          defaults: { role: 'member', status: 'active', joinedAt: new Date(), invitedBy: invite.invitedBy },
+          transaction,
+        });
+      });
+    }
+
     const clanService = require('./clanService');
     const role = invite.role === 'mentor' ? 'co_mentor' : 'mentee';
     const membership = await clanService.addMember(
       invite.clanId,
       { userId: actor.id, role },
-      actor
+      // The signed, email-bound invite is the authorization to join. Passing
+      // the invitee as the manager would incorrectly require clan-admin rights.
+      null
     );
 
     invite.usedAt = new Date();
@@ -177,6 +195,10 @@ class AuthService {
 
       const role = invite.role;
 
+      const organizationService = require('./organizationService');
+      const organizationId = invite.organizationId || await organizationService.currentId();
+      await organizationService.assertLimit(organizationId, 'members', null, { transaction });
+
       // Check if email already exists
       const existingUser = await models.User.findOne({ where: { email: normalizedEmail }, transaction });
       if (existingUser) {
@@ -211,6 +233,12 @@ class AuthService {
         emailVerifiedAt: new Date(),
         status: 'active'
       }, { transaction });
+
+      await models.OrganizationMembership.findOrCreate({
+        where: { organizationId, userId: user.id },
+        defaults: { role: role === 'admin' ? 'admin' : 'member', status: 'active', joinedAt: new Date(), invitedBy: invite.invitedBy },
+        transaction,
+      });
 
       if (role === 'mentor') {
         await models.MentorProfile.create({
@@ -353,6 +381,10 @@ class AuthService {
         throw new ConflictError(AUTH_MESSAGES.EMAIL_ALREADY_EXISTS);
       }
 
+      const organizationService = require('./organizationService');
+      const organizationId = await organizationService.currentId();
+      await organizationService.assertLimit(organizationId, 'members', null, { transaction });
+
       const user = await models.User.create({
         firstName,
         lastName,
@@ -367,6 +399,12 @@ class AuthService {
         emailVerifiedAt: new Date(),
         status: 'active'
       }, { transaction });
+
+      await models.OrganizationMembership.findOrCreate({
+        where: { organizationId, userId: user.id },
+        defaults: { role: 'member', status: 'active', joinedAt: new Date() },
+        transaction,
+      });
 
       await models.MenteeProfile.create({
         userId: user.id,
@@ -672,7 +710,7 @@ class AuthService {
    * web storage, and a 1-day session would mean re-authenticating an app people
    * open for two minutes at a time.
    */
-  async _issueRefreshToken(user, { rememberMe = false, client = 'web' } = {}) {
+  async _issueRefreshToken(user, { rememberMe = false, client = 'web', transaction } = {}) {
     const longSession = rememberMe || client !== 'web';
     const ttl = longSession
       ? { str: '30d', ms: 30 * 24 * 60 * 60 * 1000 }
@@ -687,9 +725,105 @@ class AuthService {
       expiresAt,
       client,
       lastUsedAt: new Date()
-    });
-
+    }, { transaction });
     return { refreshToken, expiresAt };
+  }
+
+  /** Create an opaque, short-lived bridge from a legacy workspace origin. */
+  async createDomainHandoff(user, organization, { rememberSession = false, codeChallenge } = {}) {
+    require('../utils/domainHandoff').validateChallenge(codeChallenge);
+    require('./organizationService').assertWorkspaceAvailable(organization);
+    const membership = await models.OrganizationMembership.findOne({
+      where: { userId: user.id, organizationId: organization.id, status: 'active' },
+      skipOrganizationScope: true,
+    });
+    if (!membership) throw new AuthorizationError('You do not have access to this workspace');
+
+    const rawToken = generateRandomToken();
+    await sequelize.transaction(async transaction => {
+      // Keep the temporary table bounded during the rollout without needing a
+      // permanent cleanup worker for a temporary compatibility feature.
+      await models.DomainHandoffToken.destroy({
+        where: { expiresAt: { [Op.lt]: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
+        transaction,
+        skipOrganizationScope: true,
+      });
+      await models.DomainHandoffToken.create({
+        tokenHash: hashToken(rawToken),
+        codeChallenge,
+        userId: user.id,
+        organizationId: organization.id,
+        rememberSession: rememberSession === true,
+        expiresAt: new Date(Date.now() + 2 * 60 * 1000),
+      }, { transaction, skipOrganizationScope: true });
+    });
+    return { token: rawToken, workspace: organization.slug, expiresInSeconds: 120 };
+  }
+
+  /** Spend a handoff exactly once and mint a session on the shared app origin. */
+  async consumeDomainHandoff(rawToken, workspaceSlug, selectedOrganization = null, codeVerifier) {
+    const organization = await models.Organization.findOne({
+      where: { slug: String(workspaceSlug || '').trim().toLowerCase(), status: { [Op.in]: ['trial', 'active', 'past_due'] } },
+      skipOrganizationScope: true,
+    });
+    if (!organization) throw new ValidationError(AUTH_MESSAGES.INVALID_TOKEN);
+    require('./organizationService').assertWorkspaceAvailable(organization);
+    if (!selectedOrganization || selectedOrganization.id !== organization.id) {
+      throw new ValidationError(AUTH_MESSAGES.INVALID_TOKEN);
+    }
+
+    return sequelize.transaction(async transaction => {
+      const handoff = await models.DomainHandoffToken.findOne({
+        where: {
+          tokenHash: hashToken(String(rawToken || '')),
+          organizationId: organization.id,
+          usedAt: null,
+          expiresAt: { [Op.gt]: new Date() },
+        },
+        lock: transaction.LOCK.UPDATE,
+        transaction,
+        skipOrganizationScope: true,
+      });
+      if (!handoff) throw new ValidationError(AUTH_MESSAGES.INVALID_TOKEN);
+      require('../utils/domainHandoff').verifyChallenge(codeVerifier, handoff.codeChallenge);
+
+      const membership = await models.OrganizationMembership.findOne({
+        where: { userId: handoff.userId, organizationId: organization.id, status: 'active' },
+        transaction,
+        skipOrganizationScope: true,
+      });
+      if (!membership) throw new AuthorizationError('You no longer have access to this workspace');
+
+      const user = await models.User.findByPk(handoff.userId, {
+        include: [
+          { model: models.MentorProfile, as: 'mentorProfile' },
+          { model: models.MenteeProfile, as: 'menteeProfile' },
+          { model: models.AdminProfile, as: 'adminProfile' },
+        ],
+        transaction,
+      });
+      if (!user || user.status !== 'active' || !user.emailVerified) {
+        throw new AuthenticationError(AUTH_MESSAGES.ACCOUNT_DISABLED);
+      }
+
+      const userResponse = user.toJSON();
+      delete userResponse.passwordHash;
+      const authzService = require('./authzService');
+      const assignments = await authzService.getAssignments(user);
+      userResponse.capabilities = await authzService.getCapabilities(user, { assignments });
+      userResponse.permissions = await authzService.getPermissionUnion(user);
+      userResponse.canAccessAdmin = await authzService.hasAdminAccess(user, { assignments });
+
+      const accessToken = generateAccessToken({ id: user.id, email: user.email, role: user.role });
+
+      await handoff.update({ usedAt: new Date() }, { transaction });
+      const { refreshToken } = await this._issueRefreshToken(user, {
+        rememberMe: handoff.rememberSession,
+        client: 'web',
+        transaction,
+      });
+      return { user: userResponse, accessToken, refreshToken, rememberSession: handoff.rememberSession };
+    });
   }
 
   /** Shared by the refresh paths: the account must still be usable. */

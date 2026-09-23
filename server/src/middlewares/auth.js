@@ -53,6 +53,13 @@ const authenticate = catchAsync(async (req, res, next) => {
   // Attach user to request
   req.user = user;
 
+  // A valid Pathment account is not automatically valid in every workspace.
+  // The hostname/header selects a tenant; membership is the authorization.
+  if (req.organizationId) {
+    req.organizationMembership = await require('../services/organizationService')
+      .assertMembership(user.id, req.organizationId);
+  }
+
   // Lazily resolve the user's scoped roles, memoized for the whole request, so
   // authorize()/requirePermission() share ONE fetch and routes that don't gate
   // on roles pay nothing (the DB is cross-region — avoid per-request overhead).
@@ -113,6 +120,24 @@ const authenticateTemporary = catchAsync(async (req, res, next) => {
 });
 
 /**
+ * Authenticate the global identity without requiring membership in the selected
+ * workspace. This is intentionally limited to workspace invitation acceptance:
+ * the signed, email-bound invite is what grants the new membership.
+ */
+const authenticateAccount = catchAsync(async (req, _res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) throw new AuthenticationError('Authentication required');
+  const decoded = verifyAccessToken(authHeader.split(' ')[1]);
+  if (decoded.temp) throw new AuthenticationError('Two-factor verification is not complete');
+  const user = await models.User.findByPk(decoded.id, { attributes: { exclude: ['password'] } });
+  if (!user || user.status !== 'active') throw new AuthenticationError('Your account is unavailable');
+  if (!user.emailVerified) throw new AuthenticationError('Please verify your email before continuing');
+  req.user = user;
+  setRequestUser(user.id);
+  next();
+});
+
+/**
  * Authorize user by role
  * @param {Array<String>} roles - Allowed roles
  */
@@ -162,6 +187,9 @@ const optionalAuth = async (req, res, next) => {
         });
 
         if (user && user.status === 'active') {
+          if (req.organizationId) {
+            await require('../services/organizationService').assertMembership(user.id, req.organizationId);
+          }
           req.user = user;
         }
       }
@@ -175,6 +203,7 @@ const optionalAuth = async (req, res, next) => {
 
 module.exports = {
   authenticate,
+  authenticateAccount,
   authenticateTemporary,
   authorize,
   optionalAuth

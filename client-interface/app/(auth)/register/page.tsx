@@ -11,6 +11,7 @@ import { apiConfig } from '@/lib/config/api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { validatePassword } from '@/lib/utils/validation';
 import { PasswordRequirements } from '@/components/shared/PasswordRequirements';
+import { workspacePath } from '@/lib/services/workspace-scope';
 
 type InviteDetails = {
   id: string;
@@ -63,7 +64,7 @@ export default function RegisterPage() {
   useEffect(() => {
     if (isLoading || !user) return;
     if (inviteToken && inviteDetails?.existingAccount) return;
-    router.push(joinReturnPath || `/${user.role}/dashboard`);
+    router.push(joinReturnPath || workspacePath(`/${user.role}/dashboard`));
   }, [user, isLoading, router, joinReturnPath, inviteToken, inviteDetails]);
 
   // Validate invite token OR public clan join slug before allowing registration
@@ -143,7 +144,7 @@ export default function RegisterPage() {
     try {
       await apiClient.post(apiConfig.endpoints.acceptInvite(inviteToken));
       toast.success('You joined the clan.');
-      router.push(`/${inviteDetails?.role === 'mentor' ? 'mentor' : 'mentee'}/dashboard`);
+      router.push(workspacePath(`/${inviteDetails?.role === 'mentor' ? 'mentor' : 'mentee'}/dashboard`));
     } catch (error: any) {
       toast.error(extractApiErrorMessage(error, 'Could not accept this invite'));
     } finally {
@@ -198,10 +199,10 @@ export default function RegisterPage() {
       if (clanJoinSlug) {
         const next = result?.clanJoin?.joinPath || joinReturnPath;
         toast.success('Account created! Log in to continue joining the clan.');
-        setTimeout(() => router.push(`/login?next=${encodeURIComponent(next)}`), 1500);
+        setTimeout(() => router.push(workspacePath(`/login?next=${encodeURIComponent(next)}`)), 1500);
       } else {
         toast.success('Account created! You can now log in.');
-        setTimeout(() => router.push('/login'), 1500);
+        setTimeout(() => router.push(workspacePath('/login')), 1500);
       }
     } catch (err: any) {
       const message = extractApiErrorMessage(err, 'Registration failed');

@@ -10,10 +10,11 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true
     },
+    organizationId: { type: DataTypes.UUID, allowNull: false, field: 'organization_id' },
     key: {
       type: DataTypes.STRING(60),
       allowNull: false,
-      unique: true
+      unique: false
     },
     label: {
       type: DataTypes.STRING(80),
@@ -41,8 +42,13 @@ module.exports = (sequelize, DataTypes) => {
     }
   }, {
     tableName: 'custom_roles',
-    underscored: true
+    underscored: true,
+    indexes: [{ unique: true, fields: ['organization_id', 'key'] }]
   });
+
+  CustomRole.associate = (models) => {
+    CustomRole.belongsTo(models.Organization, { foreignKey: 'organization_id', as: 'organization' });
+  };
 
   return CustomRole;
 };

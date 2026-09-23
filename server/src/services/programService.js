@@ -19,6 +19,8 @@ class ProgramService {
    * Create a new program
    */
   async createProgram(programData, createdBy) {
+    const organizationService = require('./organizationService');
+    const organizationId = await organizationService.currentId();
     const {
       name,
       description,
@@ -42,25 +44,29 @@ class ProgramService {
       throw new ValidationError('End date must be after start date');
     }
 
-    const program = await models.Program.create({
-      createdBy,
-      name,
-      description,
-      type,
-      status: status || 'draft',
-      // Private by default - programs are invite-driven, never publicly browsed.
-      visibility: visibility === 'public' ? 'public' : 'private',
-      totalDurationWeeks,
-      estimatedHoursPerWeek,
-      startDate,
-      endDate,
-      maxEnrollments,
-      tags: tags || [],
-      learningOutcomes: learningOutcomes || [],
-      prerequisites,
-      targetAudience,
-      isTemplate: isTemplate || false,
-      publishedAt: status === 'published' ? new Date() : null
+    const program = await sequelize.transaction(async (transaction) => {
+      await organizationService.assertLimit(organizationId, 'programs', null, { transaction });
+      return models.Program.create({
+        organizationId,
+        createdBy,
+        name,
+        description,
+        type,
+        status: status || 'draft',
+        // Private by default - programs are invite-driven, never publicly browsed.
+        visibility: visibility === 'public' ? 'public' : 'private',
+        totalDurationWeeks,
+        estimatedHoursPerWeek,
+        startDate,
+        endDate,
+        maxEnrollments,
+        tags: tags || [],
+        learningOutcomes: learningOutcomes || [],
+        prerequisites,
+        targetAudience,
+        isTemplate: isTemplate || false,
+        publishedAt: status === 'published' ? new Date() : null
+      }, { transaction });
     });
 
     // Create audit log

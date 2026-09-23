@@ -242,14 +242,14 @@ export default function AdminMentorsListPage() {
   const [suspendRow, setSuspendRow] = useState<MentorListItem | null>(null);
 
   const handleDelete = async (id: string, name: string) => {
-    if (!(await confirm({ title: `Delete ${name}?`, description: `Their active mentee assignments will be cancelled. This permanently removes the account and cannot be undone.`, variant: 'danger', confirmLabel: 'Delete' }))) return;
+    if (!(await confirm({ title: `Remove ${name} from this workspace?`, description: `This removes their workspace access. Their account, records, and access to other workspaces are preserved.`, variant: 'danger', confirmLabel: 'Remove' }))) return;
     try {
       setDeleteLoading(id);
       await mentorApi.deleteUser(id);
-      toast.success(`${name} has been deleted.`);
+      toast.success(`${name} has been removed from this workspace.`);
       refetch();
-    } catch (err: any) {
-      toast.error(extractApiErrorMessage(err, 'Could not delete user'));
+    } catch (err: unknown) {
+      toast.error(extractApiErrorMessage(err, 'Could not remove workspace member'));
     } finally {
       setDeleteLoading(null);
     }
@@ -273,14 +273,14 @@ export default function AdminMentorsListPage() {
       setSuspendLoading(suspendRow.id);
       if (isSuspended) {
         await mentorApi.unsuspendUser(suspendRow.id);
-        toast.success(`${name} has been unsuspended.`);
+        toast.success(`${name} has been reactivated in this workspace.`);
       } else {
         await mentorApi.suspendUser(suspendRow.id);
-        toast.success(`${name} has been suspended.`);
+        toast.success(`${name} has been suspended in this workspace.`);
       }
       handleCloseSuspendModal();
       refetch();
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast.error(extractApiErrorMessage(err, `Could not ${isSuspended ? 'unsuspend' : 'suspend'} user`));
     } finally {
       setSuspendLoading(null);
@@ -324,7 +324,7 @@ export default function AdminMentorsListPage() {
           <button
             onClick={() => handleOpenSuspendModal(row)}
             disabled={suspendLoading === row.id}
-            title={isSuspended ? 'Unsuspend' : 'Suspend'}
+            title={isSuspended ? 'Reactivate workspace membership' : 'Suspend workspace membership'}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 ${
               isSuspended
                 ? 'text-green-700 hover:bg-green-50'
@@ -340,15 +340,16 @@ export default function AdminMentorsListPage() {
           </button>
           <button
             onClick={() => setEditUser(row)}
-            title="Edit user"
+            title="View shared account details"
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
           >
-            <Pencil className="w-3.5 h-3.5" />Edit
+            <Pencil className="w-3.5 h-3.5" />Account
           </button>
           <button
             onClick={() => handleDelete(row.id, name)}
             disabled={deleteLoading === row.id}
-            title="Delete permanently"
+            title="Remove from workspace"
+            aria-label="Remove workspace membership"
             className="inline-flex items-center justify-center w-7 h-7 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
           >
             {deleteLoading === row.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
@@ -440,8 +441,8 @@ export default function AdminMentorsListPage() {
             </AlertDialogTitle>
             <AlertDialogDescription>
               {suspendRow?.status === 'suspended'
-                ? `${suspendRow.firstName} ${suspendRow.lastName} will regain access to their account and their mentee assignments.`
-                : `${suspendRow?.firstName} ${suspendRow?.lastName} will be immediately logged out and cannot log in. Their mentee assignments will be paused.`}
+                ? `${suspendRow.firstName} ${suspendRow.lastName} will regain access to this workspace.`
+                : `${suspendRow?.firstName} ${suspendRow?.lastName} will lose access to this workspace. Their other workspaces remain accessible.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

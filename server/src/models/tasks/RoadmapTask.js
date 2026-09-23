@@ -5,6 +5,7 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true
     },
+    organizationId: { type: DataTypes.UUID, allowNull: false, field: 'organization_id' },
     // Direct link to the roadmap this task is a step of (linear model), ordered
     // by task_order. Null for one-off custom tasks created via the assign drawer.
     roadmapId: {

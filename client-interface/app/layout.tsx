@@ -5,10 +5,12 @@ import { QueryProvider } from '@/lib/query';
 import { AuthProvider } from '@/lib/context/AuthContext';
 import { ThemeProvider } from '@/lib/context/ThemeContext';
 import { ClanProvider } from '@/lib/context/ClanContext';
+import { OrganizationProvider } from '@/lib/context/OrganizationContext';
 import { ConfirmProvider } from '@/lib/context/ConfirmContext';
 import { CallProvider } from '@/lib/context/CallContext';
 import { Toaster } from '@/components/ui/sonner';
 import { PointsEarnedNotifier } from '@/components/shared/PointsEarnedNotifier';
+import { LegacyDomainHandoff } from '@/components/shared/LegacyDomainHandoff';
 
 const jakarta = Plus_Jakarta_Sans({ subsets: ['latin'], variable: '--font-jakarta', display: 'swap' });
 const jetbrains = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrains', display: 'swap' });
@@ -43,16 +45,19 @@ export default function RootLayout({
         <QueryProvider>
           <ThemeProvider>
             <AuthProvider>
-              <ClanProvider>
-                <ConfirmProvider>
-                  {/* Above the router: a live review call must survive navigation. */}
-                  <CallProvider>
-                    {children}
-                  </CallProvider>
-                  <PointsEarnedNotifier />
-                  <Toaster />
-                </ConfirmProvider>
-              </ClanProvider>
+              <LegacyDomainHandoff />
+              <OrganizationProvider>
+                <ClanProvider>
+                  <ConfirmProvider>
+                    {/* Above the router: a live review call must survive navigation. */}
+                    <CallProvider>
+                      {children}
+                    </CallProvider>
+                    <PointsEarnedNotifier />
+                    <Toaster />
+                  </ConfirmProvider>
+                </ClanProvider>
+              </OrganizationProvider>
             </AuthProvider>
           </ThemeProvider>
         </QueryProvider>

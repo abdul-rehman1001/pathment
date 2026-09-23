@@ -15,20 +15,22 @@ const SLUG = /^[a-z0-9][a-z0-9-]{1,30}$/;
 
 const stripSlash = (value) => String(value || '').replace(/\/$/, '');
 
-const clientUrl = () => stripSlash(process.env.CLIENT_URL || 'http://localhost:3000');
+const clientUrl = () => require('./applicationUrl')('http://localhost:3000');
 const linkHost = () => stripSlash(process.env.LINK_URL || '');
+const { getRequestContext } = require('./auditContext');
 
 /**
- * Which customer this deployment belongs to.
- *
- * Set TENANT_SLUG explicitly in production. The fallback reads the first label
- * of CLIENT_URL, which is right for every deployment that follows the
- * <customer>.pathment.me convention and stops localhost from producing
- * something that looks like a real tenant.
+ * Which workspace the current request belongs to. Request context is the source
+ * of truth on the shared API; the environment fallback is only for maintenance
+ * scripts and jobs that predate organization-aware workers.
  */
-function tenantSlug() {
+function tenantSlug(requested) {
+  const contextual = String(requested || getRequestContext().organizationSlug || '').trim().toLowerCase();
+  if (SLUG.test(contextual)) return contextual;
   const explicit = String(process.env.TENANT_SLUG || '').trim().toLowerCase();
   if (SLUG.test(explicit)) return explicit;
+  const fallback = String(process.env.DEFAULT_WORKSPACE_SLUG || '').trim().toLowerCase();
+  if (SLUG.test(fallback)) return fallback;
 
   try {
     const label = new URL(clientUrl()).hostname.split('.')[0].toLowerCase();
@@ -41,10 +43,11 @@ function tenantSlug() {
 }
 
 function through(kind, token, directPath) {
+  const slug = tenantSlug();
   const host = linkHost();
-  if (!host || !token) return `${clientUrl()}${directPath}`;
+  if (!host || !token) return `${clientUrl()}/w/${slug}${directPath}`;
 
-  return `${host}/${kind}/${tenantSlug()}/${encodeURIComponent(token)}`;
+  return `${host}/${kind}/${slug}/${encodeURIComponent(token)}`;
 }
 
 /** The registration invite. Single use, and the only way to create an account. */
@@ -78,9 +81,10 @@ function pageLink(path) {
   const safe = value.startsWith('/') && !value.startsWith('//') ? value : '/dashboard';
 
   const host = linkHost();
-  if (!host) return `${clientUrl()}${safe}`;
+  const slug = tenantSlug();
+  if (!host) return `${clientUrl()}/w/${slug}${safe}`;
 
-  return `${host}/g/${tenantSlug()}?to=${encodeURIComponent(safe)}`;
+  return `${host}/g/${slug}?to=${encodeURIComponent(safe)}`;
 }
 
 module.exports = { inviteLink, resetLink, verifyLink, signInLink, pageLink, tenantSlug };

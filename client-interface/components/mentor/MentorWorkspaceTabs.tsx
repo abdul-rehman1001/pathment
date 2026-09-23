@@ -5,9 +5,10 @@ import {
   mentorWorkspaces,
   matchesMentorPath,
 } from '@/lib/config/mentorWorkspaces';
+import { logicalPathname, workspacePath } from '@/lib/services/workspace-scope';
 
 export function MentorWorkspaceTabs() {
-  const pathname = usePathname();
+  const pathname = logicalPathname(usePathname());
   const workspace = mentorWorkspaces.find((group) =>
     group.tabs.some((tab) => matchesMentorPath(pathname, tab.href)),
   );
@@ -24,7 +25,7 @@ export function MentorWorkspaceTabs() {
         {workspace.tabs.map((tab) => (
           <Link
             key={tab.href}
-            href={tab.href}
+            href={workspacePath(tab.href)}
             aria-current={
               matchesMentorPath(pathname, tab.href) ? 'page' : undefined
             }

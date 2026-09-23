@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { apiClient } from '@/lib/services/api-client';
 import { apiConfig } from '@/lib/config/api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
+import { workspacePath } from '@/lib/services/workspace-scope';
 
 export default function VerifyEmailPage() {
   const router = useRouter();
@@ -45,7 +46,7 @@ export default function VerifyEmailPage() {
         await apiClient.post(apiConfig.endpoints.verifyEmail, { token });
         setStatus('success');
         toast.success('Email verified successfully');
-        setTimeout(() => router.push('/login'), 1800);
+        setTimeout(() => router.push(workspacePath('/login')), 1800);
       } catch (error: any) {
         setStatus('failed');
         setErrorMessage(extractApiErrorMessage(error, 'Verification link is invalid or expired'));
@@ -183,7 +184,7 @@ export default function VerifyEmailPage() {
         {/* Success Action */}
         {status === 'success' && (
           <button
-            onClick={() => router.push('/login')}
+            onClick={() => router.push(workspacePath('/login'))}
             className="w-full bg-brand-600 hover:bg-brand-700 text-white py-3 rounded-xl transition-colors flex items-center justify-center gap-2"
           >
             Continue to Login

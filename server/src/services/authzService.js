@@ -4,6 +4,7 @@ const { ROLES, roleGrants } = require('../config/roles');
 const { ALL_PERMISSIONS, PERMISSIONS: P } = require('../config/permissions');
 const { AuthorizationError } = require('../utils/errors/errorTypes');
 const { VISIBLE_MEMBERSHIP_STATUSES } = require('../config/membership');
+const { getRequestContext } = require('../utils/auditContext');
 
 // Permissions that mean "this person mentors someone" - holding any of these at
 // a clan/program scope grants the mentor switch (drives getCapabilities).
@@ -12,15 +13,17 @@ const MENTOR_PERMISSIONS = [P.MENTEE_VIEW, P.MENTEE_MANAGE, P.TASK_ASSIGN, P.TAS
 
 // In-memory cache of admin-defined custom roles (key → { permissions[], scope }).
 // Invalidated by accessService whenever a custom role changes.
-let _customRoles = null;
+const _customRoles = new Map();
 async function loadCustomRoles() {
-  if (_customRoles) return _customRoles;
+  const organizationId = getRequestContext().organizationId || 'global';
+  if (_customRoles.has(organizationId)) return _customRoles.get(organizationId);
   const rows = await models.CustomRole.findAll({ attributes: ['key', 'permissions', 'scopeLevel'] });
-  _customRoles = {};
-  for (const r of rows) _customRoles[r.key] = { permissions: r.permissions || [], scope: r.scopeLevel };
-  return _customRoles;
+  const roles = {};
+  for (const r of rows) roles[r.key] = { permissions: r.permissions || [], scope: r.scopeLevel };
+  _customRoles.set(organizationId, roles);
+  return roles;
 }
-function invalidateCustomRoles() { _customRoles = null; }
+function invalidateCustomRoles() { _customRoles.clear(); }
 
 // Built-in roles that constitute "admin area" access (org/program tier - NOT
 // clan roles like lead_mentor). Used by hasAdminAccess().
@@ -59,6 +62,24 @@ class AuthzService {
   async getAssignments(user) {
     if (!user) return [];
     const custom = await loadCustomRoles();
+    const organizationId = getRequestContext().organizationId || null;
+    let organizationMembership = null;
+    let tenantClanIds = null;
+    let legacyAccountRole = !organizationId;
+    if (organizationId) {
+      organizationMembership = await models.OrganizationMembership.findOne({
+        where: { organizationId, userId: user.id, status: 'active' }, attributes: ['role'],
+        include: [{ model: models.Organization, as: 'organization', attributes: ['slug'] }],
+      });
+      if (!organizationMembership) return [];
+      legacyAccountRole = organizationMembership.organization?.slug ===
+        (process.env.DEFAULT_ORGANIZATION_SLUG || process.env.TENANT_SLUG || 'devweekends');
+      const clans = await models.Clan.findAll({
+        attributes: ['id'],
+        include: [{ model: models.Program, as: 'program', attributes: [], where: { organizationId } }],
+      });
+      tenantClanIds = clans.map((clan) => clan.id);
+    }
 
     // Per-co-mentor permission exceptions, keyed by clan and INDEPENDENT of how
     // the person became a co-mentor (team membership / cross-clan cover / IAM
@@ -89,22 +110,31 @@ class AuthzService {
     // comes from explicit RoleAssignments + clan memberships below — NOT the
     // stored `capabilities` array, which is legacy and no longer authoritative
     // (a mentee promoted to admin gets a super_admin RoleAssignment, not a cap).
-    if (user.role === 'admin') add('super_admin', 'org');
-    if (user.role === 'mentee') add('mentee', 'self', user.id);
+    // Workspace administration belongs to the membership, not the account's
+    // original role. The same global identity may own one workspace and be a
+    // mentee in another. Outside a tenant context retain the legacy admin
+    // assignment for maintenance scripts.
+    if ((!organizationId && user.role === 'admin') || ['owner', 'admin'].includes(organizationMembership?.role)) {
+      add('super_admin', 'org');
+    }
+    if (legacyAccountRole && user.role === 'mentee') add('mentee', 'self', user.id);
 
     // 1b. Clan memberships → clan-scoped roles (lead_mentor / co_mentor / core_team / mentee).
     const memberships = await models.ClanMembership.findAll({
-      where: { userId: user.id, status: 'active' },
+      where: { userId: user.id, status: 'active', ...(tenantClanIds ? { clanId: { [Op.in]: tenantClanIds } } : {}) },
       attributes: ['clanId', 'role']
     });
-    for (const m of memberships) add(m.role, 'clan', m.clanId);
+    for (const m of memberships) {
+      add(m.role, 'clan', m.clanId);
+      if (m.role === 'mentee') add('mentee', 'self', user.id);
+    }
 
     // 1c. Cross-clan assignments → co-mentor access to another clan.
     //     Consent-first: only ACCEPTED (active) cover grants access; pending/declined
     //     requests grant nothing until the person accepts.
     if (models.CrossClanAssignment) {
       const cross = await models.CrossClanAssignment.findAll({
-        where: { userId: user.id, status: 'active' },
+        where: { userId: user.id, status: 'active', ...(tenantClanIds ? { toClanId: { [Op.in]: tenantClanIds } } : {}) },
         attributes: ['toClanId']
       });
       for (const c of cross) if (c.toClanId) add('co_mentor', 'clan', c.toClanId);
@@ -177,7 +207,6 @@ class AuthzService {
    */
   async hasAdminAccess(user, opts = {}) {
     if (!user) return false;
-    if (user.role === 'admin') return true;
     const custom = await loadCustomRoles();
     const assignments = opts.assignments || (await this.getAssignments(user));
     return assignments.some((a) =>
@@ -207,9 +236,15 @@ class AuthzService {
       ['clan', 'program'].includes(a.scopeType) &&
       MENTOR_PERMISSIONS.some((perm) => assignmentGrants(a, perm, custom))
     );
-    if (user.role === 'mentor' || mentorsSomewhere) caps.add('mentor');
+    const organizationId = getRequestContext().organizationId;
+    const defaultOrganization = organizationId && await models.Organization.findOne({
+      where: { id: organizationId, slug: process.env.DEFAULT_ORGANIZATION_SLUG || process.env.TENANT_SLUG || 'devweekends' },
+      attributes: ['id'],
+    });
+    const legacyAccountRole = !organizationId || Boolean(defaultOrganization);
+    if ((legacyAccountRole && user.role === 'mentor') || mentorsSomewhere) caps.add('mentor');
 
-    if (user.role === 'mentee') {
+    if ((legacyAccountRole && user.role === 'mentee') || assignments.some(a => a.role === 'mentee')) {
       caps.add('mentee');
     } else {
       const enrollment = await models.Enrollment.findOne({

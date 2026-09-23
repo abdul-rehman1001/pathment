@@ -28,7 +28,9 @@
  *
  * Idempotent: it always wipes and recreates the demo namespace (everything
  * scoped to @demo.pathment.com users + the demo program), so re-running gives
- * a clean, consistent dataset. It never touches real data.
+ * a clean, consistent dataset. The preflight refuses real accounts, other
+ * workspaces and production. Use a dedicated demo database; no whole-run
+ * transaction is used, so failures can leave partial demo data until a rerun.
  *
  * Run with:  npm run seed:demo
  */
@@ -36,6 +38,8 @@ require("dotenv").config({ path: require("path").resolve(__dirname, "../.env") }
 const bcrypt = require("bcrypt");
 const { sequelize, models } = require("../src/db");
 const { Op } = require("sequelize");
+const { prepareDemoWorkspace } = require('./demoWorkspace');
+const { runWithRequestContext } = require('../src/utils/auditContext');
 
 const DEMO_DOMAIN = "@demo.pathment.com";
 const DEMO_PASSWORD = "Demo@1234";
@@ -358,6 +362,11 @@ async function seed() {
   await sequelize.authenticate();
   console.log("✅ Database connected\n");
 
+  const organization = await prepareDemoWorkspace({ sequelize, models });
+  return runWithRequestContext({ organizationId: organization.id, organizationSlug: organization.slug }, seedData);
+}
+
+async function seedData() {
   await cleanupDemo();
 
   // ── People ────────────────────────────────────────────────────────────────
@@ -2328,6 +2337,7 @@ seed()
   .then(() => process.exit(0))
   .catch((err) => {
     console.error("\n❌ Demo seed failed:", err.message);
+    if (process.env.SEED_DEBUG === 'true') console.error(err.stack);
     if (err.errors) err.errors.forEach((e) => console.error("   •", e.message));
     if (err.original) console.error("   Details:", err.original.message);
     process.exit(1);

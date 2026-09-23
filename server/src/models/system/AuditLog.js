@@ -5,6 +5,7 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true
     },
+    organizationId: { type: DataTypes.UUID, allowNull: false, field: 'organization_id' },
     userId: {
       type: DataTypes.UUID,
       field: 'user_id'
@@ -56,6 +57,7 @@ module.exports = (sequelize, DataTypes) => {
 
   AuditLog.associate = (models) => {
     AuditLog.belongsTo(models.User, { foreignKey: 'user_id', as: 'user', onDelete: 'SET NULL' });
+    AuditLog.belongsTo(models.Organization, { foreignKey: 'organization_id', as: 'organization' });
   };
 
   return AuditLog;

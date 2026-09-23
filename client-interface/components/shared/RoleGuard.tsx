@@ -6,6 +6,7 @@ import { useEffect, useState, ReactNode } from 'react';
 import { UserRole } from '@/lib/types';
 import { Loader2 } from 'lucide-react';
 import { usePermissions } from '@/lib/hooks/usePermissions';
+import { workspacePath } from '@/lib/services/workspace-scope';
 
 interface RoleGuardProps {
   children: ReactNode;
@@ -37,7 +38,7 @@ export function RoleGuard({ children, allowedRoles, redirectTo = '/login', permi
   useEffect(() => {
     if (isLoading) return;
     if (!user) {
-      router.push(redirectTo);
+      router.push(workspacePath(redirectTo));
       return;
     }
     if (permitted) {
@@ -54,7 +55,7 @@ export function RoleGuard({ children, allowedRoles, redirectTo = '/login', permi
       refreshUser().finally(() => { setRecheckedCaps(true); setVerifying(false); });
       return;
     }
-    router.push(`/${activeRole || user.role}/dashboard`);
+    router.push(workspacePath(`/${activeRole || user.role}/dashboard`));
   }, [user, isLoading, permitted, awaitingPerms, recheckedCaps, sectionRole, activeRole, availableRoles, redirectTo, router, setActiveRole, refreshUser, roleMatch]);
 
   if (isLoading || verifying || awaitingPerms) {

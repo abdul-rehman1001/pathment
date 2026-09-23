@@ -80,6 +80,20 @@ async function cleanDb() {
   }
 
   await sequelize.query('SET session_replication_role = DEFAULT');
+
+  // `users` is truncated with CASCADE; organizations references users through
+  // created_by, so PostgreSQL correctly truncates the workspace tables too.
+  // Recreate the default test workspace before any helper creates an account.
+  if (models.Organization && models.Plan && models.OrganizationSubscription) {
+    const slug = process.env.TENANT_SLUG || 'devweekends';
+    const [organization] = await models.Organization.findOrCreate({
+      where: { slug }, defaults: { name: 'Test Organization', status: 'active', timezone: 'UTC' },
+    });
+    const plan = await models.Plan.findOne({ where: { key: 'growth' } });
+    if (plan) await models.OrganizationSubscription.findOrCreate({
+      where: { organizationId: organization.id }, defaults: { planId: plan.id, status: 'active' },
+    });
+  }
 }
 
 // ─── User helpers ──────────────────────────────────────────────────────────────

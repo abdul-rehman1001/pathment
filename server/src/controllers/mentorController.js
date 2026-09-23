@@ -1,3 +1,4 @@
+const { workspaceMemberStatuses } = require('./workspaceMemberStatus');
 const { models } = require('../db');
 const { Op, fn, col } = require('sequelize');
 const { catchAsync } = require('../middlewares/errorHandler');
@@ -15,9 +16,8 @@ const getAllMentors = catchAsync(async (req, res) => {
   const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
   const offset = (pageNum - 1) * limitNum;
 
-  // Include suspended mentors so they stay visible and can be UNsuspended
-  // (active-only filtering made a just-suspended person disappear from the list).
-  const where = { role: 'mentor', status: { [Op.in]: ['active', 'suspended'] } };
+  // Directory visibility is membership-scoped by User hooks; role remains global.
+  const where = { role: 'mentor' };
 
   const searchConditions = search ? {
     [Op.or]: [
@@ -56,6 +56,7 @@ const getAllMentors = catchAsync(async (req, res) => {
   // batched queries — so the admin table shows which clans they run + expertise
   // without row-multiplying the paginated list.
   const mentorIds = mentors.map((m) => m.id);
+  const workspaceStatuses = await workspaceMemberStatuses(mentorIds);
   const [clanRows, skillUsers] = mentorIds.length ? await Promise.all([
     models.ClanMembership.findAll({
       where: { userId: { [Op.in]: mentorIds }, status: 'active', role: { [Op.in]: ['lead_mentor', 'co_mentor'] } },
@@ -89,6 +90,7 @@ const getAllMentors = catchAsync(async (req, res) => {
 
   const mentorRows = mentors.map((m) => {
     const json = m.toJSON();
+    json.status = workspaceStatuses.get(m.id);
     json.clans = clansByUser.get(m.id) || [];
     json.specializations = skillsByUser.get(m.id) || [];
     json.activeMentees = menteesByUser.get(m.id) || 0;
@@ -138,6 +140,7 @@ const getMentorById = catchAsync(async (req, res) => {
   });
 
   if (!mentor) throw new NotFoundError('Mentor not found');
+  const workspaceStatuses = await workspaceMemberStatuses([id]);
 
   // ── Mentee resolution is CLAN-based (the live data model) ──
   // This org assigns mentees by placing them in a clan the mentor leads/co-mentors,
@@ -247,6 +250,7 @@ const getMentorById = catchAsync(async (req, res) => {
   const totalTasksReviewed = await models.TaskFeedback.count({ where: { mentorId: id } }).catch(() => 0);
 
   const mentorJson = mentor.toJSON();
+  mentorJson.status = workspaceStatuses.get(id);
   // Override stale stored stats with live-computed values
   if (mentorJson.mentorProfile) {
     mentorJson.mentorProfile.totalMenteesGuided = totalMenteesGuided;

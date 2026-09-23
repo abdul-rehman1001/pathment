@@ -1,7 +1,7 @@
 const bcrypt = require('bcrypt');
 const { Op } = require('sequelize');
 const { sequelize, models } = require('../db');
-const { ConflictError, NotFoundError, ValidationError } = require('../utils/errors/errorTypes');
+const { AuthorizationError, ConflictError, NotFoundError, ValidationError } = require('../utils/errors/errorTypes');
 const { AUTH_MESSAGES, USER_MESSAGES } = require('../utils/responses/messages');
 const { generateRandomToken, hashToken } = require('../utils/jwt');
 const notificationOrchestrator = require('./notificationOrchestrator');
@@ -442,6 +442,12 @@ class AdminService {
       status: 'active'
     });
 
+    const organizationId = await require('./organizationService').currentId();
+    await models.OrganizationMembership.findOrCreate({
+      where: { organizationId, userId: admin.id },
+      defaults: { role: 'admin', status: 'active', joinedAt: new Date(), invitedBy: createdBy },
+    });
+
     // Create admin profile
     await models.AdminProfile.create({
       userId: admin.id,
@@ -712,195 +718,96 @@ class AdminService {
     }
   }
 
-  /**
-   * Block a user - sets status to 'suspended', immediately invalidates all sessions.
-   */
-  async suspendUser(targetUserId, adminUserId) {
+  /** Lifecycle actions manage membership only; User is a shared global identity. */
+  async _lifecycleMembership(targetUserId) {
+    // Fail closed: never fall back to the legacy workspace for admin mutations.
+    const { organizationId } = require('../utils/auditContext').getRequestContext();
+    if (!organizationId) throw new ValidationError('An active workspace is required');
+    const membership = await models.OrganizationMembership.findOne({
+      where: { organizationId, userId: targetUserId },
+    });
+    if (!membership || membership.status === 'left') {
+      throw new NotFoundError('Workspace member not found');
+    }
+    return membership;
+  }
+
+  async _changeMembershipStatus(targetUserId, adminUserId, status) {
     if (targetUserId === adminUserId) {
-      throw new ValidationError('You cannot block your own account');
+      throw new ValidationError('You cannot change your own workspace membership through this endpoint');
     }
-    const user = await models.User.findByPk(targetUserId);
-    if (!user) throw new NotFoundError('User not found');
-    if (user.role === 'admin') throw new ValidationError('Admin accounts cannot be blocked through this endpoint');
-    if (user.status === 'suspended') throw new ValidationError('User is already blocked');
-
-    await user.update({ status: 'suspended' });
-    // Invalidate all active sessions so they are kicked out immediately
-    await models.UserSession.destroy({ where: { userId: targetUserId } });
-    await models.RefreshToken.destroy({ where: { userId: targetUserId } });
-
-    return { message: `${user.firstName} ${user.lastName} has been blocked` };
-  }
-
-  /**
-   * Unblock a user - restores status to 'active'.
-   */
-  async unsuspendUser(targetUserId, adminUserId) {
-    const user = await models.User.findByPk(targetUserId);
-    if (!user) throw new NotFoundError('User not found');
-    if (user.status !== 'suspended') throw new ValidationError('User is not blocked');
-
-    await user.update({ status: 'active' });
-
-    return { message: `${user.firstName} ${user.lastName} has been unblocked` };
-  }
-
-  /**
-   * Admin edits a user's profile: name, email, and base role (mentee↔mentor).
-   * Email changes are trusted (kept verified). Base-role changes only apply to
-   * mentee/mentor accounts (admin accounts aren't demoted here), and the
-   * beforeSave hook keeps `capabilities` in sync. Returns the updated public user.
-   */
-  async updateUser(targetUserId, updates = {}, adminUserId = null) {
-    const user = await models.User.findByPk(targetUserId);
-    if (!user) throw new NotFoundError('User not found');
-
-    if (user.role === 'admin') {
-      throw new ValidationError('Admin accounts cannot be modified through the general user management endpoint.');
+    const membership = await this._lifecycleMembership(targetUserId);
+    if (['owner', 'admin'].includes(membership.role)) {
+      throw new ValidationError('Workspace owners and admins cannot be managed through this endpoint');
     }
-
-    const before = { firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role };
-
-    if (updates.firstName !== undefined) user.firstName = String(updates.firstName).trim().slice(0, 100);
-    if (updates.lastName !== undefined) user.lastName = String(updates.lastName).trim().slice(0, 100);
-
-    if (updates.email !== undefined && updates.email && updates.email.trim().toLowerCase() !== user.email) {
-      const email = updates.email.trim().toLowerCase();
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new ValidationError('Enter a valid email address');
-      const clash = await models.User.findOne({ where: { email, id: { [Op.ne]: user.id } }, attributes: ['id'] });
-      if (clash) throw new ConflictError('That email is already in use by another account');
-      user.email = email;
-      // Admin-set email is trusted → keep it usable immediately.
-      user.emailVerified = true;
-      user.emailVerifiedAt = new Date();
+    if (status === 'active' && membership.status !== 'suspended') {
+      throw new ValidationError('Workspace member is not suspended');
     }
-
-    if (updates.role !== undefined && updates.role !== user.role) {
-      if (!['mentee', 'mentor'].includes(updates.role)) {
-        throw new ValidationError('Base role must be mentee or mentor');
-      }
-      user.role = updates.role; // beforeSave hook adds it to capabilities
+    if (status === 'suspended' && membership.status !== 'active') {
+      throw new ValidationError('Only active workspace members can be suspended');
     }
-
-    await user.save();
-
+    const [changed] = await models.OrganizationMembership.update({ status }, {
+      where: {
+        id: membership.id, organizationId: membership.organizationId,
+        userId: targetUserId, status: membership.status, role: membership.role,
+      },
+    });
+    if (!changed) throw new ConflictError('Workspace membership changed; please try again');
+    if (status !== 'active') {
+      await require('../socket').disconnectWorkspaceUser(targetUserId, membership.organizationId);
+    }
     await createAuditLog({
-      userId: adminUserId, action: 'USER_UPDATED_BY_ADMIN', entityType: 'User', entityId: user.id,
-      oldValues: before, newValues: { firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role },
+      userId: adminUserId, organizationId: membership.organizationId,
+      action: 'WORKSPACE_MEMBERSHIP_UPDATED_BY_ADMIN',
+      entityType: 'OrganizationMembership', entityId: membership.id,
+      oldValues: { status: membership.status }, newValues: { status },
     }).catch(() => { });
-
+    // Global sessions, identity, and learning records survive. Workspace access
+    // is denied by the active-membership check on subsequent authenticated requests.
     return {
-      id: user.id, firstName: user.firstName, lastName: user.lastName,
-      email: user.email, role: user.role, status: user.status, capabilities: user.capabilities,
+      message: status === 'left' ? 'Member removed from this workspace'
+        : status === 'active' ? 'Member reactivated in this workspace'
+          : 'Member suspended in this workspace',
+      scope: 'workspace', membershipStatus: status,
     };
   }
 
-  /**
-   * Admin sets a user's password directly (e.g. "they can't log in" support).
-   * Logs them out of all sessions so the new password takes effect everywhere.
-   */
-  async setUserPassword(targetUserId, newPassword, adminUserId = null) {
-    if (!newPassword || String(newPassword).length < 8) {
-      throw new ValidationError('Password must be at least 8 characters');
-    }
-    const user = await models.User.findByPk(targetUserId);
-    if (!user) throw new NotFoundError('User not found');
-
-    user.passwordHash = await bcrypt.hash(String(newPassword), 12);
-    await user.save();
-    await models.UserSession.destroy({ where: { userId: user.id } });
-    await models.RefreshToken.destroy({ where: { userId: user.id } });
-
-    await createAuditLog({
-      userId: adminUserId, action: 'USER_PASSWORD_SET_BY_ADMIN', entityType: 'User', entityId: user.id,
-    }).catch(() => { });
-
-    return { message: `Password updated for ${user.firstName} ${user.lastName}. They've been signed out.` };
+  async suspendUser(targetUserId, adminUserId) {
+    return this._changeMembershipStatus(targetUserId, adminUserId, 'suspended');
   }
 
-  /** Admin triggers the normal "forgot password" reset email for a user. */
-  async sendUserPasswordReset(targetUserId) {
-    const user = await models.User.findByPk(targetUserId, { attributes: ['id', 'email', 'firstName', 'lastName'] });
-    if (!user) throw new NotFoundError('User not found');
-    const authService = require('./authService');
-    await authService.forgotPassword(user.email);
-    return { message: `A password-reset link was sent to ${user.email}` };
+  async unsuspendUser(targetUserId, adminUserId) {
+    return this._changeMembershipStatus(targetUserId, adminUserId, 'active');
   }
 
-  /**
-   * Admin disables/resets a user's 2FA (e.g. they lost their authenticator and
-   * are locked out). Idempotent. NOTE: an admin can't ENABLE 2FA for someone —
-   * enrolment needs the user's own authenticator app; they re-enable it in Settings.
-   */
-  async disableUserTwoFactor(targetUserId, adminUserId = null) {
-    const user = await models.User.findByPk(targetUserId, { attributes: ['id', 'firstName', 'lastName', 'twoFactorEnabled'] });
-    if (!user) throw new NotFoundError('User not found');
-    if (!user.twoFactorEnabled) return { message: 'Two-factor was already off for this user.' };
-
-    const securityService = require('./securityService');
-    await securityService.disable2FA(targetUserId);
-    await createAuditLog({
-      userId: adminUserId, action: 'USER_2FA_DISABLED_BY_ADMIN', entityType: 'User', entityId: targetUserId,
-    }).catch(() => { });
-    return { message: `Two-factor disabled for ${user.firstName} ${user.lastName}. They can log in without a code and re-enable it in Settings.` };
-  }
-
-  /**
-   * Delete a user (mentee or mentor) and all their associated data. Admin-only.
-   * An admin cannot delete themselves or another admin.
-   */
   async deleteUser(targetUserId, adminUserId) {
-    if (targetUserId === adminUserId) {
-      throw new ValidationError('You cannot delete your own account');
-    }
+    return this._changeMembershipStatus(targetUserId, adminUserId, 'left');
+  }
 
-    const user = await models.User.findByPk(targetUserId);
-    if (!user) {
-      throw new NotFoundError('User not found');
-    }
-    if (user.role === 'admin') {
-      throw new ValidationError('Admin accounts cannot be deleted through this endpoint');
-    }
+  /**
+   * Names, email, base role, password, and 2FA all belong to the global identity.
+   * No single-membership exception: another workspace can be joined concurrently.
+   * Account owners must use authenticated self-service or public password recovery.
+   */
+  async _rejectGlobalIdentityChange(targetUserId) {
+    await this._lifecycleMembership(targetUserId);
+    throw new AuthorizationError('Workspace admins cannot modify global account identity or security. The account owner must use account settings or password recovery.');
+  }
 
-    // For mentees: cancel active matches + delete assigned tasks before destroying enrollment
-    if (user.role === 'mentee') {
-      const enrollments = await models.Enrollment.findAll({
-        where: { menteeId: targetUserId },
-        attributes: ['id'],
-      });
-      const enrollmentIds = enrollments.map((e) => e.id);
+  async updateUser(targetUserId, updates = {}, adminUserId = null) {
+    return this._rejectGlobalIdentityChange(targetUserId);
+  }
 
-      if (enrollmentIds.length > 0) {
-        await models.MentorMenteeMatch.update(
-          { status: 'cancelled' },
-          { where: { enrollmentId: enrollmentIds, status: 'active' } }
-        );
-        await models.AssignedTask.destroy({ where: { enrollmentId: enrollmentIds } });
-      }
-    }
+  async setUserPassword(targetUserId, newPassword, adminUserId = null) {
+    return this._rejectGlobalIdentityChange(targetUserId);
+  }
 
-    // For mentors: cancel their active matches (mentees revert to pending_match).
-    if (user.role === 'mentor') {
-      const activeMatches = await models.MentorMenteeMatch.findAll({
-        where: { mentorId: targetUserId, status: 'active' },
-        attributes: ['enrollmentId'],
-      });
-      if (activeMatches.length > 0) {
-        const enrollmentIds = activeMatches.map((m) => m.enrollmentId);
-        await models.MentorMenteeMatch.update(
-          { status: 'cancelled' },
-          { where: { mentorId: targetUserId, status: 'active' } }
-        );
-        await models.Enrollment.update(
-          { status: 'pending_match' },
-          { where: { id: enrollmentIds } }
-        );
-      }
-    }
+  async sendUserPasswordReset(targetUserId) {
+    return this._rejectGlobalIdentityChange(targetUserId);
+  }
 
-    await user.destroy();
-
-    return { message: `${user.firstName} ${user.lastName} has been deleted` };
+  async disableUserTwoFactor(targetUserId, adminUserId = null) {
+    return this._rejectGlobalIdentityChange(targetUserId);
   }
 
   /**

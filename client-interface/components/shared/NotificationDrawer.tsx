@@ -27,6 +27,7 @@ import {
   toMessageText,
 } from "@/lib/hooks/shared/useNotificationFeed";
 import { useClan, ALL_CLANS } from "@/lib/context/ClanContext";
+import { logicalPathname, workspacePath } from "@/lib/services/workspace-scope";
 
 interface Notification {
   id: string;
@@ -62,7 +63,7 @@ const TYPE_ICON: Record<string, { Icon: typeof Bell; cls: string }> = {
 const typeMeta = (t?: string) => TYPE_ICON[t || "system"] || TYPE_ICON.system;
 
 const getRoleNotificationsPath = (pathname: string): string => {
-  const role = pathname.split("/")[1];
+  const role = roleFromPathname(pathname);
   if (role === "admin" || role === "mentor" || role === "mentee") {
     return `/${role}/notifications`;
   }
@@ -75,7 +76,7 @@ export default function NotificationDrawer({
 }: NotificationDrawerProps) {
   const dialogRef = useRef<HTMLElement>(null);
   const router = useRouter();
-  const pathname = usePathname();
+  const pathname = logicalPathname(usePathname());
   const { activeRole } = useAuth();
   const { activeClanId, menteeActiveClanId } = useClan();
   const [isOpen, setIsOpen] = useState(false);
@@ -152,7 +153,7 @@ export default function NotificationDrawer({
 
   const handleNotificationClick = (notification: Notification) => {
     if (notification.actionUrl) {
-      router.push(notification.actionUrl);
+      router.push(workspacePath(notification.actionUrl));
       setIsOpen(false);
     }
     if (notification.status === "unread") {
@@ -439,7 +440,7 @@ export default function NotificationDrawer({
                   </button>
                   <button
                     onClick={() => {
-                      router.push(notificationsPath);
+                      router.push(workspacePath(notificationsPath));
                       setIsOpen(false);
                     }}
                     className="px-3 py-2 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg transition-colors"

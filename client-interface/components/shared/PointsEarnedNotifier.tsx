@@ -5,6 +5,7 @@ import { X, Sparkles, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/context/AuthContext";
+import { logicalPathname, workspacePath } from "@/lib/services/workspace-scope";
 import {
   gamificationApi,
   type PointsHistoryEntry,
@@ -31,7 +32,7 @@ function formatReason(item: PointsHistoryEntry): string {
 
 export function PointsEarnedNotifier() {
   const { user } = useAuth();
-  const pathname = usePathname();
+  const pathname = logicalPathname(usePathname());
   const [items, setItems] = useState<PointsHistoryEntry[]>([]);
   const [visible, setVisible] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -161,7 +162,7 @@ export function PointsEarnedNotifier() {
           </p>
           {rewardsHref && (
             <Link
-              href={rewardsHref}
+              href={workspacePath(rewardsHref)}
               onClick={handleDismiss}
               className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-brand-700 dark:text-brand-300"
             >

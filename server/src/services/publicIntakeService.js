@@ -455,7 +455,7 @@ class PublicIntakeService {
 
   // ── helpers ──────────────────────────────────────────────────────────────────
   buildStatusUrl(rawToken) {
-    const base = (process.env.CLIENT_URL || 'http://localhost:3000').split(',')[0].replace(/\/$/, '');
+    const base = require('../utils/applicationUrl')();
     return `${base}/apply/status/${encodeURIComponent(rawToken)}`;
   }
 

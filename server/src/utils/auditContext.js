@@ -21,6 +21,15 @@ const setRequestUser = (userId) => {
   if (ctx) ctx.userId = userId;
 };
 
+/** Bind every downstream query/audit/job spawned by this request to a workspace. */
+const setRequestOrganization = (organizationId, organizationSlug = null) => {
+  const ctx = store.getStore();
+  if (ctx) {
+    ctx.organizationId = organizationId || null;
+    ctx.organizationSlug = organizationSlug || null;
+  }
+};
+
 /**
  * The single audit writer. Merges actor/IP/user-agent from the current request
  * context when the caller didn't provide them, and never throws (audit must not
@@ -35,10 +44,13 @@ async function createAuditLog(data) {
       userId: data.userId || ctx.userId || null,
       ipAddress: data.ipAddress || ctx.ip || null,
       userAgent: data.userAgent || ctx.userAgent || null,
+      ...(models.AuditLog.rawAttributes.organizationId
+        ? { organizationId: data.organizationId || ctx.organizationId || null }
+        : {}),
     });
   } catch (error) {
     console.warn('Audit log failed:', error.message);
   }
 }
 
-module.exports = { runWithRequestContext, getRequestContext, setRequestUser, createAuditLog };
+module.exports = { runWithRequestContext, getRequestContext, setRequestUser, setRequestOrganization, createAuditLog };

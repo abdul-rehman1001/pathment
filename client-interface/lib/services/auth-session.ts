@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { toast } from 'sonner';
+import { logicalPathname, workspacePath } from './workspace-scope';
 import { apiConfig } from '../config/api';
 import { tokenStore } from './token-store';
 import { getRateLimit } from '../utils/api-error';
@@ -245,9 +246,10 @@ export function handleSessionExpired(message = 'Your session has expired. Please
   try { toast.error(message); } catch { /* toasts are optional */ }
 
   const here = `${window.location.pathname}${window.location.search}`;
-  const returnable = here && here !== '/' && !here.startsWith('/login') && !here.startsWith('/register');
+  const logical = logicalPathname(window.location.pathname);
+  const returnable = here && logical !== '/' && !logical.startsWith('/login') && !logical.startsWith('/register');
   const next = returnable ? `&next=${encodeURIComponent(here)}` : '';
-  setTimeout(() => { window.location.href = `/login?expired=true${next}`; }, 1200);
+  setTimeout(() => { window.location.href = workspacePath(`/login?expired=true${next}`); }, 1200);
 }
 
 /** Reset after a fresh login so a previous expiry can't suppress a later one. */

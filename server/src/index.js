@@ -80,6 +80,10 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Seed per-request audit context (IP + user-agent) for downstream audit writes.
 app.use(requestContext);
 
+// Resolve the active organization from the workspace header/hostname before
+// authentication. Authentication then proves the user belongs to it.
+app.use(require('./middlewares/organizationContext'));
+
 // Which portal the caller has open (mentee / mentor / admin) + the mentor clan
 // selector. Parse-only; it narrows what a multi-role user is shown and grants
 // nothing. See middlewares/portalScope.js.
@@ -156,14 +160,16 @@ async function start() {
     // Start the DB-backed email queue worker (retries, DLQ, suppression).
     // Replaces the Redis/Bull invite worker — all mail now flows through one
     // Postgres-backed queue, keeping us inside the Upstash command budget.
-    require('./workers/emailWorker').start();
+    if (process.env.EMAIL_WORKER_DISABLED !== 'true') {
+      require('./workers/emailWorker').start();
+    }
 
     // Start HTTP + Socket.IO server
     initSocket(server);
     
     // Initialize RAG subsystem (Workers & Event Listeners)
     const { initializeRag } = require('./features/rag');
-    initializeRag();
+    if (process.env.RAG_WORKERS_DISABLED !== 'true') initializeRag();
 
     // Initialize Certificate Queue Workers (PDF & AI Evaluation)
     if (process.env.CERTIFICATE_WORKER_DISABLED !== 'true') {

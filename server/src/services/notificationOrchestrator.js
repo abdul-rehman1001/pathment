@@ -10,7 +10,7 @@ const { resetLink, verifyLink, signInLink, pageLink } = require('../utils/links'
 
 const escHtml = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-const clientUrl = () => (process.env.CLIENT_URL || 'https://pathment.me').replace(/\/$/, '');
+const clientUrl = () => require('../utils/applicationUrl')();
 
 class NotificationOrchestrator {
   isNotificationEmailEnabled() {

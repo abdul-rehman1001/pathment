@@ -11,7 +11,10 @@
  * never disagree about who is logged in.
  */
 
-const SESSION_KEYS = ['token', 'refreshToken', 'user'] as const;
+import { activeWorkspaceSlug } from './workspace-scope';
+
+const USER_WORKSPACE_KEY = 'userWorkspace';
+const SESSION_KEYS = ['token', 'refreshToken', 'user', USER_WORKSPACE_KEY] as const;
 const MODE_KEY = 'rememberMode'; // 'local' | 'session'
 
 const isBrowser = () => typeof window !== 'undefined';
@@ -32,11 +35,29 @@ function read(key: string): string | null {
 
 export const getToken = () => read('token');
 export const getRefreshToken = () => read('refreshToken');
+export const isRememberedSession = () => isBrowser() && activeStore() === localStorage;
 
 export function getUser<T = unknown>(): T | null {
   const raw = read('user');
   if (!raw) return null;
   try { return JSON.parse(raw) as T; } catch { return null; }
+}
+
+/** Unstamped legacy caches are not trusted for workspace capabilities. */
+export function getCachedUserWorkspace(): string | null {
+  return activeStore()?.getItem(USER_WORKSPACE_KEY) ?? null;
+}
+
+/** Revoke cached capabilities without deleting the identity used by handoff. */
+export function invalidateCachedUserWorkspace(): void {
+  activeStore()?.removeItem(USER_WORKSPACE_KEY);
+}
+
+function cacheUser(store: Storage, user: unknown): void {
+  store.removeItem(USER_WORKSPACE_KEY);
+  store.setItem('user', JSON.stringify(user));
+  const workspace = activeWorkspaceSlug();
+  if (workspace) store.setItem(USER_WORKSPACE_KEY, workspace);
 }
 
 /**
@@ -54,7 +75,9 @@ export function setSession(
   other.removeItem(MODE_KEY);
   primary.setItem('token', token);
   primary.setItem('refreshToken', refreshToken);
-  if (user !== undefined) primary.setItem('user', JSON.stringify(user));
+  primary.removeItem('user');
+  primary.removeItem(USER_WORKSPACE_KEY);
+  if (user !== undefined) cacheUser(primary, user);
   primary.setItem(MODE_KEY, remember ? 'local' : 'session');
 }
 
@@ -86,7 +109,7 @@ export function setUser(user: unknown): void {
   if (!isBrowser()) return;
   const store = activeStore()
     ?? (localStorage.getItem(MODE_KEY) === 'session' ? sessionStorage : localStorage);
-  store.setItem('user', JSON.stringify(user));
+  cacheUser(store, user);
 }
 
 /** Remove the session from BOTH stores. */
@@ -99,5 +122,6 @@ export function clearSession(): void {
 }
 
 export const tokenStore = {
-  getToken, getRefreshToken, getUser, setSession, setToken, setRefreshToken, setUser, clearSession,
+  getToken, getRefreshToken, getUser, getCachedUserWorkspace, invalidateCachedUserWorkspace, isRememberedSession,
+  setSession, setToken, setRefreshToken, setUser, clearSession,
 };

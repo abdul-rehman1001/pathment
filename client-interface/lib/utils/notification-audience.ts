@@ -9,7 +9,8 @@ export type NotificationRole = 'mentor' | 'mentee' | 'admin';
 
 /** The portal role from a pathname prefix (`/mentor/...`), or null on a neutral page. */
 export function roleFromPathname(pathname: string | null | undefined): NotificationRole | null {
-  const seg = (pathname || '').split('/').filter(Boolean)[0];
+  const parts = (pathname || '').split('/').filter(Boolean);
+  const seg = parts[0] === 'w' ? parts[2] : parts[0];
   return seg === 'mentor' || seg === 'mentee' || seg === 'admin' ? seg : null;
 }
 

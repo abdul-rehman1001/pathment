@@ -28,7 +28,7 @@ router.get('/unsubscribe', async (req, res) => {
   const uid = userIdFromToken(req.query.token);
   let ok = false;
   try { ok = await unsubscribe(uid); } catch { ok = false; }
-  const manage = `${(process.env.CLIENT_URL || 'https://pathment.me').replace(/\/$/, '')}/settings`;
+  const manage = `${require('../utils/applicationUrl')()}/settings`;
   res.status(200).type('html').send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Unsubscribe</title></head>
 <body style="font-family:Arial,Helvetica,sans-serif;background:#f1f5f9;margin:0;padding:48px 16px;">
   <div style="max-width:520px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:32px;text-align:center;">

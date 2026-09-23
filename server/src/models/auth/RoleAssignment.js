@@ -16,6 +16,11 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       field: 'user_id'
     },
+    organizationId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      field: 'organization_id'
+    },
     role: {
       type: DataTypes.STRING(40),
       allowNull: false
@@ -43,12 +48,15 @@ module.exports = (sequelize, DataTypes) => {
     indexes: [
       { fields: ['user_id'] },
       { fields: ['scope_type', 'scope_id'] },
-      { unique: true, fields: ['user_id', 'role', 'scope_type', 'scope_id'] }
+      // PostgreSQL truncates identifiers at 63 bytes. The generated name is
+      // 65 bytes, which makes Sequelize recreate it during cyclic/repeated sync.
+      { name: 'role_assignments_org_scope_uniq', unique: true, fields: ['organization_id', 'user_id', 'role', 'scope_type', 'scope_id'] }
     ]
   });
 
   RoleAssignment.associate = (models) => {
     RoleAssignment.belongsTo(models.User, { foreignKey: 'user_id', as: 'user' });
+    RoleAssignment.belongsTo(models.Organization, { foreignKey: 'organization_id', as: 'organization' });
     RoleAssignment.belongsTo(models.User, { foreignKey: 'granted_by', as: 'grantedByUser' });
   };
 

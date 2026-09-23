@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Mic, ArrowRight } from 'lucide-react';
 import { getActiveInterview, ACTIVE_INTERVIEW_EVENT, type ActiveInterview } from '@/lib/utils/activeInterview';
 import { fmtClock } from '@/lib/utils/interviewMedia';
+import { logicalPathname, workspacePath } from '@/lib/services/workspace-scope';
 
 /**
  * InterviewResumeBar — a mentee-wide floating pill shown whenever an interview is
@@ -34,7 +35,7 @@ export function InterviewResumeBar() {
 
   if (!ai) return null;
   // Don't show while actually on the runner for this interview.
-  if (pathname?.startsWith(`/mentee/interviews/${ai.taskId}`)) return null;
+  if (logicalPathname(pathname).startsWith(`/mentee/interviews/${ai.taskId}`)) return null;
 
   const remaining = ai.deadlineTs != null && now ? Math.round((ai.deadlineTs - now) / 1000) : null;
   const urgent = remaining != null && remaining <= 60;
@@ -42,7 +43,7 @@ export function InterviewResumeBar() {
   return (
     <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] px-2 w-full max-w-md">
       <button
-        onClick={() => router.push(`/mentee/interviews/${ai.taskId}`)}
+        onClick={() => router.push(workspacePath(`/mentee/interviews/${ai.taskId}`))}
         className={`w-full flex items-center gap-3 rounded-2xl border px-4 py-3 shadow-lg text-left transition-colors ${
           urgent ? 'bg-red-600 border-red-700 text-white hover:bg-red-700'
                  : 'bg-brand-600 border-brand-700 text-white hover:bg-brand-700'

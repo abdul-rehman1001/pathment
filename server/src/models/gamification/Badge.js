@@ -5,10 +5,11 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true
     },
+    organizationId: { type: DataTypes.UUID, allowNull: false, field: 'organization_id' },
     name: {
       type: DataTypes.STRING(100),
       allowNull: false,
-      unique: true
+      unique: false
     },
     description: {
       type: DataTypes.TEXT,
@@ -57,11 +58,13 @@ module.exports = (sequelize, DataTypes) => {
     underscored: true,
     indexes: [
       { fields: ['category'] },
-      { fields: ['is_active'] }
+      { fields: ['is_active'] },
+      { unique: true, fields: ['organization_id', 'name'] }
     ]
   });
 
   Badge.associate = (models) => {
+    Badge.belongsTo(models.Organization, { foreignKey: 'organization_id', as: 'organization' });
     Badge.belongsToMany(models.User, {
       through: models.UserBadge,
       foreignKey: 'badge_id',

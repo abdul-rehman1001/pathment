@@ -8,6 +8,7 @@ import { apiClient } from '@/lib/services/api-client';
 import { apiConfig } from '@/lib/config/api';
 import { validatePassword } from '@/lib/utils/validation';
 import { PasswordRequirements } from '@/components/shared/PasswordRequirements';
+import { workspacePath } from '@/lib/services/workspace-scope';
 
 export default function ResetPasswordPage() {
   const router = useRouter();
@@ -243,7 +244,7 @@ export default function ResetPasswordPage() {
             </div>
 
             <button
-              onClick={() => router.push('/login')}
+              onClick={() => router.push(workspacePath('/login'))}
               className="w-full bg-brand-600 hover:bg-brand-700 text-white py-3 rounded-xl transition-colors flex items-center justify-center gap-2 group"
             >
               Continue to Login

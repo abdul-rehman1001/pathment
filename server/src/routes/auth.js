@@ -3,7 +3,7 @@ const router = express.Router();
 const authController = require('../controllers/authController');
 const { validateBody } = require('../middlewares/validate');
 const { authSchemas } = require('../validations/authValidation');
-const { authenticate, authenticateTemporary } = require('../middlewares/auth');
+const { authenticate, authenticateAccount, authenticateTemporary } = require('../middlewares/auth');
 const {
   loginLimiter,
   passwordResetLimiter,
@@ -34,7 +34,7 @@ router.get(
 
 router.post(
   '/invites/:token/accept',
-  authenticate,
+  authenticateAccount,
   authController.acceptInvite
 );
 
@@ -66,6 +66,15 @@ router.post(
   loginLimiter,
   validateBody(authSchemas.signInLinkVerify),
   authController.verifySignInLink
+);
+
+// Redeem the opaque bridge on app.pathment.me. It is single-use and expires in
+// two minutes, so the actual session credentials never appear in a URL.
+router.post(
+  '/domain-handoff/consume',
+  loginLimiter,
+  validateBody(authSchemas.domainHandoffConsume),
+  authController.consumeDomainHandoff
 );
 
 // Refresh access token
@@ -113,6 +122,13 @@ router.post(
  */
 
 // Get current user
+router.post(
+  '/domain-handoff',
+  authenticate,
+  validateBody(authSchemas.domainHandoffCreate),
+  authController.createDomainHandoff
+);
+
 router.get(
   '/me',
   authenticate,

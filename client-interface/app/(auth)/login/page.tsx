@@ -5,9 +5,10 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/context/AuthContext';
 import { TwoFactorCodeInput } from '@/components/shared/TwoFactorCodeInput';
-import { extractApiErrorMessage, getRateLimit, formatRetryAfter } from '@/lib/utils/api-error';
+import { extractApiErrorMessage, getRateLimit, formatRetryAfter, getErrorCode } from '@/lib/utils/api-error';
 import { Mail, Lock, ArrowRight, AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { workspacePath } from '@/lib/services/workspace-scope';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -16,6 +17,7 @@ export default function LoginPage() {
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState('');
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   // Rate-limit cooldown: timestamp (ms) until which login is blocked, + a 1s tick.
@@ -48,13 +50,14 @@ export default function LoginPage() {
   // Redirect if already logged in
   useEffect(() => {
     if (!isLoading && user && !requiresTwoFactor) {
-      router.push(returnTo || `/${user.role}/dashboard`);
+      router.push(returnTo ? workspacePath(returnTo) : workspacePath(`/${user.role}/dashboard`));
     }
   }, [user, isLoading, requiresTwoFactor, router, returnTo]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setWorkspaceError(null);
     setLoading(true);
 
     try {
@@ -62,9 +65,11 @@ export default function LoginPage() {
       // Use returned result instead of state to avoid stale value race.
       if (!result.requiresTwoFactor) {
         toast.success('Welcome back!');
-        router.push(returnTo || '/');
+        router.push(returnTo ? workspacePath(returnTo) : workspacePath('/'));
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const code = getErrorCode(err);
+      setWorkspaceError(code?.startsWith('WORKSPACE_') ? code : null);
       const rl = getRateLimit(err);
       if (rl.limited) {
         setCooldownUntil(Date.now() + rl.retryAfterSec * 1000);
@@ -81,14 +86,10 @@ export default function LoginPage() {
   };
 
   const handle2FAVerify = async (code: string) => {
-    try {
-      await verify2FA(code, rememberMe);
-      // After successful 2FA, resume where they were (or the dashboard).
-      if (user) {
-        router.push(returnTo || `/${user.role}/dashboard`);
-      }
-    } catch (err: any) {
-      throw err;
+    await verify2FA(code, rememberMe);
+    // After successful 2FA, resume where they were (or the dashboard).
+    if (user) {
+      router.push(returnTo ? workspacePath(returnTo) : workspacePath(`/${user.role}/dashboard`));
     }
   };
 
@@ -116,7 +117,7 @@ export default function LoginPage() {
           // Reset form and logout user to go back to login if they cancel
           setFormData({ email: '', password: '' });
           setError('');
-          window.location.href = '/login';
+          window.location.href = workspacePath('/login');
         }}
         userEmail={user?.email}
       />
@@ -141,10 +142,17 @@ export default function LoginPage() {
             <div>
               <p className="text-red-900">{error}</p>
               <p className="text-red-700 text-sm mt-1">
-                {cooldownSec > 0
+                {workspaceError
+                  ? 'This is a workspace setup or selection issue. Your password has not been checked.'
+                  : cooldownSec > 0
                   ? `You can try again in ${formatRetryAfter(cooldownSec)}.`
                   : 'Please check your credentials and try again'}
               </p>
+              {workspaceError === 'WORKSPACE_NOT_FOUND' && (
+                <a className="mt-2 inline-block text-sm underline" href="/w/devweekends/login">
+                  Open DevWeekends sign-in
+                </a>
+              )}
             </div>
           </div>
         )}
@@ -248,8 +256,8 @@ export default function LoginPage() {
         {/* Register Link */}
         <div className="mt-6 text-center">
           <p className="text-slate-600 text-sm">
-            Don't have an account?{' '}
-            <Link href="/register" className="text-brand-600 hover:text-brand-700">
+            Don&apos;t have an account?{' '}
+            <Link href={workspacePath('/register')} className="text-brand-600 hover:text-brand-700">
               Sign up
             </Link>
           </p>

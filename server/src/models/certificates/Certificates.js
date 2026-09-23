@@ -7,6 +7,7 @@ module.exports = (sequelize, DataTypes) => {
   // 1. CertificateTemplate Model (Design Blueprint)
   const CertificateTemplate = sequelize.define('CertificateTemplate', {
     id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    organizationId: { type: DataTypes.UUID, allowNull: false, field: 'organization_id' },
     name: { type: DataTypes.STRING(255), allowNull: false },
     bgImageUrl: { type: DataTypes.TEXT, field: 'bg_image_url' },
     logoUrl: { type: DataTypes.TEXT, field: 'logo_url' },
@@ -31,11 +32,13 @@ module.exports = (sequelize, DataTypes) => {
     if (models.Program) {
       CertificateTemplate.belongsTo(models.Program, { foreignKey: 'programId', as: 'program' });
     }
+    if (models.Organization) CertificateTemplate.belongsTo(models.Organization, { foreignKey: 'organizationId', as: 'organization' });
   };
 
   // 2. CertificateInstance Model (Issued Credential)
   const CertificateInstance = sequelize.define('CertificateInstance', {
     id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    organizationId: { type: DataTypes.UUID, allowNull: false, field: 'organization_id' },
     templateId: { type: DataTypes.UUID, allowNull: false, field: 'template_id' },
     menteeId: { type: DataTypes.UUID, allowNull: false, field: 'mentee_id' },
     mentorId: { type: DataTypes.UUID, field: 'mentor_id' },
@@ -66,6 +69,7 @@ module.exports = (sequelize, DataTypes) => {
   // 3. CertificateVerification (the mentor's review of an AI tier assignment)
   const CertificateVerification = sequelize.define('CertificateVerification', {
     id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    organizationId: { type: DataTypes.UUID, allowNull: false, field: 'organization_id' },
     templateId: { type: DataTypes.UUID, allowNull: false, field: 'template_id' },
     menteeId: { type: DataTypes.UUID, allowNull: false, field: 'mentee_id' },
     clanId: { type: DataTypes.UUID, field: 'clan_id' },
@@ -110,6 +114,7 @@ module.exports = (sequelize, DataTypes) => {
   // admin's, and only the second one lets a mentor press send.
   const CertificateClanApproval = sequelize.define('CertificateClanApproval', {
     id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    organizationId: { type: DataTypes.UUID, allowNull: false, field: 'organization_id' },
     templateId: { type: DataTypes.UUID, allowNull: false, field: 'template_id' },
     clanId: { type: DataTypes.UUID, allowNull: false, field: 'clan_id' },
     approvedBy: { type: DataTypes.UUID, field: 'approved_by' },

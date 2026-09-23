@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/context/AuthContext';
 import { Loader2 } from 'lucide-react';
+import { workspacePath } from '@/lib/services/workspace-scope';
 
 /** A profile photo is mandatory for these roles (admins are exempt). */
 const PHOTO_REQUIRED_ROLES = ['mentor', 'mentee'];
@@ -24,14 +25,14 @@ export default function OnboardingGuard({ children }: { children: React.ReactNod
     if (!user.profileCompleted) {
       const step = user.onboardingStep || 0;
       if (step === 0) {
-        router.push(user.role === 'mentor' ? '/onboarding/mentor' : '/onboarding/mentee');
+        router.push(workspacePath(user.role === 'mentor' ? '/onboarding/mentor' : '/onboarding/mentee'));
       } else if (step === 1) {
-        router.push('/onboarding/skills');
+        router.push(workspacePath('/onboarding/skills'));
       }
       return;
     }
 
-    if (needsPhoto) router.push('/onboarding/photo');
+    if (needsPhoto) router.push(workspacePath('/onboarding/photo'));
   }, [user, isLoading, router, needsPhoto]);
 
   // Hold the dashboard back while we redirect to onboarding / the photo step.

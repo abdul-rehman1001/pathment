@@ -56,6 +56,7 @@ router.get('/health', (req, res) => {
 
 // Auth routes
 router.use('/auth', authRoutes);
+router.use('/organizations', require('./organizations'));
 
 // Profile and skills routes
 router.use('/profile', profileRoutes);

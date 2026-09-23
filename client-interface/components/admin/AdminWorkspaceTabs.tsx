@@ -3,8 +3,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { usePermissions } from "@/lib/hooks/usePermissions";
 import { adminWorkspaces, matchesAdminTab } from "@/lib/config/adminWorkspaces";
+import { logicalPathname, workspacePath } from "@/lib/services/workspace-scope";
 export function AdminWorkspaceTabs() {
-  const pathname = usePathname();
+  const pathname = logicalPathname(usePathname());
   const { can, loading } = usePermissions();
   const group = adminWorkspaces.find((group) =>
     group.tabs.some((tab) => matchesAdminTab(pathname, tab.href)),
@@ -25,7 +26,7 @@ export function AdminWorkspaceTabs() {
         {tabs.map((tab) => (
           <Link
             key={tab.href}
-            href={tab.href}
+            href={workspacePath(tab.href)}
             aria-current={
               matchesAdminTab(pathname, tab.href) ? "page" : undefined
             }

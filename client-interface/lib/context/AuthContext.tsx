@@ -1,16 +1,23 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { User, AuthResponse, LoginCredentials, RegisterData, TwoFactorLoginResponse, UserRole } from '../types';
+import { isAxiosError } from 'axios';
+import { activeWorkspaceSlug } from '../services/workspace-scope';
 import { apiClient } from '../services/api-client';
 import { apiConfig } from '../config/api';
 import { tokenStore } from '../services/token-store';
 import { startAuthSession, resetAuthSession } from '../services/auth-session';
 
-/** Capabilities a user holds, always falling back to their primary role. */
+/** An explicit empty capability list grants no role views. */
 function getCapabilities(user: User | null): UserRole[] {
   if (!user) return [];
-  return user.capabilities && user.capabilities.length ? user.capabilities : [user.role];
+  return user.capabilities ?? [user.role];
+}
+
+interface RegistrationResult {
+  clanJoin?: { joinPath?: string };
+  [key: string]: unknown;
 }
 
 interface AuthContextType {
@@ -27,7 +34,7 @@ interface AuthContextType {
   setActiveRole: (role: UserRole) => void;
   login: (credentials: LoginCredentials, rememberMe?: boolean) => Promise<{ requiresTwoFactor: boolean }>;
   verify2FA: (code: string, rememberMe?: boolean) => Promise<void>;
-  register: (data: RegisterData) => Promise<any>;
+  register: (data: RegisterData) => Promise<RegistrationResult>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   updateUser: (updates: Partial<User>) => void;
@@ -47,9 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [pendingRemember, setPendingRemember] = useState(true);
   const [activeRole, setActiveRoleState] = useState<UserRole | null>(null);
 
-  useEffect(() => {
-    checkAuth();
-  }, []);
+  const authCheckVersion = useRef(0);
 
   // Renew the access token in the background — shortly before it expires, and
   // whenever the tab wakes or the network returns. Without this the ONLY way we
@@ -71,10 +76,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       : null);
     const next = stored && caps.includes(stored)
       ? stored
-      : (caps.includes(user.role) ? user.role : caps[0]);
+      : (caps.includes(user.role) ? user.role : (caps[0] ?? null));
     setActiveRoleState(next);
-    if (typeof window !== 'undefined' && next) {
-      localStorage.setItem('activeRole', next);
+    if (typeof window !== 'undefined') {
+      if (next) localStorage.setItem('activeRole', next);
+      else localStorage.removeItem('activeRole');
     }
   }, [user]);
 
@@ -86,61 +92,71 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const checkAuth = async () => {
+  const checkAuth = useCallback(async () => {
+    setIsLoading(true);
+    const version = ++authCheckVersion.current;
+    const workspace = activeWorkspaceSlug();
+    const isCurrent = () => version === authCheckVersion.current && workspace === activeWorkspaceSlug();
     try {
       const token = tokenStore.getToken();
       const cachedUser = tokenStore.getUser<User>();
-
-      // If user exists but no token, clear everything (corrupted state)
-      if (cachedUser && !token) {
-        console.warn('Auth state corrupted: user exists but no token. Clearing...');
-        tokenStore.clearSession();
+      const cachedWorkspace = tokenStore.getCachedUserWorkspace();
+      if (!token) {
+        if (cachedUser) tokenStore.clearSession();
         setUser(null);
-        setIsLoading(false);
+        setActiveRoleState(null);
         return;
       }
 
-      if (token) {
-        // Try to get user from API
-        try {
-          const response = await apiClient.get<any>(apiConfig.endpoints.me);
-          // apiClient.get returns: { success, message, statusCode, data: { user } }
-          const userData = response.data?.user;
-          if (userData) {
-            setUser(userData);
-            tokenStore.setUser(userData);
-          }
-        } catch (apiError: any) {
-          // If API fails, try to get from the cached user
-          if (cachedUser) {
-            console.log('Using cached user after API fail');
-            setUser(cachedUser);
-          } else {
-            throw apiError;
-          }
+      setUser(null);
+      setActiveRoleState(null);
+      try {
+        const response = await apiClient.get<{ data?: { user?: User } }>(apiConfig.endpoints.me);
+        if (!isCurrent() || !tokenStore.getToken()) return;
+        const userData = response.data?.user;
+        if (userData) {
+          tokenStore.setUser(userData);
+          setUser(userData);
+        } else {
+          tokenStore.invalidateCachedUserWorkspace();
         }
-      } else {
-        setUser(null);
+      } catch (error) {
+        if (!isCurrent()) return;
+        const status = getHttpStatus(error);
+        const transient = status === 408 || status === 429 ||
+          (status !== undefined && status >= 500 && status <= 599) ||
+          (status === undefined && isAxiosError(error) && !!error.request && error.code !== 'ERR_CANCELED');
+        if (transient && workspace !== null && cachedWorkspace === workspace &&
+            tokenStore.getCachedUserWorkspace() === workspace && tokenStore.getToken() && cachedUser) {
+          setUser(cachedUser);
+        } else {
+          setUser(null);
+          setActiveRoleState(null);
+          // Denial in one workspace does not revoke the global identity. Keep
+          // tokens and the raw identity for handoff, but invalidate capabilities.
+          if (!transient && cachedWorkspace === workspace) tokenStore.invalidateCachedUserWorkspace();
+          if (status === 401) tokenStore.clearSession();
+        }
       }
     } catch (error) {
+      if (!isCurrent()) return;
       console.error('Auth check failed:', error);
-      // Only a definitive rejection clears the session. A network error / 5xx on
-      // the very first /auth/me (offline reload, backend restart) must not throw
-      // away a perfectly good refresh token — the interceptor handles a real
-      // expiry, and the next successful request restores the user.
-      const status = getHttpStatus(error);
-      if (status === 401 || status === 403) {
-        tokenStore.clearSession();
-        setUser(null);
-      }
+      setUser(null);
+      setActiveRoleState(null);
+      if (getHttpStatus(error) === 401) tokenStore.clearSession();
     } finally {
-      setIsLoading(false);
+      if (isCurrent()) setIsLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    void checkAuth();
+    return () => { authCheckVersion.current += 1; };
+  }, [checkAuth]);
 
   const login = async (credentials: LoginCredentials, rememberMe = true) => {
     try {
-      const response = await apiClient.post<any>(
+      const response = await apiClient.post<{ data: AuthResponse & Partial<TwoFactorLoginResponse> }>(
         apiConfig.endpoints.login,
         { ...credentials, rememberMe }
       );
@@ -152,7 +168,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Check if 2FA is required
       if (responseData?.requiresTwoFactor) {
         setRequiresTwoFactor(true);
-        setTemporaryToken(responseData?.temporaryToken);
+        setTemporaryToken(responseData?.temporaryToken ?? null);
         setUser(responseData?.user);
         setPendingRemember(rememberMe); // carry the choice into the 2FA step
         console.log('2FA required, temporary token set');
@@ -190,7 +206,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      const response = await apiClient.post<any>(
+      const response = await apiClient.post<{ data: AuthResponse }>(
         apiConfig.endpoints.verify2FALogin,
         { code, rememberMe },
         {
@@ -227,7 +243,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = async (data: RegisterData) => {
     try {
-      const response = await apiClient.post<any>(apiConfig.endpoints.register, data);
+      const response = await apiClient.post<RegistrationResult & { data?: RegistrationResult }>(apiConfig.endpoints.register, data);
       return response?.data || response;
     } catch (error) {
       throw error;
@@ -267,7 +283,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAuthenticated: !!user && !requiresTwoFactor,
     requiresTwoFactor,
     temporaryToken,
-    activeRole,
+    activeRole: activeRole && getCapabilities(user).includes(activeRole) ? activeRole : null,
     availableRoles: getCapabilities(user),
     setActiveRole,
     login,

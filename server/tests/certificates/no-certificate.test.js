@@ -57,17 +57,16 @@ describe('explicit No certificate decisions', () => {
     expect(recipient).toMatchObject({ assignedTier: null, assignedDecision: 'no_certificate' });
   });
 
-  it('invalidates approval when a reviewer changes a decision and preserves history', async () => {
+  it('locks mentor decisions after approval while allowing an audited admin correction', async () => {
     await decline();
     await verification.verify(template.id, peer.id, {}, mentor);
     await verification.approveClan(template.id, clan.id, {}, admin);
-    const updated = await verification.verify(template.id, mentee.id, { decision: 'award', finalTier: 'silver', reason: 'Late work was reviewed and accepted.' }, mentor);
+    await expect(verification.verify(template.id, mentee.id, { decision: 'award', finalTier: 'silver', reason: 'Late work was reviewed and accepted.' }, mentor)).rejects.toThrow(/only an admin/i);
+    const updated = await verification.verify(template.id, mentee.id, { decision: 'award', finalTier: 'silver', reason: 'Late work was reviewed and accepted.' }, admin);
     expect(updated.decisionHistory).toHaveLength(2);
-    expect(await models.CertificateClanApproval.count({ where: { templateId: template.id } })).toBe(0);
-    await expect(issue(mentor)).rejects.toThrow(/not been approved/i);
-    await verification.approveClan(template.id, clan.id, {}, admin);
+    expect(await models.CertificateClanApproval.count({ where: { templateId: template.id } })).toBe(1);
     expect((await issue(mentor)).count).toBe(2);
-    await expect(decline()).rejects.toThrow(/already been issued/i);
+    await expect(decline()).rejects.toThrow(/only an admin/i);
     await verification.open(template.id, [{ mentee_id: mentee.id, decision: 'no_certificate', certificate_tier: null, reasoning: reason }], { notify: false });
     expect((await models.CertificateVerification.findOne({ where: { templateId: template.id, menteeId: mentee.id } })).decision).toBe('award');
   });

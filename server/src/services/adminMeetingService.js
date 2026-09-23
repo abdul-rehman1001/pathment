@@ -23,7 +23,7 @@ const { renderEmail, plainText } = require('../utils/emailTemplate');
  * meetings whose scheduled window has long passed.
  */
 
-const clientUrl = () => (process.env.CLIENT_URL || 'https://pathment.me').replace(/\/$/, '');
+const clientUrl = () => require('../utils/applicationUrl')();
 const orgEmail = () => process.env.RESEND_FROM_EMAIL || 'noreply@pathment.me';
 const escHtml = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 

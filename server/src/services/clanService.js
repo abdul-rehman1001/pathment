@@ -206,7 +206,9 @@ class ClanService {
     if (!program) throw new NotFoundError('Program not found');
 
     return sequelize.transaction(async (transaction) => {
+      await require('./organizationService').assertLimit(program.organizationId, 'clans', null, { transaction });
       const clan = await models.Clan.create({
+        organizationId: program.organizationId,
         programId,
         name,
         description: data.description || null,

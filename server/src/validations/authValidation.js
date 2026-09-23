@@ -28,6 +28,17 @@ const patterns = {
  * Auth validation schemas
  */
 const authSchemas = {
+  domainHandoffCreate: Joi.object({
+    codeChallenge: Joi.string().pattern(/^[A-Za-z0-9_-]{43}$/).required(),
+    rememberSession: Joi.boolean().default(false)
+  }),
+
+  domainHandoffConsume: Joi.object({
+    codeVerifier: Joi.string().pattern(/^[A-Za-z0-9_-]{43}$/).required(),
+    token: Joi.string().pattern(/^[a-f0-9]{64}$/).required(),
+    workspace: Joi.string().trim().lowercase().pattern(/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/).required()
+  }),
+
   signInLinkRequest: Joi.object({
     email: patterns.email.messages({
       'string.email': 'Please provide a valid email address',

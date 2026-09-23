@@ -12,7 +12,7 @@
  * button in every task, deadline and approval email resolved against nothing.
  */
 
-const ENV = ['CLIENT_URL', 'LINK_URL', 'TENANT_SLUG'];
+const ENV = ['APP_URL', 'CLIENT_URL', 'LINK_URL', 'TENANT_SLUG', 'DEFAULT_WORKSPACE_SLUG'];
 
 function load(env) {
   ENV.forEach((key) => { delete process.env[key]; });
@@ -31,11 +31,17 @@ afterAll(() => {
 });
 
 const LIVE = {
-  CLIENT_URL: 'https://devweekends.pathment.me',
+  CLIENT_URL: 'https://app.pathment.me',
   LINK_URL: 'https://links.pathment.me',
+  DEFAULT_WORKSPACE_SLUG: 'devweekends',
 };
 
 describe('with the link host set', () => {
+  test('CORS origin lists never appear inside generated email links', () => {
+    const links = load({ CLIENT_URL: 'https://app.pathment.me,https://pathment.me,https://*.pathment.me',
+      DEFAULT_WORKSPACE_SLUG: 'devweekends' });
+    expect(links.pageLink('/mentor/dashboard')).toBe('https://app.pathment.me/w/devweekends/mentor/dashboard');
+  });
   test('every entry link goes through one host, tenant in the path', () => {
     const links = load(LIVE);
 
@@ -66,6 +72,17 @@ describe('with the link host set', () => {
     expect(links.inviteLink('t')).toBe('https://links.pathment.me/i/microtechx/t');
   });
 
+  test('a shared API uses the request workspace instead of the default', async () => {
+    const links = load(LIVE);
+    const { runWithRequestContext } = require('../../src/utils/auditContext');
+    await runWithRequestContext({ organizationSlug: 'acme' }, async () => {
+      expect(links.inviteLink('t')).toBe('https://links.pathment.me/i/acme/t');
+      expect(links.pageLink('/admin/dashboard')).toBe(
+        'https://links.pathment.me/g/acme?to=%2Fadmin%2Fdashboard',
+      );
+    });
+  });
+
   test('a nonsense TENANT_SLUG is ignored rather than put in a URL', () => {
     const links = load({ ...LIVE, TENANT_SLUG: 'Not A Slug!' });
     expect(links.inviteLink('t')).toBe('https://links.pathment.me/i/devweekends/t');
@@ -74,13 +91,13 @@ describe('with the link host set', () => {
 
 describe('before the link host exists', () => {
   test('links are exactly what they always were', () => {
-    const links = load({ CLIENT_URL: 'https://devweekends.pathment.me' });
+    const links = load({ CLIENT_URL: 'https://app.pathment.me', DEFAULT_WORKSPACE_SLUG: 'devweekends' });
 
-    expect(links.inviteLink('abc')).toBe('https://devweekends.pathment.me/register?invite=abc');
-    expect(links.resetLink('abc')).toBe('https://devweekends.pathment.me/reset-password?token=abc');
-    expect(links.verifyLink('abc')).toBe('https://devweekends.pathment.me/verify-email?token=abc');
-    expect(links.signInLink('abc')).toBe('https://devweekends.pathment.me/sign-in?link=abc');
-    expect(links.pageLink('/mentor/clan-team')).toBe('https://devweekends.pathment.me/mentor/clan-team');
+    expect(links.inviteLink('abc')).toBe('https://app.pathment.me/w/devweekends/register?invite=abc');
+    expect(links.resetLink('abc')).toBe('https://app.pathment.me/w/devweekends/reset-password?token=abc');
+    expect(links.verifyLink('abc')).toBe('https://app.pathment.me/w/devweekends/verify-email?token=abc');
+    expect(links.signInLink('abc')).toBe('https://app.pathment.me/w/devweekends/sign-in?link=abc');
+    expect(links.pageLink('/mentor/clan-team')).toBe('https://app.pathment.me/w/devweekends/mentor/clan-team');
   });
 
   test('localhost does not produce a tenant that looks real', () => {

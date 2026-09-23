@@ -64,7 +64,7 @@ function loadModelsFromDirectory(directory) {
 
 loadModelsFromDirectory(modelsPath);
 
-// Feature-Driven Models 
+// Feature-Driven Models
 const ragModels = require('../features/rag/models')(sequelize);
 Object.assign(models, ragModels);
 
@@ -74,6 +74,28 @@ Object.keys(models).forEach(modelName => {
     models[modelName].associate(models);
   }
 });
+
+require('./organizationScope')(sequelize, models);
+
+// Identity is global, but every newly created account must enter exactly one
+// workspace. Keeping this at the model boundary covers imports, tests and admin
+// scripts as well as the normal registration service.
+if (models.User && models.OrganizationMembership) {
+  models.User.addHook('afterCreate', async (user, options = {}) => {
+    let organizationId = require('../utils/auditContext').getRequestContext().organizationId;
+    if (!organizationId) {
+      const slug = String(process.env.DEFAULT_ORGANIZATION_SLUG || process.env.TENANT_SLUG || 'devweekends').toLowerCase();
+      const fallback = await models.Organization.findOne({ where: { slug }, skipOrganizationScope: true, transaction: options.transaction });
+      organizationId = fallback?.id || null;
+    }
+    if (!organizationId) return;
+    await models.OrganizationMembership.findOrCreate({
+      where: { organizationId, userId: user.id },
+      defaults: { role: user.role === 'admin' ? 'admin' : 'member', status: 'active', joinedAt: new Date() },
+      transaction: options.transaction,
+    });
+  });
+}
 
 module.exports = {
   sequelize,

@@ -4,6 +4,7 @@ import { normalizeAxiosError } from '../utils/api-error';
 import { tokenStore } from './token-store';
 import { refreshAccessToken, handleSessionExpired, SessionExpiredError } from './auth-session';
 import { portalScopeHeaders } from './portal-scope';
+import { workspaceScopeHeaders } from './workspace-scope';
 
 class ApiClient {
   private client: AxiosInstance;
@@ -42,6 +43,9 @@ class ApiClient {
         // see lib/services/portal-scope.ts.
         if (config.headers) {
           Object.entries(portalScopeHeaders()).forEach(([key, value]) => {
+            config.headers[key] = value;
+          });
+          Object.entries(workspaceScopeHeaders()).forEach(([key, value]) => {
             config.headers[key] = value;
           });
         }
@@ -97,26 +101,32 @@ class ApiClient {
     return tokenStore.getToken();
   }
 
+  // Legacy callers rely on an untyped default; newer services pass T explicitly.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async get<T = any>(url: string, config?: AxiosRequestConfig): Promise<T> {
     const response: AxiosResponse<T> = await this.client.get(url, config);
     return response.data;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async post<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
     const response: AxiosResponse<T> = await this.client.post(url, data, config);
     return response.data;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async put<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
     const response: AxiosResponse<T> = await this.client.put(url, data, config);
     return response.data;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async patch<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
     const response: AxiosResponse<T> = await this.client.patch(url, data, config);
     return response.data;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<T> {
     const response: AxiosResponse<T> = await this.client.delete(url, config);
     return response.data;
