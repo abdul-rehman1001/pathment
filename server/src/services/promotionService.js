@@ -146,7 +146,7 @@ class PromotionService {
     try {
       const [mentee, admins] = await Promise.all([
         models.User.findByPk(candidate.menteeId, { attributes: ['firstName', 'lastName'] }),
-        models.User.findAll({ where: { role: 'admin', status: 'active' }, attributes: ['id'] })
+        require('./workspaceRecipients').admins()
       ]);
       if (!admins.length) return;
       const who = mentee ? `${mentee.firstName} ${mentee.lastName}`.trim() : 'A mentee';

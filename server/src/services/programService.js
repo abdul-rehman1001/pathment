@@ -184,8 +184,8 @@ class ProgramService {
       SELECT program_id, COUNT(*)::integer AS count,
         ROUND(AVG(CASE WHEN status IN ('matched','active','in_progress','program_completed')
           THEN overall_progress_percentage END)) AS completion
-      FROM enrollments WHERE program_id IN (:ids) GROUP BY program_id`, {
-      replacements: { ids: rows.map(program => program.id) }, type: require('sequelize').QueryTypes.SELECT,
+      FROM enrollments WHERE organization_id=:organizationId AND program_id IN (:ids) GROUP BY program_id`, {
+      replacements: { ids: rows.map(program => program.id), organizationId: require('../utils/workspaceExecution').requireWorkspaceId() }, type: require('sequelize').QueryTypes.SELECT,
     }) : [];
     const statsByProgram = new Map(enrollmentStats.map(row => [row.program_id, row]));
     const programsWithCompletion = rows.map(program => {

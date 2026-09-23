@@ -24,7 +24,7 @@ class MessagingService {
   async getAllowedRecipientIds(userId) {
     const user = await models.User.findByPk(userId, { attributes: ['id', 'role', 'capabilities'] });
     if (!user) return [];
-    const caps = Array.isArray(user.capabilities) && user.capabilities.length ? user.capabilities : [user.role];
+    const caps = await require('./authzService').getCapabilities(user);
     if (caps.includes('admin') || caps.includes('mentor')) return null; // unrestricted
 
     const allowed = new Set();

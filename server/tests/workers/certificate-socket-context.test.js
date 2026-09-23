@@ -1,5 +1,6 @@
 jest.mock('../../src/db', () => ({
   models: {
+    Organization: { findAll: jest.fn(async () => [{ id: 'owner-org', slug: 'owner' }]) },
     CertificateTemplate: { findByPk: jest.fn() },
     AIEvaluationQueue: { findOne: jest.fn(), findAll: jest.fn() },
     User: { findAll: jest.fn(), findByPk: jest.fn() },
@@ -12,7 +13,7 @@ jest.mock('../../src/services/certificateService', () => ({
 }));
 jest.mock('../../src/services/certificateEvaluationStore', () => ({ saveResults: jest.fn() }));
 jest.mock('../../src/utils/certificateUtils', () => ({ enrichEvaluationResults: jest.fn(async x => x) }));
-jest.mock('../../src/services/organizationService', () => ({ assertMembership: jest.fn() }));
+jest.mock('../../src/services/organizationService', () => ({ assertMembership: jest.fn(), workspaceCreationEnabled: () => true, defaultSlug: () => 'devweekends' }));
 jest.mock('../../src/socket', () => ({ emitToUser: jest.fn() }));
 jest.mock('../../src/utils/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
 const { models, sequelize } = require('../../src/db');
@@ -24,8 +25,8 @@ const { tickAIEval } = require('../../src/workers/certificateWorker');
 let job, events;
 beforeEach(() => {
   jest.clearAllMocks();
-  job = { runId: 'run', templateId: 'template', triggeredBy: 'admin', menteeId: 'mentee', attempts: 2, save: jest.fn() };
-  models.AIEvaluationQueue.findOne.mockReset().mockResolvedValueOnce({ runId: 'run' }).mockResolvedValue(null);
+  job = { organizationId: 'owner-org', runId: 'run', templateId: 'template', triggeredBy: 'admin', menteeId: 'mentee', attempts: 2, save: jest.fn() };
+  models.AIEvaluationQueue.findOne.mockReset().mockResolvedValueOnce({ runId: 'run', templateId: 'template', triggeredBy: 'admin' }).mockResolvedValue(null);
   models.AIEvaluationQueue.findAll.mockImplementation(async options => {
     if (options.group) return [{ status: 'completed', count: 1 }];
     return [job];
@@ -58,10 +59,11 @@ test('missing persisted ownership never falls back to a default tenant', async (
   models.CertificateTemplate.findByPk.mockResolvedValue({ id: 'template' });
   await tickAIEval();
   expect(emitToUser).not.toHaveBeenCalled();
-  expect(job.status).toBe('completed');
+  expect(service.evaluateBatchMentees).not.toHaveBeenCalled();
 });
 test('revoked recipient receives no progress and does not cause job retry', async () => {
-  assertMembership.mockRejectedValueOnce(new Error('revoked')).mockRejectedValueOnce(new Error('revoked'));
+  assertMembership.mockResolvedValueOnce({ status: 'active' }).mockResolvedValueOnce({ status: 'active' })
+    .mockRejectedValueOnce(new Error('revoked')).mockRejectedValueOnce(new Error('revoked'));
   await tickAIEval();
   expect(emitToUser).not.toHaveBeenCalled();
   expect(job.status).toBe('completed');

@@ -17,7 +17,7 @@ module.exports = function installOrganizationScope(sequelize, models) {
     const key = identityKeys[model?.name];
     // Authentication resolves the global identity first. After authentication,
     // directory/profile reads must prove membership in this workspace.
-    if (key && ctx.userId) return { [key]: { [Op.in]: literal(
+    if (key && (ctx.userId || ctx.workspaceJob)) return { [key]: { [Op.in]: literal(
       `(SELECT user_id FROM organization_memberships WHERE organization_id = ${sequelize.escape(ctx.organizationId)} AND status IN ('active', 'suspended'))`
     ) } };
     return null;
@@ -26,9 +26,13 @@ module.exports = function installOrganizationScope(sequelize, models) {
   function scopeIncludes(parent, includes, ctx) {
     for (const include of includes || []) {
       const association = typeof include.association === 'string'
-        ? parent.associations[include.association] : include.association;
+        ? parent.associations[include.association] : include.association || parent.associations[include.as];
       const model = include.model || association?.target || parent.associations[include.as]?.target;
       if (!model) continue;
+      if (model.rawAttributes.organizationId && !ctx.organizationId &&
+          process.env.MULTI_TENANT_WORKSPACES_ENABLED === 'true') {
+        throw new ForbiddenError('Workspace-owned operations require explicit context');
+      }
       const clause = restriction(model, ctx);
       if (clause) {
         // Adding a security predicate must not turn an optional association
@@ -50,6 +54,10 @@ module.exports = function installOrganizationScope(sequelize, models) {
     const scope = (options = {}) => {
       if (options.skipOrganizationScope) return;
       const ctx = context();
+      if (model.rawAttributes.organizationId && !ctx.organizationId &&
+          process.env.MULTI_TENANT_WORKSPACES_ENABLED === 'true') {
+        throw new ForbiddenError('Workspace-owned operations require explicit context');
+      }
       const clause = restriction(model, ctx);
       if (clause) options.where = and(options.where, clause);
       scopeIncludes(model, options.include, ctx);
@@ -60,9 +68,26 @@ module.exports = function installOrganizationScope(sequelize, models) {
     model.addHook('beforeBulkUpdate', scope);
     model.addHook('beforeBulkDestroy', scope);
 
+    // Sequelize increment/decrement bypass update hooks. Route both through the
+    // same boundary; instance increments delegate to this public model method.
+    const increment = model.increment;
+    model.increment = function workspaceIncrement(fields, options = {}) {
+      const keys = typeof fields === 'string' ? [fields] : Array.isArray(fields) ? fields : Object.keys(fields);
+      if (keys.includes('organizationId') || keys.includes('organization_id')) {
+        throw new ForbiddenError('Workspace ownership cannot be changed');
+      }
+      const scoped = { ...options };
+      scope(scoped);
+      return increment.call(this, fields, scoped);
+    };
+
+
     async function stamp(instance, options = {}) {
       if (options.skipOrganizationScope) return;
       const current = context().organizationId;
+      if (!current && process.env.MULTI_TENANT_WORKSPACES_ENABLED === 'true') {
+        throw new ForbiddenError('Workspace-owned writes require explicit context');
+      }
       if (current && instance.organizationId && instance.organizationId !== current) {
         throw new ForbiddenError('Cannot write a record belonging to another workspace');
       }
@@ -79,6 +104,9 @@ module.exports = function installOrganizationScope(sequelize, models) {
     model.addHook('beforeValidate', stamp);
     model.addHook('beforeSave', stamp);
     model.addHook('beforeDestroy', (row, options = {}) => {
+      if (!options.skipOrganizationScope && !context().organizationId && process.env.MULTI_TENANT_WORKSPACES_ENABLED === 'true') {
+        throw new ForbiddenError('Workspace-owned operations require explicit context');
+      }
       if (!options.skipOrganizationScope && context().organizationId &&
           row.organizationId !== context().organizationId) {
         throw new ForbiddenError('Cannot delete a record belonging to another workspace');
@@ -88,7 +116,7 @@ module.exports = function installOrganizationScope(sequelize, models) {
       for (const row of rows) await stamp(row, options);
     });
     model.addHook('beforeBulkUpdate', (options) => {
-      if (!options.skipOrganizationScope && options.attributes?.organizationId !== undefined) {
+      if (!options.skipOrganizationScope && (options.attributes?.organizationId !== undefined || options.attributes?.organization_id !== undefined)) {
         throw new ForbiddenError('Workspace ownership cannot be changed');
       }
     });
@@ -128,5 +156,21 @@ module.exports = function installOrganizationScope(sequelize, models) {
       for (const row of rows) await validateReferences(row, options);
     });
     model.addHook('beforeBulkUpdate', options => validateReferences(options.attributes || {}, options));
+    model.addHook('beforeUpsert', async (values, options = {}) => {
+      if (options.skipOrganizationScope) return;
+      const row = model.build(values);
+      await stamp(row, options);
+      values.organizationId = row.organizationId;
+      if (values.id) {
+        const existing = await model.findByPk(values.id, {
+          attributes: ['id', 'organizationId'], transaction: options.transaction,
+          skipOrganizationScope: true,
+        });
+        if (existing && existing.organizationId !== row.organizationId) {
+          throw new ForbiddenError('Cannot upsert a record belonging to another workspace');
+        }
+      }
+      await validateReferences(values, options);
+    });
   }
 };

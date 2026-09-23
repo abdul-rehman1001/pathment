@@ -187,7 +187,7 @@ class AIConnectionService {
   }
 
   async getQuota(user) {
-    if (user.role !== 'mentor') return null;
+    if (!(await require('./authzService').getCapabilities(user)).includes('mentor')) return null;
     const [profile] = await models.MentorStyleProfile.findOrCreate({
       where: { mentorId: user.id },
       defaults: { tone: { brevity: 0.5, formality: 0.5 }, autoReplyEnabled: false, autoReplyLimit: 100, autoReplyCount: 0 }
@@ -199,7 +199,7 @@ class AIConnectionService {
   }
 
   async setQuotaLimit(user, limit) {
-    if (user.role !== 'mentor') throw new ForbiddenError('Only mentors have an auto-reply quota');
+    if (!(await require('./authzService').getCapabilities(user)).includes('mentor')) throw new ForbiddenError('Only mentors have an auto-reply quota');
     const [profile] = await models.MentorStyleProfile.findOrCreate({
       where: { mentorId: user.id },
       defaults: { tone: { brevity: 0.5, formality: 0.5 }, autoReplyEnabled: false, autoReplyLimit: 100, autoReplyCount: 0 }

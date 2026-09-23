@@ -287,7 +287,7 @@ class CohortIntakeService {
   // ── Admin notifications ──────────────────────────────────────────────────────
   /** Admins to alert about a cohort's intake: its creator + all active admins. */
   async _adminRecipientIds(cohort) {
-    const admins = await models.User.findAll({ where: { role: 'admin', status: 'active' }, attributes: ['id'] });
+    const admins = await require('./workspaceRecipients').admins();
     const ids = new Set(admins.map((a) => a.id));
     if (cohort.createdBy) ids.add(cohort.createdBy);
     return [...ids];

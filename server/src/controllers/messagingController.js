@@ -203,7 +203,7 @@ exports.searchUsers = catchAsync(async (req, res) => {
 // ---------------------------------------------------------------------------
 
 exports.listPendingDrafts = catchAsync(async (req, res) => {
-  if (req.user.role !== 'mentor') {
+  if (!(await req.loadCapabilities()).includes('mentor')) {
     return res.status(403).json({ success: false, message: 'Only mentors can access drafts' });
   }
   const drafts = await RagFacade.listPendingDrafts(req.user.id);
@@ -212,7 +212,7 @@ exports.listPendingDrafts = catchAsync(async (req, res) => {
 
 exports.approveDraft = catchAsync(async (req, res) => {
   const { draftId, finalText } = req.body;
-  if (req.user.role !== 'mentor') {
+  if (!(await req.loadCapabilities()).includes('mentor')) {
     return res.status(403).json({ success: false, message: 'Only mentors can approve drafts' });
   }
 
@@ -261,7 +261,7 @@ exports.approveDraft = catchAsync(async (req, res) => {
 });
 
 exports.rejectDraft = catchAsync(async (req, res) => {
-  if (req.user.role !== 'mentor') {
+  if (!(await req.loadCapabilities()).includes('mentor')) {
     return res.status(403).json({ success: false, message: 'Only mentors can reject drafts' });
   }
   const { draftId } = req.params;
@@ -270,7 +270,7 @@ exports.rejectDraft = catchAsync(async (req, res) => {
 });
 
 exports.getMentorDocuments = catchAsync(async (req, res) => {
-  if (req.user.role !== 'mentor') {
+  if (!(await req.loadCapabilities()).includes('mentor')) {
     return res.status(403).json({ success: false, message: 'Only mentors can manage documents' });
   }
   const documents = await RagFacade.getMentorDocuments(req.user.id);
@@ -278,7 +278,7 @@ exports.getMentorDocuments = catchAsync(async (req, res) => {
 });
 
 exports.uploadMentorDocument = catchAsync(async (req, res) => {
-  if (req.user.role !== 'mentor') {
+  if (!(await req.loadCapabilities()).includes('mentor')) {
     return res.status(403).json({ success: false, message: 'Only mentors can upload documents' });
   }
   if (!req.file) {
@@ -300,7 +300,7 @@ exports.uploadMentorDocument = catchAsync(async (req, res) => {
 });
 
 exports.deleteMentorDocument = catchAsync(async (req, res) => {
-  if (req.user.role !== 'mentor') {
+  if (!(await req.loadCapabilities()).includes('mentor')) {
     return res.status(403).json({ success: false, message: 'Only mentors can manage documents' });
   }
   const { documentId } = req.params;

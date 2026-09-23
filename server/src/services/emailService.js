@@ -1,3 +1,4 @@
+const { requireWorkspaceId } = require('../utils/workspaceExecution');
 const { Resend } = require('resend');
 const { Op } = require('sequelize');
 const { models, sequelize } = require('../db');
@@ -324,7 +325,7 @@ class EmailService {
                                       LEAST(7200, 60 * POWER(2, COALESCE(attempt_count,0)))
                                       * (1 + random() * 0.5)) END,
         updated_at      = NOW()
-      WHERE status='sending' AND last_attempt_at < NOW() - INTERVAL '10 minutes'`);
+      WHERE organization_id=:organizationId AND status='sending' AND last_attempt_at < NOW() - INTERVAL '10 minutes'`, { replacements: { organizationId: requireWorkspaceId() } });
   }
 
   /** Atomically claim a batch of due rows (FOR UPDATE SKIP LOCKED = multi-worker safe). */
@@ -333,12 +334,12 @@ class EmailService {
       UPDATE email_queue SET status='sending', last_attempt_at=NOW(), updated_at=NOW()
       WHERE id IN (
         SELECT id FROM email_queue
-        WHERE status='pending' AND (next_attempt_at IS NULL OR next_attempt_at <= NOW())
+        WHERE organization_id=:organizationId AND status='pending' AND (next_attempt_at IS NULL OR next_attempt_at <= NOW())
         ORDER BY priority ASC, next_attempt_at ASC NULLS FIRST
         LIMIT :batch
         FOR UPDATE SKIP LOCKED
       )
-      RETURNING id`, { replacements: { batch: batchSize } });
+      RETURNING id`, { replacements: { batch: batchSize, organizationId: requireWorkspaceId() } });
     const ids = (rows || []).map((r) => r.id);
     if (!ids.length) return [];
     return models.EmailQueue.findAll({ where: { id: ids } });

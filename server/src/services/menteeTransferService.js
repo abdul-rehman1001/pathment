@@ -406,7 +406,7 @@ class MenteeTransferService {
     }
 
     // 3) Admins, in-app only, for oversight of placement changes they didn't make.
-    const admins = await models.User.findAll({ where: { role: 'admin', status: 'active' }, attributes: ['id'] });
+    const admins = await require('./workspaceRecipients').admins();
     if (admins.length) {
       await notificationOrchestrator.dispatch({
         eventKey: NOTIFICATION_EVENTS.MENTEE_TRANSFER_DECIDED,

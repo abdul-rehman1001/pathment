@@ -50,7 +50,7 @@ export default function LoginPage() {
   // Redirect if already logged in
   useEffect(() => {
     if (!isLoading && user && !requiresTwoFactor) {
-      router.push(returnTo ? workspacePath(returnTo) : workspacePath(`/${user.role}/dashboard`));
+      router.push(returnTo ? workspacePath(returnTo) : workspacePath('/'));
     }
   }, [user, isLoading, requiresTwoFactor, router, returnTo]);
 
@@ -89,7 +89,7 @@ export default function LoginPage() {
     await verify2FA(code, rememberMe);
     // After successful 2FA, resume where they were (or the dashboard).
     if (user) {
-      router.push(returnTo ? workspacePath(returnTo) : workspacePath(`/${user.role}/dashboard`));
+      router.push(returnTo ? workspacePath(returnTo) : workspacePath('/'));
     }
   };
 

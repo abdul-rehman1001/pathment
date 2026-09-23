@@ -65,7 +65,7 @@ class ProgramController {
       req.params.id,
       req.body,
       req.user.id,
-      req.user.role
+      (await req.loadWorkspaceRole())
     );
 
     res.status(200).json(successResponse(
@@ -83,7 +83,7 @@ class ProgramController {
     const result = await programService.deleteProgram(
       req.params.id,
       req.user.id,
-      req.user.role
+      (await req.loadWorkspaceRole())
     );
 
     res.status(200).json(successResponse(
@@ -118,7 +118,7 @@ class ProgramController {
     const enrollments = await programService.getProgramEnrollments(
       req.params.id,
       req.user.id,
-      req.user.role
+      (await req.loadWorkspaceRole())
     );
 
     res.status(200).json(successResponse(
@@ -155,7 +155,7 @@ class ProgramController {
     const stats = await programService.getProgramStats(
       req.params.id,
       req.user.id,
-      req.user.role
+      (await req.loadWorkspaceRole())
     );
 
     res.status(200).json(successResponse(

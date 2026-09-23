@@ -50,7 +50,7 @@ exports.requestExtension = catchAsync(async (req, res) => {
 exports.getTaskSubmissions = catchAsync(async (req, res) => {
   const { taskId } = req.params;
   const userId = req.user.id;
-  const userRole = req.user.role;
+  const userRole = (await req.loadWorkspaceRole());
 
   const submissions = await submissionService.getTaskSubmissions(
     taskId,
@@ -156,7 +156,7 @@ exports.handleExtension = catchAsync(async (req, res) => {
 exports.deleteFile = catchAsync(async (req, res) => {
   const { fileId } = req.params;
   const userId = req.user.id;
-  const userRole = req.user.role;
+  const userRole = (await req.loadWorkspaceRole());
 
   const result = await submissionService.deleteSubmissionFile(
     fileId,
@@ -176,7 +176,7 @@ exports.getPendingSubmissions = catchAsync(async (req, res) => {
 
   // Security: only an admin may read another mentor's pending submissions;
   // everyone else is restricted to their own (derived capabilities, not role).
-  const isAdmin = req.loadCapabilities ? (await req.loadCapabilities()).includes('admin') : req.user.role === 'admin';
+  const isAdmin = req.loadCapabilities ? (await req.loadCapabilities()).includes('admin') : (await req.loadWorkspaceRole()) === 'admin';
   if (!isAdmin && req.user.id !== mentorId) {
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }

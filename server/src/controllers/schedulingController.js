@@ -47,7 +47,7 @@ const bookSlot = catchAsync(async (req, res) => {
 
 // ── Meetings (both) ───────────────────────────────────────────────────────
 const listMeetings = catchAsync(async (req, res) => {
-  const meetings = await schedulingService.listMeetings(req.user.id, req.user.role);
+  const meetings = await schedulingService.listMeetings(req.user.id, (await req.loadWorkspaceRole()));
   res.status(200).json(successResponse('Meetings retrieved', { meetings }));
 });
 

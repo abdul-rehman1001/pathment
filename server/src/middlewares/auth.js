@@ -77,6 +77,15 @@ const authenticate = catchAsync(async (req, res, next) => {
     return req._capabilitiesPromise;
   };
 
+  // Compatibility for older service signatures that accept one role. Only
+  // workspace-wide administration may become "admin"; program roles stay scoped.
+  req.loadWorkspaceRole = async () => {
+    const assignments = await req.loadAssignments();
+    if (assignments.some(item => item.role === 'super_admin' && item.scopeType === 'org')) return 'admin';
+    const capabilities = await req.loadCapabilities();
+    return capabilities.includes('mentor') ? 'mentor' : capabilities.includes('mentee') ? 'mentee' : 'member';
+  };
+
   // Seed the audit context with WHO is acting (ip/ua/requestId were seeded by
   // requestContext before auth ran). Every audit write now records the actor.
   setRequestUser(user.id);

@@ -15,7 +15,7 @@ class RewardsService {
    * Pass no viewer and it stays org wide, which is what an admin screen wants.
    */
   async overview(viewer = null) {
-    const scopeToClans = viewer && viewer.role !== 'admin' && viewer.role !== 'super_admin';
+    const scopeToClans = viewer && !(await require('./authzService').can(viewer, require('../config/permissions').PERMISSIONS.MENTEE_VIEW, { orgWide: true }));
 
     let menteeIds = null;
     if (scopeToClans) {

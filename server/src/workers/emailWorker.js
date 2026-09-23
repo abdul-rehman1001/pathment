@@ -20,12 +20,14 @@ async function tick() {
   if (running) return; // never overlap ticks
   running = true;
   try {
+    await require('../utils/workspaceExecution').forEachWorkspace(async () => {
     let res = await emailService.processBatch(BATCH);
     // Drain bursts within a tick: if we filled the batch, there's likely more.
     let guard = 0;
     while (res.claimed >= BATCH && guard++ < 10) {
       res = await emailService.processBatch(BATCH);
     }
+    });
   } catch (err) {
     console.error('[email-worker] tick error:', err?.message);
   } finally {

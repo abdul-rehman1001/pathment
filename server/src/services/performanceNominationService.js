@@ -392,9 +392,7 @@ class PerformanceNominationService {
 
   async _notifyAdmins(nomination) {
     try {
-      const admins = await models.User.findAll({
-        where: { role: 'admin', status: 'active' }, attributes: ['id']
-      });
+      const admins = await require('./workspaceRecipients').admins();
       if (!admins.length) return;
       const mentee = await models.User.findByPk(nomination.menteeId, { attributes: ['firstName', 'lastName'] });
       const name = mentee ? `${mentee.firstName} ${mentee.lastName}`.trim() : 'A mentee';

@@ -61,5 +61,7 @@ export function switchWorkspace(slug: string): void {
   const local = host === 'localhost' || /^\d+\.\d+\.\d+\.\d+$/.test(host);
   const origin = local ? window.location.origin : (process.env.NEXT_PUBLIC_APP_URL || 'https://app.pathment.me');
   const path = logicalPathname(window.location.pathname);
-  window.location.assign(`${origin}/w/${slug}${path === '/' ? '' : path}${window.location.search}${window.location.hash}`);
+  // Record ids and role areas from the previous workspace need not exist here.
+  const destination = path === '/workspace-preview' ? path : '';
+  window.location.assign(`${origin}/w/${slug}${destination}`);
 }

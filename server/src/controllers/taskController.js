@@ -76,7 +76,7 @@ exports.getMentorTasks = catchAsync(async (req, res) => {
   // Security: only an admin may read another mentor's tasks; everyone else
   // (incl. co-mentors, whose base role isn't 'mentor') is restricted to their
   // own. Checked on derived capabilities, not the primary role.
-  const isAdmin = req.loadCapabilities ? (await req.loadCapabilities()).includes('admin') : req.user.role === 'admin';
+  const isAdmin = req.loadCapabilities ? (await req.loadCapabilities()).includes('admin') : (await req.loadWorkspaceRole()) === 'admin';
   if (!isAdmin && req.user.id !== mentorId) {
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }
@@ -146,7 +146,7 @@ exports.updateTaskStatus = catchAsync(async (req, res) => {
   const { taskId } = req.params;
   const { status } = req.body;
   
-  const task = await taskService.updateTaskStatus(taskId, req.user.id, req.user.role, status);
+  const task = await taskService.updateTaskStatus(taskId, req.user.id, (await req.loadWorkspaceRole()), status);
   res.status(200).json(successResponse('Task status updated', { task }));
 });
 
@@ -159,7 +159,7 @@ exports.getMentorTaskStats = catchAsync(async (req, res) => {
 
   // Security: only an admin may read another mentor's stats; everyone else is
   // restricted to their own (derived capabilities, not primary role).
-  const isAdmin = req.loadCapabilities ? (await req.loadCapabilities()).includes('admin') : req.user.role === 'admin';
+  const isAdmin = req.loadCapabilities ? (await req.loadCapabilities()).includes('admin') : (await req.loadWorkspaceRole()) === 'admin';
   if (!isAdmin && req.user.id !== mentorId) {
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }
@@ -177,7 +177,7 @@ exports.getMenteeTaskStats = catchAsync(async (req, res) => {
   const { enrollmentId } = req.query;
   
   // Security: Mentees can only view their own stats
-  if (req.user.role === 'mentee' && req.user.id !== menteeId) {
+  if ((await req.loadWorkspaceRole()) === 'mentee' && req.user.id !== menteeId) {
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }
   
@@ -193,7 +193,7 @@ exports.cancelTask = catchAsync(async (req, res) => {
   const { taskId } = req.params;
   const { reason } = req.body;
   const userId = req.user.id;
-  const userRole = req.user.role;
+  const userRole = (await req.loadWorkspaceRole());
 
   const task = await taskService.cancelTask(taskId, userId, userRole, reason);
   res.status(200).json(successResponse('Task cancelled successfully', { task }));
@@ -205,7 +205,7 @@ exports.cancelTask = catchAsync(async (req, res) => {
  */
 exports.updateAssignedTask = catchAsync(async (req, res) => {
   const { taskId } = req.params;
-  const task = await taskService.updateAssignedTask(taskId, req.user.id, req.user.role, req.body);
+  const task = await taskService.updateAssignedTask(taskId, req.user.id, (await req.loadWorkspaceRole()), req.body);
   res.status(200).json(successResponse('Task updated successfully', { task }));
 });
 
@@ -215,7 +215,7 @@ exports.updateAssignedTask = catchAsync(async (req, res) => {
  */
 exports.reassignTask = catchAsync(async (req, res) => {
   const { taskId } = req.params;
-  const task = await taskService.reactivateTask(taskId, req.user.id, req.user.role, { dueDate: req.body && req.body.dueDate });
+  const task = await taskService.reactivateTask(taskId, req.user.id, (await req.loadWorkspaceRole()), { dueDate: req.body && req.body.dueDate });
   res.status(200).json(successResponse('Task reassigned successfully', { task }));
 });
 
@@ -250,7 +250,7 @@ exports.deleteCustomTask = catchAsync(async (req, res) => {
 exports.updateTaskDueDate = catchAsync(async (req, res) => {
   const { taskId } = req.params;
   const { dueDate } = req.body;
-  const task = await taskService.updateTaskDueDate(taskId, req.user.id, req.user.role, dueDate);
+  const task = await taskService.updateTaskDueDate(taskId, req.user.id, (await req.loadWorkspaceRole()), dueDate);
   res.status(200).json(successResponse('Deadline updated', { task }));
 });
 
@@ -260,7 +260,7 @@ exports.updateTaskDueDate = catchAsync(async (req, res) => {
  */
 exports.unassignTask = catchAsync(async (req, res) => {
   const { taskId } = req.params;
-  const result = await taskService.unassignTask(taskId, req.user.id, req.user.role);
+  const result = await taskService.unassignTask(taskId, req.user.id, (await req.loadWorkspaceRole()));
   res.status(200).json(successResponse(result.message, {}));
 });
 

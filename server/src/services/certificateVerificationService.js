@@ -698,7 +698,7 @@ class CertificateVerificationService {
     const rows = await this._activeReviewRows(historicalRows, template.programId);
     if (!rows.length || rows.some((row) => row.status !== 'verified')) return;
 
-    const admins = await models.User.findAll({ where: { role: 'admin', status: 'active' }, attributes: ['id'] });
+    const admins = await require('./workspaceRecipients').admins();
     if (!admins.length) return;
 
     const overrides = rows.filter((row) => row.overridden).length;

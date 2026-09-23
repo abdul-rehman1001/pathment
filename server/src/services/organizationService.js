@@ -4,7 +4,7 @@ const { getRequestContext } = require('../utils/auditContext');
 const { NotFoundError, ForbiddenError, ValidationError, ConflictError } = require('../utils/errors/errorTypes');
 
 const SLUG = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
-const RESERVED_SLUGS = new Set(['www', 'app', 'api', 'links', 'meet', 'staging', 'status', 'support', 'admin', 'mail', 'cdn', 'assets']);
+const RESERVED_SLUGS = new Set(['pathment', 'www', 'app', 'api', 'links', 'meet', 'staging', 'status', 'support', 'admin', 'mail', 'cdn', 'assets']);
 
 const serializeOrganization = (organization, membership = null) => ({
   id: organization.id,
@@ -36,7 +36,7 @@ class OrganizationService {
 
   normalizeSlug(value) {
     const slug = String(value || '').trim().toLowerCase();
-    return SLUG.test(slug) && !RESERVED_SLUGS.has(slug) ? slug : null;
+    return SLUG.test(slug) && !slug.startsWith('api-') && !RESERVED_SLUGS.has(slug) ? slug : null;
   }
 
   defaultSlug() {
@@ -53,6 +53,7 @@ class OrganizationService {
     const host = String(hostname || '').split(':')[0].trim().toLowerCase();
     if (!host) return null;
     const domain = await models.OrganizationDomain.findOne({
+      skipOrganizationScope: true, // Bootstrap lookup before a workspace context exists.
       where: { hostname: host, status: 'verified' }, include: [{ model: models.Organization, as: 'organization' }],
     });
     if (domain?.organization) return domain.organization;
@@ -63,6 +64,13 @@ class OrganizationService {
       if (!RESERVED_SLUGS.has(slug)) return this.bySlug(slug);
     }
     return null;
+  }
+
+  async isDefaultWorkspace() {
+    const id = getRequestContext().organizationId;
+    if (!id) return !this.workspaceCreationEnabled();
+    const organization = await models.Organization.findByPk(id, { attributes: ['slug'] });
+    return organization?.slug === this.defaultSlug();
   }
 
   async currentId({ required = true } = {}) {
@@ -91,6 +99,8 @@ class OrganizationService {
     const name = String(input.name || '').trim();
     const slug = this.normalizeSlug(input.slug);
     const timezone = String(input.timezone || 'UTC').trim() || 'UTC';
+    try { new Intl.DateTimeFormat('en', { timeZone: timezone }); }
+    catch { throw new ValidationError('Choose a valid IANA timezone'); }
     if (name.length < 2 || name.length > 160) throw new ValidationError('Organization name must be between 2 and 160 characters');
     if (!slug) throw new ValidationError('Workspace URL must use lowercase letters, numbers, and single hyphens');
     if (await models.Organization.findOne({ where: { slug }, skipOrganizationScope: true })) {
@@ -108,7 +118,19 @@ class OrganizationService {
       await models.OrganizationSubscription.create({
         organizationId: organization.id, planId: plan.id, status: 'active', billingInterval: 'monthly', currentPeriodStart: new Date(),
       }, { transaction, skipOrganizationScope: true });
+      await require('../utils/auditContext').runWithRequestContext({
+        organizationId: organization.id, organizationSlug: organization.slug, userId,
+      }, async () => {
+        await models.AdminProfile.create({ userId }, { transaction });
+        await require('./gamificationService').createDefaultBadges({ transaction });
+      });
       return serializeOrganization(organization, membership);
+    }).catch(error => {
+      if (error.name === 'SequelizeUniqueConstraintError' &&
+          (error.fields?.slug !== undefined || error.errors?.some(item => item.path === 'slug'))) {
+        throw new ConflictError('That workspace URL is already in use');
+      }
+      throw error;
     });
   }
 
@@ -208,6 +230,10 @@ class OrganizationService {
     const changesBranding = patch.logoUrl !== undefined || patch.primaryColor !== undefined;
     if (changesBranding && !(await this.entitlement(organizationId, 'customBranding'))) {
       throw new ForbiddenError('Custom branding is available on the Growth plan and above');
+    }
+    if (patch.timezone !== undefined) {
+      try { new Intl.DateTimeFormat('en', { timeZone: patch.timezone }); }
+      catch { throw new ValidationError('Choose a valid IANA timezone'); }
     }
     const allowed = ['name', 'logoUrl', 'primaryColor', 'timezone'];
     for (const key of allowed) if (patch[key] !== undefined) organization[key] = patch[key];

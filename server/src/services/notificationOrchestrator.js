@@ -55,8 +55,16 @@ class NotificationOrchestrator {
       return { delivered: 0, skipped: 0 };
     }
 
+    const organizationId = require('../utils/auditContext').getRequestContext().organizationId;
+    let activeIds = recipientIds;
+    if (organizationId) {
+      const memberships = await models.OrganizationMembership.findAll({
+        where: { organizationId, userId: recipientIds, status: 'active' }, attributes: ['userId'],
+      });
+      activeIds = memberships.map(row => row.userId);
+    }
     const users = await models.User.findAll({
-      where: { id: recipientIds },
+      where: { id: activeIds },
       attributes: ['id', 'email', 'firstName', 'lastName', 'role', 'status'],
       include: [{
         model: models.UserSettings,

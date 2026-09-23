@@ -38,6 +38,8 @@ const sequelize = new Sequelize(connectionString, {
   }
 });
 
+require('./workspaceModelAttributes')(sequelize, Sequelize.DataTypes);
+
 // Auto-load all models from subdirectories
 const models = {};
 const modelsPath = path.join(__dirname, '../models');
@@ -67,6 +69,7 @@ loadModelsFromDirectory(modelsPath);
 // Feature-Driven Models
 const ragModels = require('../features/rag/models')(sequelize);
 Object.assign(models, ragModels);
+
 
 // Set up associations
 Object.keys(models).forEach(modelName => {

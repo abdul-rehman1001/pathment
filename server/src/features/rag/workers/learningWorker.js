@@ -1,3 +1,4 @@
+const { requireWorkspaceId, forEachWorkspace, isActiveWorkspaceUser } = require('../../../utils/workspaceExecution');
 const { sequelize }         = require('../../../db');
 const { models: { MentorEditHistory } } = require('../../../db');
 const learningService       = require('../services/learningService');
@@ -10,53 +11,59 @@ async function reapStuck() {
   await sequelize.query(`
     UPDATE mentor_edit_histories 
     SET status='pending', updated_at=NOW()
-    WHERE status='processing' AND updated_at < NOW() - INTERVAL '10 minutes'
-  `);
+    WHERE organization_id=:organizationId AND status='processing' AND updated_at < NOW() - INTERVAL '10 minutes'
+  `, { replacements: { organizationId: requireWorkspaceId() } });
 }
 
 async function tick() {
   if (running) return;
   running = true;
   try {
-    await reapStuck();
-    const [rows] = await sequelize.query(`
-      UPDATE mentor_edit_histories 
-      SET status='processing', updated_at=NOW()
-      WHERE id IN (
-        SELECT id FROM mentor_edit_histories
-        WHERE status='pending'
-        ORDER BY created_at ASC
-        LIMIT 10
-        FOR UPDATE SKIP LOCKED
-      )
-      RETURNING id
-    `);
+    await forEachWorkspace(async () => {
+      await reapStuck();
+      const [rows] = await sequelize.query(`
+        UPDATE mentor_edit_histories
+        SET status='processing', updated_at=NOW()
+        WHERE id IN (
+          SELECT id FROM mentor_edit_histories
+          WHERE organization_id=:organizationId AND status='pending'
+          ORDER BY created_at ASC
+          LIMIT 10
+          FOR UPDATE SKIP LOCKED
+        )
+        RETURNING id
+      `, { replacements: { organizationId: requireWorkspaceId() } });
 
-    const ids = (rows || []).map(r => r.id);
-    if (!ids.length) return;
+      const ids = (rows || []).map(r => r.id);
+      if (!ids.length) return;
 
-    const edits = await MentorEditHistory.findAll({ where: { id: ids } });
+      const edits = await MentorEditHistory.findAll({ where: { id: ids } });
 
-    for (const edit of edits) {
-      try {
-        // Strict BYOK: resolve mentor's Gemini key for Q&A embedding.
-        // If no key → processEdit(editId, null) → style update only (no Q&A embedding).
-        const geminiKey = await resolveGeminiKey(edit.mentorId);
-        // BYOK strict: NO process.env fallback
+      for (const edit of edits) {
+        if (!(await isActiveWorkspaceUser(edit.mentorId))) {
+          await edit.update({ status: 'failed' });
+          continue;
+        }
+        try {
+          // Strict BYOK: resolve mentor's Gemini key for Q&A embedding.
+          // If no key → processEdit(editId, null) → style update only (no Q&A embedding).
+          const geminiKey = await resolveGeminiKey(edit.mentorId);
+          // BYOK strict: NO process.env fallback
 
-        await learningService.processEdit(edit.id, geminiKey);
-        await sequelize.query('UPDATE mentor_edit_histories SET status=?, updated_at=NOW() WHERE id=?', {
-          replacements: ['completed', edit.id]
-        });
-      } catch (e) {
-        logger.error('[Learning] Job failed, scheduling retry', { editId: edit.id, error: e.message });
-        const attempts = edit.attempts + 1;
-        const status = attempts >= 5 ? 'failed' : 'pending';
-        await sequelize.query('UPDATE mentor_edit_histories SET status=?, attempts=?, updated_at=NOW() WHERE id = ?', {
-          replacements: [status, attempts, edit.id]
-        });
+          await learningService.processEdit(edit.id, geminiKey);
+          await sequelize.query('UPDATE mentor_edit_histories SET status=?, updated_at=NOW() WHERE id=? AND organization_id=?', {
+            replacements: ['completed', edit.id, requireWorkspaceId()]
+          });
+        } catch (e) {
+          logger.error('[Learning] Job failed, scheduling retry', { editId: edit.id, error: e.message });
+          const attempts = edit.attempts + 1;
+          const status = attempts >= 5 ? 'failed' : 'pending';
+          await sequelize.query('UPDATE mentor_edit_histories SET status=?, attempts=?, updated_at=NOW() WHERE id = ? AND organization_id=?', {
+            replacements: [status, attempts, edit.id, requireWorkspaceId()]
+          });
+        }
       }
-    }
+    });
   } catch (err) {
     logger.error('Learning worker error', { error: err.message });
   } finally {

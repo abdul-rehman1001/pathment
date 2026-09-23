@@ -31,7 +31,7 @@ exports.getEnrollments = catchAsync(async (req, res) => {
     });
     if (!allowed) throw new AuthorizationError("You cannot view this mentee's enrollments");
   } else {
-    const caps = req.loadCapabilities ? await req.loadCapabilities() : [req.user.role];
+    const caps = req.loadCapabilities ? await req.loadCapabilities() : [(await req.loadWorkspaceRole())];
     const privileged = caps.includes('mentor') || caps.includes('admin');
     if (!privileged) filters.menteeId = req.user.id;
   }
@@ -80,7 +80,7 @@ exports.updateEnrollmentStatus = catchAsync(async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
   
-  const enrollment = await enrollmentService.updateEnrollmentStatus(id, status, req.user.id, req.user.role);
+  const enrollment = await enrollmentService.updateEnrollmentStatus(id, status, req.user.id, (await req.loadWorkspaceRole()));
   res.status(200).json(successResponse('Enrollment status updated', { enrollment }));
 });
 
@@ -93,7 +93,7 @@ exports.approveEnrollment = catchAsync(async (req, res) => {
   const taskService = require('../services/taskService');
   
   // Approve the enrollment
-  const enrollment = await enrollmentService.updateEnrollmentStatus(id, 'approved', req.user.id, req.user.role);
+  const enrollment = await enrollmentService.updateEnrollmentStatus(id, 'approved', req.user.id, (await req.loadWorkspaceRole()));
   
   // Auto-assign Week 1 roadmap tasks to the mentee
   try {
@@ -115,7 +115,7 @@ exports.rejectEnrollment = catchAsync(async (req, res) => {
   const { id } = req.params;
   const { reason } = req.body;
   
-  const enrollment = await enrollmentService.updateEnrollmentStatus(id, 'rejected', req.user.id, req.user.role, reason);
+  const enrollment = await enrollmentService.updateEnrollmentStatus(id, 'rejected', req.user.id, (await req.loadWorkspaceRole()), reason);
   res.status(200).json(successResponse('Enrollment rejected', { enrollment }));
 });
 
@@ -125,7 +125,7 @@ exports.rejectEnrollment = catchAsync(async (req, res) => {
  */
 exports.requestCompletion = catchAsync(async (req, res) => {
   const { id } = req.params;
-  const enrollment = await enrollmentService.requestCompletion(id, req.user.id, req.user.role);
+  const enrollment = await enrollmentService.requestCompletion(id, req.user.id, (await req.loadWorkspaceRole()));
   res.status(200).json(successResponse('Completion requested - awaiting mentor/admin approval', { enrollment }));
 });
 
@@ -135,7 +135,7 @@ exports.requestCompletion = catchAsync(async (req, res) => {
  */
 exports.approveCompletion = catchAsync(async (req, res) => {
   const { id } = req.params;
-  const result = await enrollmentService.approveCompletion(id, req.user.id, req.user.role);
+  const result = await enrollmentService.approveCompletion(id, req.user.id, (await req.loadWorkspaceRole()));
   const message = result.hasNextLevel
     ? `Level completed - mentee is ready to be promoted to "${result.nextLevelName}"`
     : 'Program completed - mentee has finished all levels';
@@ -149,7 +149,7 @@ exports.approveCompletion = catchAsync(async (req, res) => {
 exports.rejectCompletion = catchAsync(async (req, res) => {
   const { id } = req.params;
   const { reason } = req.body;
-  const enrollment = await enrollmentService.rejectCompletion(id, req.user.id, req.user.role, reason);
+  const enrollment = await enrollmentService.rejectCompletion(id, req.user.id, (await req.loadWorkspaceRole()), reason);
   res.status(200).json(successResponse('Completion request rejected - enrollment remains active', { enrollment }));
 });
 

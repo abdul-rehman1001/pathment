@@ -21,7 +21,9 @@ class MentorshipPauseService {
   // ── helpers ───────────────────────────────────────────────────────────────
   _name(u) { return u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Mentee' : 'Mentee'; }
 
-  _isAdmin(user) { return !!user && (user.role === 'admin' || user.isAdmin === true); }
+  async _isAdmin(user) {
+    return !!user?.id && authzService.can(user, require('../config/permissions').PERMISSIONS.MENTEE_MANAGE, { orgWide: true });
+  }
 
   /**
    * The clans this requester acts within: an ADMIN sees every clan (org-wide
@@ -29,7 +31,7 @@ class MentorshipPauseService {
    * (preferred) or a bare mentorId string. Returns { clanIds, clanNameById }.
    */
   async _scopeClans(user) {
-    if (this._isAdmin(user)) {
+    if (await this._isAdmin(user)) {
       const clans = await models.Clan.findAll({ attributes: ['id', 'name'] });
       return { clanIds: clans.map((c) => c.id), clanNameById: new Map(clans.map((c) => [c.id, c.name || 'Clan'])) };
     }

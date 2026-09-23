@@ -1,5 +1,11 @@
 const { models } = require('../db');
 const emailService = require('../services/emailService');
+const { Op, literal } = require('sequelize');
+
+function suppressionScope() {
+  const id = require('../utils/workspaceExecution').requireWorkspaceId();
+  return { email: { [Op.in]: literal(`(SELECT recipient_email FROM email_queue WHERE organization_id=${models.EmailQueue.sequelize.escape(id)})`) } };
+}
 
 /** Queue health: counts by status + recent failures. */
 exports.getEmailStats = async (req, res) => {
@@ -8,7 +14,7 @@ exports.getEmailStats = async (req, res) => {
     group: ['status'], raw: true,
   });
   const byStatus = rows.reduce((m, r) => (m[r.status] = Number(r.count), m), {});
-  const suppressed = await models.SuppressedEmail.count();
+  const suppressed = await models.SuppressedEmail.count({ where: suppressionScope() });
   res.json({ success: true, data: { byStatus, suppressed } });
 };
 
@@ -64,11 +70,14 @@ exports.retryAllDead = async (req, res) => {
 
 /** Suppression list management. */
 exports.listSuppressed = async (req, res) => {
-  const rows = await models.SuppressedEmail.findAll({ order: [['updatedAt', 'DESC']], limit: 200 });
+  const rows = await models.SuppressedEmail.findAll({ where: suppressionScope(), order: [['updatedAt', 'DESC']], limit: 200 });
   res.json({ success: true, data: { suppressed: rows } });
 };
 
 exports.unsuppress = async (req, res) => {
+  if (!(await require('../services/organizationService').isDefaultWorkspace())) {
+    return res.status(403).json({ success: false, error: 'Account-wide suppression changes require platform support' });
+  }
   const email = emailService.normalizeEmail(req.params.email);
   const n = await models.SuppressedEmail.destroy({ where: { email } });
   res.json({ success: true, data: { removed: n } });

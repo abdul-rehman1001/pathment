@@ -1,3 +1,4 @@
+const authzService = require('../services/authzService');
 const gamificationService = require('../services/gamificationService');
 const { successResponse } = require('../utils/responses');
 const { catchAsync } = require('../middlewares/errorHandler');
@@ -10,7 +11,7 @@ exports.getUserStats = catchAsync(async (req, res) => {
   const { userId } = req.params;
 
   // Security: Users can view their own stats, or mentors/admins can view mentee stats
-  if (!req.user || (req.user.id !== userId && !['admin', 'mentor'].includes(req.user.role))) {
+  if (!req.user || !(await authzService.canViewMentee(req.user, userId))) {
     return res.status(403).json({ success: false, message: 'Forbidden - cannot view other user stats' });
   }
 
@@ -28,7 +29,7 @@ exports.getUserStats = catchAsync(async (req, res) => {
 exports.getUserBadges = catchAsync(async (req, res) => {
   const { userId } = req.params;
 
-  if (!req.user || (req.user.id !== userId && !['admin', 'mentor'].includes(req.user.role))) {
+  if (!req.user || !(await authzService.canViewMentee(req.user, userId))) {
     return res.status(403).json({ success: false, message: 'Forbidden - cannot view other user badges' });
   }
 
@@ -47,7 +48,7 @@ exports.getUserPointsHistory = catchAsync(async (req, res) => {
   const { userId } = req.params;
   const { limit = 50 } = req.query;
 
-  if (!req.user || (req.user.id !== userId && !['admin', 'mentor'].includes(req.user.role))) {
+  if (!req.user || !(await authzService.canViewMentee(req.user, userId))) {
     return res.status(403).json({ success: false, message: 'Forbidden - cannot view other user points history' });
   }
 
@@ -217,7 +218,7 @@ exports.getUserChallenges = catchAsync(async (req, res) => {
   const { models } = require('../db');
 
   // Security: Users can view their own challenges, or mentors/admins can view mentee challenges
-  if (!req.user || (req.user.id !== userId && !['admin', 'mentor'].includes(req.user.role))) {
+  if (!req.user || !(await authzService.canViewMentee(req.user, userId))) {
     return res.status(403).json({ success: false, message: 'Forbidden - cannot view other user challenges' });
   }
 

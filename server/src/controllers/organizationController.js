@@ -9,7 +9,7 @@ const current = catchAsync(async (req, res) => {
 
 const listMine = catchAsync(async (req, res) => {
   const organizations = await organizationService.memberships(req.user.id);
-  res.json(successResponse('Organizations retrieved', { organizations }));
+  res.json(successResponse('Organizations retrieved', { organizations, workspaceCreationEnabled: organizationService.workspaceCreationEnabled() }));
 });
 
 const create = catchAsync(async (req, res) => {

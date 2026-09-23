@@ -18,7 +18,7 @@ const { ForbiddenError, NotFoundError } = require('../utils/errors/errorTypes');
 
 /** Every clan this person runs, or throws if they do not run the one asked for. */
 async function assertRunsClan(user, clanId) {
-  if (user.role === 'admin') return;
+  if (await authzService.can(user, require('../config/permissions').PERMISSIONS.MENTEE_VIEW, { orgWide: true })) return;
   const clanIds = await authzService.mentoredClanIds(user.id);
   if (!clanIds.includes(clanId)) {
     throw new ForbiddenError('You do not run that clan');

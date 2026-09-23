@@ -188,7 +188,16 @@ const certificateVerifyLimiter = make({
   skipSuccessfulRequests: false
 });
 
+const workspaceCreationLimiter = make({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  keyGenerator: req => `workspace-owner:${req.user.id}`,
+  message: 'Too many workspace creation attempts. Please try again later.',
+  skipSuccessfulRequests: false,
+});
+
 module.exports = {
+  workspaceCreationLimiter,
   loginLimiter,
   passwordResetLimiter,
   signInLinkLimiter,

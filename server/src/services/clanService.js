@@ -42,10 +42,12 @@ class ClanService {
    * an admin/lead assigns a clan role, so the user can switch into that view.
    */
   async ensureCapability(user, capability, transaction) {
-    const caps = Array.isArray(user.capabilities) ? user.capabilities : [];
-    if (!caps.includes(capability)) {
-      user.capabilities = [...caps, capability];
-      await user.save({ transaction });
+    // Roles are derived from workspace grants. Never edit the account-wide
+    // capability array when somebody joins a clan in just one workspace.
+    if (capability === 'mentor') {
+      await models.MentorProfile.findOrCreate({ where: { userId: user.id }, transaction });
+    } else if (capability === 'mentee') {
+      await ensureMenteeProfile(user.id, { transaction });
     }
     return user;
   }
@@ -295,7 +297,7 @@ class ClanService {
    * tasks). Only the mentor roles are mutually exclusive with each other, so
    * lead_mentor / co_mentor / core_team reuse the one mentor row.
    */
-  async addMember(clanId, { userId, role, enrollmentId }, actor = null) {
+  async addMember(clanId, { userId, role, enrollmentId }, actor = null, { transaction: outerTransaction } = {}) {
     const { Op } = require('sequelize');
     if (!userId || !role) throw new ValidationError('userId and role are required');
     if (!CAPABILITY_FOR_CLAN_ROLE[role]) throw new ValidationError(`Invalid clan role: ${role}`);
@@ -309,10 +311,10 @@ class ClanService {
       }
     }
 
-    const clan = await models.Clan.findByPk(clanId);
+    const clan = await models.Clan.findByPk(clanId, { transaction: outerTransaction });
     if (!clan) throw new NotFoundError('Clan not found');
 
-    const user = await models.User.findByPk(userId);
+    const user = await models.User.findByPk(userId, { transaction: outerTransaction });
     if (!user) throw new NotFoundError('User not found');
 
     // One mentee placement per clan. The same person may be a mentee of several
@@ -322,6 +324,7 @@ class ClanService {
       const placed = await models.ClanMembership.findOne({
         where: { userId, clanId, role: 'mentee', status: { [Op.in]: ['active', 'paused'] } },
         include: [{ model: models.Clan, as: 'clan', attributes: ['id', 'name'] }],
+        transaction: outerTransaction,
       });
       if (placed) {
         const who = `${user.firstName} ${user.lastName}`.trim() || user.email;
@@ -329,7 +332,7 @@ class ClanService {
       }
     }
 
-    const membership = await sequelize.transaction(async (transaction) => {
+    const place = async (transaction) => {
       await this.ensureCapability(user, CAPABILITY_FOR_CLAN_ROLE[role], transaction);
 
       // The row this grant occupies: the person's mentor row (whatever role it
@@ -398,7 +401,8 @@ class ClanService {
       }
 
       return membership;
-    });
+    };
+    const membership = outerTransaction ? await place(outerTransaction) : await sequelize.transaction(place);
 
     // Audit who added whom — especially a co-mentor using mentee.add — so leads
     // and admins have an accountability trail. Internal/system placements pass

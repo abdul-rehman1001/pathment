@@ -1,3 +1,4 @@
+const { requireWorkspaceId } = require('../../../utils/workspaceExecution');
 const { Op } = require('sequelize');
 const { models, sequelize } = require('../../../db');
 
@@ -47,8 +48,8 @@ async function hasGeminiKey(mentorId) {
 
 async function chunkCount(mentorId) {
   const [rows] = await sequelize.query(
-    'SELECT count(*)::int AS n FROM knowledge_chunks WHERE mentor_id = :id',
-    { replacements: { id: mentorId } }
+    'SELECT count(*)::int AS n FROM knowledge_chunks WHERE organization_id=:organizationId AND mentor_id = :id',
+    { replacements: { id: mentorId, organizationId: requireWorkspaceId() } }
   );
   return rows?.[0]?.n ?? 0;
 }

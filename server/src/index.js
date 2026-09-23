@@ -142,7 +142,10 @@ async function start() {
     if (process.env.GAMIFICATION_BOOTSTRAP_DISABLED !== 'true') {
       try {
         const gamificationService = require('./services/gamificationService');
-        const badgeCount = await gamificationService.createDefaultBadges();
+        let badgeCount = 0;
+        await require('./utils/workspaceExecution').forEachWorkspace(async () => {
+          badgeCount += await gamificationService.createDefaultBadges();
+        });
         console.log(`✓ Gamification badges verified: ${badgeCount}`);
       } catch (bootstrapError) {
         // Do not block API startup because badges can also be initialized via admin endpoint.

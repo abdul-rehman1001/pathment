@@ -117,7 +117,10 @@ class AuthzService {
     if ((!organizationId && user.role === 'admin') || ['owner', 'admin'].includes(organizationMembership?.role)) {
       add('super_admin', 'org');
     }
-    if (legacyAccountRole && user.role === 'mentee') add('mentee', 'self', user.id);
+    if ((legacyAccountRole && user.role === 'mentee') || (organizationId &&
+        await models.MenteeProfile.findOne({ where: { userId: user.id }, attributes: ['id'] }))) {
+      add('mentee', 'self', user.id);
+    }
 
     // 1b. Clan memberships → clan-scoped roles (lead_mentor / co_mentor / core_team / mentee).
     const memberships = await models.ClanMembership.findAll({
@@ -226,6 +229,10 @@ class AuthzService {
    */
   async getCapabilities(user, opts = {}) {
     if (!user) return [];
+    const selectedOrganization = getRequestContext().organizationId;
+    if (selectedOrganization && !(await models.OrganizationMembership.findOne({
+      where: { organizationId: selectedOrganization, userId: user.id, status: 'active' }, attributes: ['id'],
+    }))) return [];
     const custom = await loadCustomRoles();
     const assignments = opts.assignments || (await this.getAssignments(user));
     const caps = new Set();
@@ -242,7 +249,8 @@ class AuthzService {
       attributes: ['id'],
     });
     const legacyAccountRole = !organizationId || Boolean(defaultOrganization);
-    if ((legacyAccountRole && user.role === 'mentor') || mentorsSomewhere) caps.add('mentor');
+    if ((legacyAccountRole && user.role === 'mentor') || mentorsSomewhere ||
+        (getRequestContext().organizationId && await models.MentorProfile.findOne({ where: { userId: user.id }, attributes: ['id'] }))) caps.add('mentor');
 
     if ((legacyAccountRole && user.role === 'mentee') || assignments.some(a => a.role === 'mentee')) {
       caps.add('mentee');

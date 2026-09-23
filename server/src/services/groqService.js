@@ -35,8 +35,8 @@ class GroqService {
         const { models } = require('../db');
         const user = await models.User.findByPk(userId, { attributes: ['id', 'role', 'capabilities'] });
         if (user) {
-          const caps = Array.isArray(user.capabilities) && user.capabilities.length ? user.capabilities : [user.role];
-          if (!caps.includes('admin') && user.role === 'mentor') {
+          const caps = await require('./authzService').getCapabilities(user);
+          if (!caps.includes('admin') && caps.includes('mentor')) {
             isMentorCaller = true;
           }
         }
@@ -45,7 +45,7 @@ class GroqService {
     } catch (e) {
       console.error('[AI] connection resolve failed:', e.message);
     }
-    if (!cfg && config.ai.apiKey && !isMentorCaller) {
+    if (!cfg && config.ai.apiKey && !isMentorCaller && await require('./organizationService').isDefaultWorkspace()) {
       cfg = { apiKey: config.ai.apiKey, baseURL: config.ai.baseURL, model: config.ai.model, provider: config.ai.provider };
     }
     if (!cfg) return { enabled: false };

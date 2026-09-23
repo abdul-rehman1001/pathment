@@ -63,7 +63,7 @@ exports.updateMatchStatus = catchAsync(async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
   
-  const match = await matchingService.updateMatchStatus(id, status, req.user.id, req.user.role);
+  const match = await matchingService.updateMatchStatus(id, status, req.user.id, (await req.loadWorkspaceRole()));
   res.status(200).json(successResponse('Match status updated', { match }));
 });
 

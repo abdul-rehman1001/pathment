@@ -97,7 +97,7 @@ class ProfileController {
 
     // Verify user is a mentee
     const user = await models.User.findByPk(userId);
-    if (user.role !== 'mentee') {
+    if (!(await req.loadCapabilities()).includes('mentee')) {
       throw new ForbiddenError('Only mentees can complete mentee profiles');
     }
 
@@ -166,7 +166,7 @@ await user.update({
 
     // Verify user is a mentor
     const user = await models.User.findByPk(userId);
-    if (user.role !== 'mentor') {
+    if (!(await req.loadCapabilities()).includes('mentor')) {
       throw new ForbiddenError('Only mentors can complete mentor profiles');
     }
 
@@ -457,7 +457,7 @@ await user.update({
 
     // Verify user is a mentor
     const user = await models.User.findByPk(userId);
-    if (user.role !== 'mentor') {
+    if (!(await req.loadCapabilities()).includes('mentor')) {
       throw new ForbiddenError('Only mentors can update availability settings');
     }
 
@@ -497,7 +497,7 @@ await user.update({
 
     // Verify user is a mentor
     const user = await models.User.findByPk(userId);
-    if (user.role !== 'mentor') {
+    if (!(await req.loadCapabilities()).includes('mentor')) {
       throw new ForbiddenError('Only mentors can update auto-reply settings');
     }
 

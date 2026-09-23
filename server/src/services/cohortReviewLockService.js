@@ -95,7 +95,7 @@ class CohortReviewLockService {
   async _notifyAdmins(mentorId, request) {
     const [mentor, admins] = await Promise.all([
       models.User.findByPk(mentorId, { attributes: ['firstName', 'lastName'] }),
-      models.User.findAll({ where: { role: 'admin', status: 'active' }, attributes: ['id'] }),
+      require('./workspaceRecipients').admins(),
     ]);
     if (!admins.length) return;
     const who = mentor ? `${mentor.firstName || ''} ${mentor.lastName || ''}`.trim() : 'A mentor';

@@ -38,6 +38,10 @@ class NotificationScheduler {
   }
 
   async run() {
+    return require('../utils/workspaceExecution').forEachWorkspace(() => this.runWorkspace());
+  }
+
+  async runWorkspace() {
     await this.sendMeetingReminders();
     await this.notifyDeadlineApproaching();
     await this.notifyDeadlinePassed();
@@ -355,7 +359,8 @@ class NotificationScheduler {
     }
 
     const mentees = await models.User.findAll({
-      where: { role: 'mentee', status: 'active' },
+      where: { status: 'active' },
+      include: [{ model: models.MenteeProfile, as: 'menteeProfile', attributes: [], required: true }],
       attributes: ['id', 'firstName']
     });
 

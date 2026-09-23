@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
+import { workspacePath } from '@/lib/services/workspace-scope';
 
 export default function HomePage() {
   const { user, isLoading } = useAuth();
@@ -12,22 +13,13 @@ export default function HomePage() {
   useEffect(() => {
     if (!isLoading) {
       if (!user) {
-        router.push('/login');
+        router.replace(workspacePath('/login'));
       } else {
-        // Redirect based on role
-        switch (user.role) {
-          case 'admin':
-            router.push('/admin/dashboard');
-            break;
-          case 'mentor':
-            router.push('/mentor/dashboard');
-            break;
-          case 'mentee':
-            router.push('/mentee/dashboard');
-            break;
-          default:
-            router.push('/login');
-        }
+        const available = user.capabilities ?? [user.role];
+        const role = available.includes('admin') ? 'admin'
+          : available.includes('mentor') ? 'mentor'
+          : available.includes('mentee') ? 'mentee' : null;
+        router.replace(workspacePath(role ? `/${role}/dashboard` : '/workspaces'));
       }
     }
   }, [user, isLoading, router]);

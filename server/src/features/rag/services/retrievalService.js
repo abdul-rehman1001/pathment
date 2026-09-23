@@ -1,3 +1,4 @@
+const { requireWorkspaceId } = require('../../../utils/workspaceExecution');
 const { sequelize } = require('../../../db');
 const { embedText } = require('./embeddingService');
 const config = require('../ragConfig');
@@ -21,7 +22,7 @@ async function retrieveContext({ query, mentorId, menteeId, geminiApiKey }) {
       SELECT id, content, visibility, source_type,
              1 - (embedding::vector <=> :vec::vector) AS score
       FROM knowledge_chunks
-      WHERE mentor_id = :mentorId
+      WHERE organization_id=:organizationId AND mentor_id = :mentorId
         AND visibility IN ('mentor','program')
         AND source_type IN ('mentor_document', 'conversation_context', 'mentor_qa')
         AND (
@@ -35,6 +36,7 @@ async function retrieveContext({ query, mentorId, menteeId, geminiApiKey }) {
 
     const [vectorRows] = await sequelize.query(vectorQuery, {
       replacements: {
+        organizationId: requireWorkspaceId(),
         vec: `[${queryEmbedding.join(',')}]`,
         mentorId,
         menteeId,
@@ -48,7 +50,7 @@ async function retrieveContext({ query, mentorId, menteeId, geminiApiKey }) {
       SELECT id, content, visibility, source_type,
              ts_rank(search_vector, websearch_to_tsquery('english', :query)) AS score
       FROM knowledge_chunks
-      WHERE mentor_id = :mentorId
+      WHERE organization_id=:organizationId AND mentor_id = :mentorId
         AND visibility IN ('mentor','program')
         AND source_type IN ('mentor_document', 'conversation_context', 'mentor_qa')
         AND (
@@ -61,7 +63,7 @@ async function retrieveContext({ query, mentorId, menteeId, geminiApiKey }) {
     `;
 
     const [ftsRows] = await sequelize.query(ftsQuery, {
-      replacements: { query, mentorId, menteeId, limit: ftsLimit }
+      replacements: { query, mentorId, menteeId, limit: ftsLimit, organizationId: requireWorkspaceId() }
     });
 
     // 3. Reciprocal Rank Fusion

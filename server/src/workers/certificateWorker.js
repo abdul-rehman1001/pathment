@@ -1,3 +1,4 @@
+const { requireWorkspaceId, forEachWorkspace } = require('../utils/workspaceExecution');
 const { Op } = require('sequelize');
 const { models, sequelize } = require('../db');
 const certificateService = require('../services/certificateService');
@@ -110,6 +111,12 @@ async function processBatchJobs(batchJobs) {
   try {
     logger.info(`[Certificate Worker - AI Eval] Processing micro-batch of ${batchJobs.length} mentees for run ${runId}`);
     const template = await models.CertificateTemplate.findByPk(templateId);
+    if (!template || template.organizationId !== requireWorkspaceId() ||
+        batchJobs.some(job => job.organizationId !== requireWorkspaceId())) {
+      throw new Error('Certificate jobs and template must belong to the current workspace');
+    }
+    await organizationService.assertMembership(triggeredBy, requireWorkspaceId());
+    for (const job of batchJobs) await organizationService.assertMembership(job.menteeId, requireWorkspaceId());
 
     const batchItems = batchJobs.map(j => ({
       menteeId:      j.menteeId,
@@ -139,8 +146,8 @@ async function processBatchJobs(batchJobs) {
     persisted = true;
 
     const [{ completedCount, totalCount }] = await sequelize.query(
-      `SELECT COUNT(*) FILTER (WHERE status IN ('completed', 'failed')) AS "completedCount", COUNT(*) AS "totalCount" FROM ai_evaluation_queue WHERE run_id = :runId`,
-      { replacements: { runId }, type: sequelize.QueryTypes.SELECT }
+      `SELECT COUNT(*) FILTER (WHERE status IN ('completed', 'failed')) AS "completedCount", COUNT(*) AS "totalCount" FROM ai_evaluation_queue WHERE organization_id = :organizationId AND run_id = :runId AND template_id = :templateId AND triggered_by = :triggeredBy`,
+      { replacements: { runId, templateId, triggeredBy, organizationId: requireWorkspaceId() }, type: sequelize.QueryTypes.SELECT }
     );
 
     const menteeIds = batchJobs.map(j => j.menteeId);
@@ -184,8 +191,8 @@ async function processBatchJobs(batchJobs) {
         `SELECT
            COUNT(*) FILTER (WHERE status IN ('completed', 'failed')) AS "completedCount",
            COUNT(*) AS "totalCount"
-         FROM ai_evaluation_queue WHERE run_id = :runId`,
-        { replacements: { runId }, type: sequelize.QueryTypes.SELECT }
+         FROM ai_evaluation_queue WHERE organization_id = :organizationId AND run_id = :runId AND template_id = :templateId AND triggered_by = :triggeredBy`,
+        { replacements: { runId, templateId, triggeredBy, organizationId: requireWorkspaceId() }, type: sequelize.QueryTypes.SELECT }
       );
       errorCompletedCount = Number(counts?.completedCount ?? 0);
       errorTotalCount     = Number(counts?.totalCount     ?? 0);
@@ -230,6 +237,7 @@ async function tickAIEval() {
   aiEvalRunning = true;
 
   try {
+    await forEachWorkspace(async () => {
     const allBatchJobs = [];
 
     for (let b = 0; b < CONCURRENT_BATCHES; b++) {
@@ -246,7 +254,7 @@ async function tickAIEval() {
             attempts: { [Op.lt]: MAX_AI_EVAL_ATTEMPTS }
           },
           order:      [['createdAt', 'ASC']],
-          attributes: ['runId'],
+          attributes: ['runId', 'templateId', 'triggeredBy'],
           raw: true,
           transaction: t
         });
@@ -256,6 +264,8 @@ async function tickAIEval() {
         const pendingJobs = await models.AIEvaluationQueue.findAll({
           where: {
             runId: nextTarget.runId,
+            templateId: nextTarget.templateId,
+            triggeredBy: nextTarget.triggeredBy,
             [Op.or]: [
               { status: 'pending' },
               {
@@ -295,6 +305,7 @@ async function tickAIEval() {
     if (allBatchJobs.length > 0) {
       await Promise.allSettled(allBatchJobs.map(jobs => processBatchJobs(jobs)));
     }
+    });
   } catch (err) {
     logger.error(`[Certificate Worker - AI Eval] Tick error: ${err.message}`);
   } finally {

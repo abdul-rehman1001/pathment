@@ -34,7 +34,7 @@ const site = (slug: string) => `${process.env.NEXT_PUBLIC_APP_URL || 'https://ap
  * people have been taught to trust, in emails that carry auth tokens. That is
  * an open redirect, and it is the one way this small file could do real harm.
  */
-const SLUG = /^[a-z0-9][a-z0-9-]{1,30}$/;
+const SLUG = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
 type TokenParams = Promise<{ slug: string; token: string }>;
 

@@ -54,7 +54,7 @@ export function OrganizationSettingsTab() {
   );
 }
 
-function CreateWorkspaceDrawer({ onClose, onCreated }: { onClose: () => void; onCreated: (slug: string) => void }) {
+export function CreateWorkspaceDrawer({ onClose, onCreated }: { onClose: () => void; onCreated: (slug: string) => void }) {
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [timezone, setTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');

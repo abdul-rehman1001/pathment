@@ -190,10 +190,7 @@ class EnrollmentService {
       enrolledAt: new Date()
     });
 
-    const admins = await models.User.findAll({
-      where: { role: 'admin', status: 'active' },
-      attributes: ['id']
-    });
+    const admins = await require('./workspaceRecipients').admins();
 
     await notificationOrchestrator.dispatch({
       eventKey: NOTIFICATION_EVENTS.MENTEE_ENROLLED,

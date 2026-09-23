@@ -11,7 +11,7 @@
  * can ship before the DNS does.
  */
 
-const SLUG = /^[a-z0-9][a-z0-9-]{1,30}$/;
+const SLUG = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
 const stripSlash = (value) => String(value || '').replace(/\/$/, '');
 

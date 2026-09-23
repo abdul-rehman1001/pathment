@@ -36,7 +36,7 @@ type ClanJoinDetails = {
 export default function RegisterPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { register, user, isLoading } = useAuth();
+  const { register, user, isLoading, refreshUser } = useAuth();
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -63,8 +63,8 @@ export default function RegisterPage() {
   // Redirect if already logged in — unless this is an existing-account clan invite.
   useEffect(() => {
     if (isLoading || !user) return;
-    if (inviteToken && inviteDetails?.existingAccount) return;
-    router.push(joinReturnPath || workspacePath(`/${user.role}/dashboard`));
+    if (inviteToken) return;
+    router.push(joinReturnPath || workspacePath('/'));
   }, [user, isLoading, router, joinReturnPath, inviteToken, inviteDetails]);
 
   // Validate invite token OR public clan join slug before allowing registration
@@ -87,7 +87,7 @@ export default function RegisterPage() {
         setInviteError(null);
 
         if (inviteToken) {
-          const response = await apiClient.get<any>(apiConfig.endpoints.validateInvite(inviteToken));
+          const response = await apiClient.get<{ data?: { invite?: InviteDetails }; invite?: InviteDetails }>(apiConfig.endpoints.validateInvite(inviteToken));
           const invite = response?.data?.invite || response?.invite;
 
           if (!invite || !invite.role || !invite.email) {
@@ -105,14 +105,14 @@ export default function RegisterPage() {
           return;
         }
 
-        const response = await apiClient.get<any>(apiConfig.endpoints.validateClanJoin(clanJoinSlug));
+        const response = await apiClient.get<{ data?: { clanJoin?: ClanJoinDetails }; clanJoin?: ClanJoinDetails }>(apiConfig.endpoints.validateClanJoin(clanJoinSlug));
         const details = response?.data?.clanJoin || response?.clanJoin;
         if (!details?.clan?.name) {
           throw new Error('Invalid clan join response');
         }
         setClanJoinDetails(details);
         setInviteDetails(null);
-      } catch (error: any) {
+      } catch (error: unknown) {
         const message = extractApiErrorMessage(
           error,
           inviteToken ? 'This invite is invalid or expired.' : 'This clan joining link is invalid or no longer available.'
@@ -134,7 +134,7 @@ export default function RegisterPage() {
     );
   }
 
-  if (user && !(inviteToken && inviteDetails?.existingAccount)) {
+  if (user && !inviteToken) {
     return null;
   }
 
@@ -143,9 +143,10 @@ export default function RegisterPage() {
     setAccepting(true);
     try {
       await apiClient.post(apiConfig.endpoints.acceptInvite(inviteToken));
-      toast.success('You joined the clan.');
+      await refreshUser();
+      toast.success(inviteDetails?.clan ? 'You joined the clan.' : 'You joined the workspace.');
       router.push(workspacePath(`/${inviteDetails?.role === 'mentor' ? 'mentor' : 'mentee'}/dashboard`));
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast.error(extractApiErrorMessage(error, 'Could not accept this invite'));
     } finally {
       setAccepting(false);
@@ -204,7 +205,7 @@ export default function RegisterPage() {
         toast.success('Account created! You can now log in.');
         setTimeout(() => router.push(workspacePath('/login')), 1500);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       const message = extractApiErrorMessage(err, 'Registration failed');
       toast.error(message);
       setErrors({ general: message });
@@ -254,7 +255,7 @@ export default function RegisterPage() {
             {inviteDetails.existingAccount && !user && (
               <p className="text-brand-700 text-sm mt-2">
                 You already have an account.{' '}
-                <Link href={`/login?next=${encodeURIComponent(`/register?invite=${inviteToken}`)}`} className="underline font-medium">
+                <Link href={workspacePath(`/login?next=${encodeURIComponent(`/register?invite=${inviteToken}`)}`)} className="underline font-medium">
                   Sign in to join this clan
                 </Link>
               </p>
@@ -437,7 +438,7 @@ export default function RegisterPage() {
         <p className="text-center text-sm text-slate-500 mt-6">
           Already have an account?{' '}
           <Link
-            href={joinReturnPath ? `/login?next=${encodeURIComponent(joinReturnPath)}` : '/login'}
+            href={workspacePath(joinReturnPath ? `/login?next=${encodeURIComponent(joinReturnPath)}` : '/login')}
             className="font-medium text-brand-700 hover:text-brand-800"
           >
             Log in

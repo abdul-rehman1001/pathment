@@ -1,3 +1,4 @@
+const { requireWorkspaceId } = require('../utils/workspaceExecution');
 const { Op } = require('sequelize');
 const { models, sequelize } = require('../db');
 const cohortService = require('./cohortService');
@@ -78,11 +79,11 @@ class PerformanceService {
       `SELECT mentee_id,
               COUNT(DISTINCT date_trunc('week', completed_at))::int AS active_weeks
          FROM assigned_tasks
-        WHERE mentee_id IN (:ids)
+        WHERE organization_id = :organizationId AND mentee_id IN (:ids)
           AND status = 'completed'
           AND completed_at IS NOT NULL
         GROUP BY mentee_id`,
-      { replacements: { ids: menteeIds } }
+      { replacements: { ids: menteeIds, organizationId: requireWorkspaceId() } }
     );
 
     for (const row of rows) out[row.mentee_id] = Number(row.active_weeks) || 0;
@@ -100,10 +101,10 @@ class PerformanceService {
     const [rows] = await sequelize.query(
       `SELECT mentor_id, AVG(final_rating)::float AS avg_rating
          FROM assigned_tasks
-        WHERE final_rating IS NOT NULL
+        WHERE organization_id = :organizationId AND final_rating IS NOT NULL
           AND mentor_id IS NOT NULL
         GROUP BY mentor_id`,
-      {}
+      { replacements: { organizationId: requireWorkspaceId() } }
     );
 
     for (const row of rows) out[row.mentor_id] = Number(row.avg_rating) || null;
@@ -118,9 +119,9 @@ class PerformanceService {
     const [rows] = await sequelize.query(
       `SELECT DISTINCT ON (mentee_id) mentee_id, mentor_id
          FROM assigned_tasks
-        WHERE mentee_id IN (:ids) AND mentor_id IS NOT NULL
+        WHERE organization_id = :organizationId AND mentee_id IN (:ids) AND mentor_id IS NOT NULL
         ORDER BY mentee_id, updated_at DESC`,
-      { replacements: { ids: menteeIds } }
+      { replacements: { ids: menteeIds, organizationId: requireWorkspaceId() } }
     );
 
     for (const row of rows) out[row.mentee_id] = row.mentor_id;
@@ -154,10 +155,10 @@ class PerformanceService {
               ), 0)::float AS hours
          FROM assigned_tasks a
          JOIN roadmap_tasks rt ON rt.id = a.roadmap_task_id
-        WHERE a.mentee_id IN (:ids)
+        WHERE a.organization_id = :organizationId AND rt.organization_id = :organizationId AND a.mentee_id IN (:ids)
           AND a.status = 'completed'
         GROUP BY a.mentee_id`,
-      { replacements: { ids: menteeIds } }
+      { replacements: { ids: menteeIds, organizationId: requireWorkspaceId() } }
     );
 
     for (const row of rows) out[row.mentee_id] = Number(row.hours) || 0;

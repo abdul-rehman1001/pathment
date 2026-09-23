@@ -37,6 +37,7 @@ class AuthService {
     const tokenHash = hashToken(inviteToken);
     const invite = await models.RegistrationInvite.findOne({
       where: { tokenHash },
+      ...(transaction ? { lock: transaction.LOCK.UPDATE } : {}),
       transaction
     });
 
@@ -97,46 +98,52 @@ class AuthService {
   async acceptRegistrationInvite(actor, inviteToken) {
     if (!actor?.id) throw new AuthenticationError('Authentication required');
     if (!inviteToken) throw new ValidationError('Invite token is required');
-
-    const invite = await this.getActiveInviteByToken(inviteToken);
-    if (invite.email.toLowerCase() !== String(actor.email || '').toLowerCase()) {
-      throw new AuthorizationError('This invite is for a different account');
-    }
-    if (!invite.clanId) {
-      throw new ValidationError('This invite has no clan to join');
-    }
-
     const organizationService = require('./organizationService');
-    const organizationId = invite.organizationId || await organizationService.currentId();
-    const existingWorkspaceMembership = await models.OrganizationMembership.findOne({
-      where: { organizationId, userId: actor.id, status: 'active' },
-    });
-    if (!existingWorkspaceMembership) {
-      await sequelize.transaction(async (transaction) => {
-        await organizationService.assertLimit(organizationId, 'members', null, { transaction });
-        await models.OrganizationMembership.findOrCreate({
-          where: { organizationId, userId: actor.id },
-          defaults: { role: 'member', status: 'active', joinedAt: new Date(), invitedBy: invite.invitedBy },
-          transaction,
-        });
+    return sequelize.transaction(async transaction => {
+      const invite = await this.getActiveInviteByToken(inviteToken, transaction);
+      if (invite.email.toLowerCase() !== String(actor.email || '').toLowerCase()) {
+        throw new AuthorizationError('This invite is for a different account');
+      }
+      const organizationId = invite.organizationId;
+      await models.OrganizationSubscription.findOne({
+        where: { organizationId }, transaction, lock: transaction.LOCK.UPDATE,
       });
-    }
-
-    const clanService = require('./clanService');
-    const role = invite.role === 'mentor' ? 'co_mentor' : 'mentee';
-    const membership = await clanService.addMember(
-      invite.clanId,
-      { userId: actor.id, role },
-      // The signed, email-bound invite is the authorization to join. Passing
-      // the invitee as the manager would incorrectly require clan-admin rights.
-      null
-    );
-
-    invite.usedAt = new Date();
-    invite.usedBy = actor.id;
-    await invite.save();
-
-    return { membership, clanId: invite.clanId, role: invite.role };
+      let workspaceMembership = await models.OrganizationMembership.findOne({
+        where: { organizationId, userId: actor.id }, transaction,
+      });
+      if (workspaceMembership?.status === 'suspended') {
+        throw new AuthorizationError('Your workspace membership is suspended');
+      }
+      if (workspaceMembership?.status !== 'active') {
+        await organizationService.assertLimit(organizationId, 'members', null, { transaction });
+        if (workspaceMembership) {
+          await workspaceMembership.update({ status: 'active', joinedAt: new Date() }, { transaction });
+        } else {
+          workspaceMembership = await models.OrganizationMembership.create({
+            organizationId, userId: actor.id, role: 'member', status: 'active',
+            joinedAt: new Date(), invitedBy: invite.invitedBy,
+          }, { transaction });
+        }
+      }
+      const profile = invite.role === 'mentor' ? models.MentorProfile : models.MenteeProfile;
+      await profile.findOrCreate({ where: { userId: actor.id }, transaction });
+      let membership = null;
+      if (invite.clanId) {
+        membership = await require('./clanService').addMember(invite.clanId, {
+          userId: actor.id, role: invite.role === 'mentor' ? 'co_mentor' : 'mentee',
+        }, null, { transaction });
+      } else if (invite.role === 'mentee' && invite.programId) {
+        await models.Enrollment.findOrCreate({
+          where: { menteeId: actor.id, programId: invite.programId },
+          defaults: { status: 'pending_match', enrolledAt: new Date() }, transaction,
+        });
+      } else if (invite.role === 'mentor') {
+        throw new ValidationError('A mentor invite must specify a clan');
+      }
+      // Consume the invitation in the same transaction as membership/placement.
+      await invite.update({ usedAt: new Date(), usedBy: actor.id }, { transaction });
+      return { membership, clanId: invite.clanId, role: invite.role };
+    });
   }
 
   /**
@@ -526,8 +533,7 @@ class AuthService {
       }, '5m'); // 5 minute expiry for 2FA verification
 
       // Remove password from response
-      const userResponse = user.toJSON();
-      delete userResponse.passwordHash;
+      const userResponse = { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role, capabilities: [] };
 
       return {
         requiresTwoFactor: true,
@@ -552,18 +558,9 @@ class AuthService {
     const { refreshToken } = await this._issueRefreshToken(user, { rememberMe, client });
 
     // Remove password from response
-    const userResponse = user.toJSON();
-    delete userResponse.passwordHash;
+    const userResponse = await this.getCurrentUser(user.id);
 
-    // Derive live capabilities + permissions so the client lands with the right
-    // switcher/areas without a second round-trip.
-    const authzService = require('./authzService');
-    const assignments = await authzService.getAssignments(user);
-    userResponse.capabilities = await authzService.getCapabilities(user, { assignments });
-    userResponse.permissions = await authzService.getPermissionUnion(user);
-    userResponse.canAccessAdmin = await authzService.hasAdminAccess(user, { assignments });
-
-    if (user.role === 'mentee') {
+    if (userResponse.capabilities.includes('mentee')) {
       const gamificationService = require('./gamificationService');
       gamificationService.awardDailyLoginPoint(user.id).catch(() => {});
     }
@@ -1107,8 +1104,7 @@ class AuthService {
         '5m'
       );
 
-      const pending = user.toJSON();
-      delete pending.passwordHash;
+      const pending = { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role, capabilities: [] };
 
       return { requiresTwoFactor: true, temporaryToken, user: pending };
     }
@@ -1119,14 +1115,7 @@ class AuthService {
     const accessToken = generateAccessToken({ id: user.id, email: user.email, role: user.role });
     const { refreshToken } = await this._issueRefreshToken(user, { rememberMe: false, client });
 
-    const userResponse = user.toJSON();
-    delete userResponse.passwordHash;
-
-    const authzService = require('./authzService');
-    const assignments = await authzService.getAssignments(user);
-    userResponse.capabilities = await authzService.getCapabilities(user, { assignments });
-    userResponse.permissions = await authzService.getPermissionUnion(user);
-    userResponse.canAccessAdmin = await authzService.hasAdminAccess(user, { assignments });
+    const userResponse = await this.getCurrentUser(user.id);
 
     return { user: userResponse, accessToken, refreshToken };
   }
@@ -1168,6 +1157,20 @@ class AuthService {
    * Get current user
    */
   async getCurrentUser(userId) {
+    const organizationId = require('../utils/auditContext').getRequestContext().organizationId;
+    const membership = organizationId && await models.OrganizationMembership.findOne({
+      where: { organizationId, userId, status: 'active' },
+    });
+    if (organizationId && !membership) {
+      // Global identity can accept an invitation without already being a member.
+      // Do not join profiles, roles or other workspace records into this response.
+      const account = await models.User.findByPk(userId, {
+        attributes: { exclude: ['password', 'passwordHash'] }, skipOrganizationScope: true,
+      });
+      if (!account) throw new NotFoundError(AUTH_MESSAGES.USER_NOT_FOUND);
+      return { ...account.toJSON(), capabilities: [], permissions: [], canAccessAdmin: false, workspaceAccess: false };
+    }
+
     const user = await models.User.findByPk(userId, {
       attributes: { exclude: ['password', 'passwordHash'] },
       include: [
@@ -1230,8 +1233,7 @@ class AuthService {
     const { refreshToken } = await this._issueRefreshToken(user, { rememberMe, client });
 
     // Remove password from response
-    const userResponse = user.toJSON();
-    delete userResponse.passwordHash;
+    const userResponse = await this.getCurrentUser(user.id);
 
     return {
       user: userResponse,

@@ -131,7 +131,7 @@ router.post(
 
 router.get(
   '/me',
-  authenticate,
+  authenticateAccount,
   authController.getCurrentUser
 );
 

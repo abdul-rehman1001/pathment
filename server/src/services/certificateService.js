@@ -1,3 +1,4 @@
+const { requireWorkspaceId } = require('../utils/workspaceExecution');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const { Op } = require('sequelize');
@@ -427,11 +428,11 @@ class CertificateService {
       `SELECT elem AS result
          FROM certificate_templates t
          CROSS JOIN LATERAL jsonb_array_elements(t.ai_evaluation -> 'results') AS elem
-        WHERE t.id = :templateId
+        WHERE t.organization_id=:organizationId AND t.id = :templateId
           AND jsonb_typeof(t.ai_evaluation -> 'results') = 'array'
           AND COALESCE(elem ->> 'mentee_id', elem ->> 'id') = :menteeId
         LIMIT 1`,
-      { replacements: { templateId, menteeId } }
+      { replacements: { templateId, menteeId, organizationId: requireWorkspaceId() } }
     );
     const ai = aiRows[0]?.result ?? null;
 
@@ -622,11 +623,7 @@ class CertificateService {
     if (!userIds.length) return out;
 
     // An org-level admin outranks any clan role — they issue as the org.
-    const admins = await models.User.findAll({
-      where: { id: { [Op.in]: userIds }, role: 'admin' },
-      attributes: ['id'],
-      raw: true
-    });
+    const admins = (await require('./workspaceRecipients').admins()).filter(admin => userIds.includes(admin.id));
     admins.forEach((a) => out.set(a.id, 'admin'));
 
     const where = { userId: { [Op.in]: userIds }, status: { [Op.in]: VISIBLE_MEMBERSHIP_STATUSES } };

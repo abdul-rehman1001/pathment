@@ -63,6 +63,9 @@ exports.handleResendWebhook = async (req, res) => {
   // Auth gate. whsec_… → verify the Svix signature; anything else → legacy
   // shared secret; unset → open (dev).
   const secret = process.env.RESEND_WEBHOOK_SECRET;
+  if (!secret && process.env.NODE_ENV === 'production') {
+    return res.status(503).json({ ok: false, error: 'webhook_not_configured' });
+  }
   if (secret) {
     const ok = secret.startsWith('whsec_')
       ? verifySvixSignature(req, secret)
@@ -97,7 +100,9 @@ exports.handleResendWebhook = async (req, res) => {
         if (messageId) {
           await models.EmailQueue.update(
             { metadata: sequelize.literal(`COALESCE(metadata,'{}'::jsonb) || '{"delivered":true}'::jsonb`) },
-            { where: { providerMessageId: messageId } }
+            // A verified provider callback is account-wide and resolves an
+            // opaque provider id, not a caller-selected workspace or queue id.
+            { where: { providerMessageId: messageId }, skipOrganizationScope: true }
           );
         }
         break;

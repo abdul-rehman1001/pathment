@@ -40,9 +40,9 @@ function resolvePlatform(claimed, userAgent) {
 class FeedbackReportService {
   _name(u) { return u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Someone' : 'Someone'; }
 
-  /** Active base-role admins (who triage), for the "new report" ping. */
+  /** Active workspace admins (who triage), for the "new report" ping. */
   async _adminRecipientIds() {
-    const admins = await models.User.findAll({ where: { role: 'admin', status: 'active' }, attributes: ['id'], raw: true });
+    const admins = await require('./workspaceRecipients').admins();
     return admins.map((a) => a.id);
   }
 

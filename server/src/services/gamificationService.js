@@ -668,7 +668,7 @@ class GamificationService {
     return new Date(date.getFullYear(), date.getMonth(), 1).toISOString().split('T')[0];
   }
 
-  async createDefaultBadges() {
+  async createDefaultBadges({ transaction } = {}) {
     const defaultBadges = [
       {
         name: 'First Steps',
@@ -775,11 +775,11 @@ class GamificationService {
     for (const badgeData of defaultBadges) {
       await models.Badge.findOrCreate({
         where: { name: badgeData.name },
-        defaults: badgeData
+        defaults: badgeData, transaction
       });
     }
 
-    const count = await models.Badge.count();
+    const count = await models.Badge.count({ transaction });
     return count;
   }
 

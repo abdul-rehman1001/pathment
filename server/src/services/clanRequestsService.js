@@ -137,7 +137,7 @@ class ClanRequestsService {
 
     // Consent-first: an admin assigning cover is active immediately (they have
     // authority); anyone else (a lead mentor) creates a request the person must accept.
-    const status = creator && creator.role === 'admin' ? 'active' : 'pending';
+    const status = creator && await require('./authzService').can(creator, require('../config/permissions').PERMISSIONS.MENTEE_MANAGE, { orgWide: true }) ? 'active' : 'pending';
 
     const assignment = await models.CrossClanAssignment.create({
       kind: data.kind,
@@ -181,8 +181,8 @@ class ClanRequestsService {
     });
 
     // 2) Admins, for oversight - only when a non-admin set it up. In-app only.
-    if (!creator || creator.role !== 'admin') {
-      const admins = await models.User.findAll({ where: { role: 'admin', status: 'active' }, attributes: ['id'] });
+    if (!creator || !(await require('./authzService').can(creator, require('../config/permissions').PERMISSIONS.MENTEE_MANAGE, { orgWide: true }))) {
+      const admins = await require('./workspaceRecipients').admins();
       if (admins.length) {
         await notificationOrchestrator.dispatch({
           eventKey: NOTIFICATION_EVENTS.CROSS_CLAN_ASSIGNED,
@@ -264,7 +264,7 @@ class ClanRequestsService {
     const verb = accepted ? 'accepted' : 'declined';
     const recipients = new Set();
     if (assignment.createdBy) recipients.add(assignment.createdBy);
-    const admins = await models.User.findAll({ where: { role: 'admin', status: 'active' }, attributes: ['id'] });
+    const admins = await require('./workspaceRecipients').admins();
     admins.forEach((adm) => recipients.add(adm.id));
     if (recipients.size === 0) return;
 
