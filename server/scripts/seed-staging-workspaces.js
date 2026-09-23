@@ -33,15 +33,15 @@ async function seed() {
           email, firstName, lastName: label, role, status: 'active', emailVerified: true,
           emailVerifiedAt: new Date(), passwordHash: process.env.STAGING_DEMO_PASSWORD_HASH,
         }, { transaction });
-        if (!owner) owner = await createUser('owner@workspace-demo.pathment.test', 'Demo Owner');
+        if (!owner) owner = await createUser('owner@workspace-demo.example.com', 'Demo Owner');
         await models.OrganizationMembership.findOrCreate({ where: { organizationId: org.id, userId: owner.id },
           defaults: { role: 'owner', status: 'active', joinedAt: new Date() }, transaction });
         await models.OrganizationMembership.update({ role: 'owner' }, { where: { organizationId: org.id, userId: owner.id }, transaction });
         await org.update({ createdBy: owner.id }, { transaction });
-        const admin = await createUser(`admin@${slug}.pathment.test`, `${label} Admin`, 'admin');
-        const mentor = await createUser(`mentor@${slug}.pathment.test`, `${label} Mentor`, 'mentor');
-        const mentees = [await createUser(`mentee1@${slug}.pathment.test`, `${label} Learner One`),
-          await createUser(`mentee2@${slug}.pathment.test`, `${label} Learner Two`)];
+        const admin = await createUser(`admin@${slug}.example.com`, `${label} Admin`, 'admin');
+        const mentor = await createUser(`mentor@${slug}.example.com`, `${label} Mentor`, 'mentor');
+        const mentees = [await createUser(`mentee1@${slug}.example.com`, `${label} Learner One`),
+          await createUser(`mentee2@${slug}.example.com`, `${label} Learner Two`)];
         const program = await models.Program.create({ name: `${label} Practice Program`, description: 'Synthetic staging data',
           type: 'mentorship', totalDurationWeeks: 8, createdBy: admin.id, status: 'draft' }, { transaction });
         const clan = await models.Clan.create({ name: `${label} Demo Clan`, programId: program.id,

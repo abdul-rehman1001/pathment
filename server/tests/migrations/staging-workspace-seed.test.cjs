@@ -48,7 +48,7 @@ test('restricted staging fixtures are atomic, repeatable and preserve DevWeekend
       JOIN organizations o ON o.id=m.organization_id GROUP BY o.slug ORDER BY o.slug`);
     assert.deepEqual(counts.filter(c => c.slug.startsWith('demo-')).map(c => c.members), [5, 5]);
     const [wrongMembership] = await db.query(`SELECT m.id FROM organization_memberships m JOIN users u ON u.id=m.user_id
-      JOIN organizations o ON o.id=m.organization_id WHERE u.email LIKE '%workspace-demo.pathment.test' AND o.slug='devweekends'`);
+      JOIN organizations o ON o.id=m.organization_id WHERE u.email LIKE '%workspace-demo.example.com' AND o.slug='devweekends'`);
     assert.equal(wrongMembership.length, 0);
     const [crossed] = await db.query(`SELECT c.id FROM clans c JOIN programs p ON p.id=c.program_id WHERE c.organization_id<>p.organization_id`);
     assert.equal(crossed.length, 0);

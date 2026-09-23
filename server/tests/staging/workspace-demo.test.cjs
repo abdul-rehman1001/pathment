@@ -24,3 +24,12 @@ test('only exact reviewed read/session/plan routes are accessible', () => {
     ['PATCH', '/api/organizations/current'], ['GET', '/api/organizations/%64emo'],
   ]) assert.equal(allows(method, path), false, `${method} ${path}`);
 });
+test('fixture addresses are accepted by the actual sign-in validator', () => {
+  const { authSchemas } = require('../../src/validations/authValidation');
+  const emails = ['owner@workspace-demo.example.com', ...['demo-academy', 'demo-fellowship'].flatMap(slug =>
+    ['admin', 'mentor', 'mentee1', 'mentee2'].map(role => `${role}@${slug}.example.com`))];
+  for (const email of emails) {
+    const { error } = authSchemas.login.validate({ email, password: 'Demo-Local123!' });
+    assert.equal(error, undefined, email);
+  }
+});
