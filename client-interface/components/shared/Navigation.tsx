@@ -21,7 +21,6 @@ import {
   MessageSquarePlus,
   ShieldCheck,
   Search,
-  Building2,
 } from 'lucide-react';
 import { NavLink } from '@/lib/config/navigation';
 import { useNavPreferences } from '@/lib/hooks/shared';
@@ -35,8 +34,8 @@ import { FeedbackDrawer } from './FeedbackDrawer';
 import { NotificationDrawer } from './NotificationDrawer';
 import { ChangelogDrawer } from './ChangelogDrawer';
 import { UserProfileCard } from './UserProfileCard';
-import { useOrganization } from '@/lib/context/OrganizationContext';
 import { logicalPathname, workspacePath } from '@/lib/services/workspace-scope';
+import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 
 interface NavigationProps {
   role: UserRole;
@@ -54,7 +53,6 @@ export default function Navigation({ role }: NavigationProps) {
   const pathname = logicalPathname(usePathname());
   const router = useRouter();
   const { logout, user, availableRoles, setActiveRole } = useAuth();
-  const { current: organization, organizations, switchTo: switchOrganization } = useOrganization();
   const { clans, activeClanId, setActiveClanId, menteeClans, menteeActiveClanId, setMenteeActiveClanId } = useClan();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -400,23 +398,7 @@ export default function Navigation({ role }: NavigationProps) {
           </div>
 
           {/* Role switcher (only for users who hold more than one role view) */}
-          {organization && (
-            <div className="px-3 pt-3">
-              {organizations.length > 1 ? (
-                <SelectMenu
-                  value={organization.slug}
-                  onChange={switchOrganization}
-                  options={organizations.map((org) => ({ value: org.slug, label: org.name }))}
-                  ariaLabel="Organization"
-                />
-              ) : (
-                <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700">
-                  <Building2 className="h-4 w-4 text-brand-600" />
-                  <span className="truncate">{organization.name}</span>
-                </div>
-              )}
-            </div>
-          )}
+          <div className="px-3 pt-3"><WorkspaceSwitcher /></div>
 
           {availableRoles && availableRoles.length > 1 && (
             <div className="px-3 pt-3">{renderRoleSwitcher()}</div>
@@ -502,6 +484,7 @@ export default function Navigation({ role }: NavigationProps) {
         {mobileMenuOpen && (
           <div className="border-t border-slate-100 bg-card">
             <nav className="px-3 py-3 space-y-0.5">
+              <div className="pb-3"><WorkspaceSwitcher compact onNavigate={() => setMobileMenuOpen(false)} /></div>
               {availableRoles && availableRoles.length > 1 && (
                 <div className="pb-2">{renderRoleSwitcher()}</div>
               )}
