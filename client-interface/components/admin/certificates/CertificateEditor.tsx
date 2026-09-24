@@ -21,7 +21,7 @@ import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { orgRoadmapApi } from '@/lib/services/roadmap-api';
 import { programsApi } from '@/lib/services/program-api';
 import { getTierButtonColor, getTierIconColor } from '@/lib/utils/certificates';
-import { MenteeEvidenceDrawer, AIEvaluationBanner, CriteriaTable, RecipientRosterTable, VerificationBanner, RosterFilterBar } from '@/components/certificates/shared';
+import { MenteeEvidenceDrawer, CertificateReviewDrawer, AIEvaluationBanner, CriteriaTable, RecipientRosterTable, VerificationBanner, RosterFilterBar, type CertificateReviewMode } from '@/components/certificates/shared';
 import { SelectMenu } from '@/components/shared/SelectMenu';
 import CertificateHistoryLog from './CertificateHistoryLog';
 import {
@@ -131,6 +131,11 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
   const [reviewRows, setReviewRows] = useState<Record<string, CertificateVerification>>({});
   const [clanStates, setClanStates] = useState<ReviewerClanState[]>([]);
   const [reviewLoadError, setReviewLoadError] = useState<string | null>(null);
+  const [reviewDrawer, setReviewDrawer] = useState<{
+    clanId: string | null;
+    clanName: string;
+    mode: CertificateReviewMode;
+  } | null>(null);
 
   const {
     recipientSearch, setRecipientSearch,
@@ -1558,12 +1563,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
             onIssueAnyway={() => {
               document.getElementById('certificate-recipients')?.scrollIntoView({ behavior: 'smooth' });
             }}
-            onViewClan={(clanId, changedOnly) => {
-              setRecipientType('mentees');
-              setClanFilter(clanId);
-              setReviewFilter(changedOnly ? 'changed' : 'all');
-              document.getElementById('certificate-recipients')?.scrollIntoView({ behavior: 'smooth' });
-            }}
+            onViewClan={(clanId, clanName, mode) => setReviewDrawer({ clanId, clanName, mode })}
           />
         )}
 
@@ -1592,6 +1592,20 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
               onClose={() => setInspectedRecipient(null)}
               onTierChange={handleTierChange}
               onDecided={() => setRefreshKey(k => k + 1)}
+            />
+
+            <CertificateReviewDrawer
+              open={Boolean(reviewDrawer)}
+              clanId={reviewDrawer?.clanId ?? null}
+              clanName={reviewDrawer?.clanName ?? 'Review decisions'}
+              mode={reviewDrawer?.mode ?? 'all'}
+              rows={Object.values(reviewRows)}
+              tierName={getTierName}
+              onClose={() => setReviewDrawer(null)}
+              onInspect={(menteeId) => {
+                setReviewDrawer(null);
+                setInspectedRecipient({ mentee_id: menteeId });
+              }}
             />
 
             {}

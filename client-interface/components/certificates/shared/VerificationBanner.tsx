@@ -6,6 +6,7 @@ import { AlertTriangle, CheckCircle2, Clock, Loader2 } from 'lucide-react';
 import { certificatesApi } from '@/lib/services/certificates-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { useConfirm } from '@/lib/context/ConfirmContext';
+import type { CertificateReviewMode } from './CertificateReviewDrawer';
 
 /**
  * The admin's side of a certificate review round.
@@ -29,7 +30,7 @@ export function VerificationBanner({
   templateId: string;
   refreshKey?: number;
   onIssueAnyway?: () => void;
-  onViewClan?: (clanId: string, changedOnly: boolean) => void;
+  onViewClan?: (clanId: string | null, clanName: string, mode: CertificateReviewMode) => void;
 }) {
   const [summary, setSummary] = useState<Awaited<ReturnType<typeof certificatesApi.getVerificationSummary>>['data'] | null>(null);
   const [reminding, setReminding] = useState(false);
@@ -138,16 +139,34 @@ export function VerificationBanner({
       </summary>
       <input aria-label="Search certificate clan approvals" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Find a clan…" className="my-3 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
       <ul className="space-y-3">
-        {matching.slice((current - 1) * 6, current * 6).map((clan) => (
-          <li key={clan.clanId || clan.clanName} className="flex flex-wrap items-center gap-2 text-[11px]">
-            <span className="font-semibold text-foreground">{clan.clanName}</span>
-            <span className="text-muted-foreground">
-              {clan.complete
-                ? `all ${clan.total} signed off`
-                : `${clan.pending} of ${clan.total} outstanding`}
-              {clan.overridden > 0 && ` · ${clan.overridden} changed`}
-              {!!clan.noCertificate && ` · ${clan.noCertificate} no certificate`}
-            </span>
+        {matching.slice((current - 1) * 6, current * 6).map((clan) => {
+          const percent = clan.total ? Math.round((clan.verified / clan.total) * 100) : 0;
+          return (
+          <li key={clan.clanId || clan.clanName} className="rounded-xl border border-border bg-background p-3 text-[11px] shadow-xs">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <p className="font-semibold text-foreground">{clan.clanName}</p>
+                <p className="mt-0.5 text-muted-foreground">{clan.verified} of {clan.total} signed off · {percent}%</p>
+              </div>
+              {clan.approved && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-bold text-emerald-600">
+                  <CheckCircle2 className="h-2.5 w-2.5" /> Approved
+                </span>
+              )}
+            </div>
+
+            <div className="my-2 h-1.5 overflow-hidden rounded-full bg-muted">
+              <div className="h-full rounded-full bg-brand-500 transition-[width]" style={{ width: `${percent}%` }} />
+            </div>
+
+            <div className="flex flex-wrap gap-1.5">
+              {clan.pending > 0 && <span className="rounded-full bg-amber-500/10 px-2 py-0.5 font-semibold text-amber-700 dark:text-amber-400">{clan.pending} pending</span>}
+              {clan.overridden > 0 && <span className="rounded-full bg-violet-500/10 px-2 py-0.5 font-semibold text-violet-700 dark:text-violet-300">{clan.overridden} changed</span>}
+              {!!clan.noCertificate && <span className="rounded-full bg-muted px-2 py-0.5 font-semibold text-muted-foreground">{clan.noCertificate} no certificate</span>}
+              {!clan.clanId && <span className="rounded-full bg-red-500/10 px-2 py-0.5 font-semibold text-red-600">Admin review required</span>}
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
 
             {/* Approving is what lets that clan's mentors send. Offered the
                 moment a clan is signed off, and still offered — labelled
@@ -158,7 +177,7 @@ export function VerificationBanner({
                 type="button"
                 onClick={() => approve(clan.clanId!, clan.complete)}
                 disabled={approvingClanId === clan.clanId}
-                className={`inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[10px] font-bold transition-colors ${
+                className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[10px] font-bold transition-colors ${
                   clan.readyToApprove
                     ? 'border-brand-500/40 bg-brand-500/10 text-brand-700 hover:bg-brand-500/20'
                     : 'border-border bg-card text-muted-foreground hover:text-foreground'
@@ -170,22 +189,24 @@ export function VerificationBanner({
                 {clan.readyToApprove ? 'Approve & unlock sending' : 'Approve early'}
               </button>
             )}
-            {clan.approved && (
-              <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600">
-                <CheckCircle2 className="h-2.5 w-2.5" /> Approved
-              </span>
-            )}
-            {clan.clanId && onViewClan && (
-              <button
-                type="button"
-                onClick={() => onViewClan(clan.clanId!, clan.overridden > 0)}
-                className="rounded-lg border border-border bg-card px-2 py-0.5 text-[10px] font-semibold text-foreground hover:border-brand-500/40"
-              >
-                {clan.overridden > 0 ? `View ${clan.overridden} change${clan.overridden === 1 ? '' : 's'}` : 'View members'}
+            {onViewClan && clan.pending > 0 && (
+              <button type="button" onClick={() => onViewClan(clan.clanId, clan.clanName, 'pending')} className="rounded-lg border border-border bg-card px-2.5 py-1.5 text-[10px] font-semibold text-foreground hover:border-brand-500/40">
+                Review {clan.pending} pending
               </button>
             )}
+            {onViewClan && clan.overridden > 0 && (
+              <button type="button" onClick={() => onViewClan(clan.clanId, clan.clanName, 'changed')} className="rounded-lg border border-border bg-card px-2.5 py-1.5 text-[10px] font-semibold text-foreground hover:border-brand-500/40">
+                View {clan.overridden} change{clan.overridden === 1 ? '' : 's'}
+              </button>
+            )}
+            {onViewClan && clan.pending === 0 && clan.overridden === 0 && (
+              <button type="button" onClick={() => onViewClan(clan.clanId, clan.clanName, 'all')} className="rounded-lg border border-border bg-card px-2.5 py-1.5 text-[10px] font-semibold text-foreground hover:border-brand-500/40">
+                View decisions
+              </button>
+            )}
+            </div>
           </li>
-        ))}
+        );})}
       </ul>
       {!matching.length && <p className="py-3 text-sm text-muted-foreground">No matching clans.</p>}
       <div className="mt-3 flex items-center justify-between text-xs"><button type="button" disabled={current === 1} onClick={() => setPage(current - 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Previous</button><span>{current} / {pages}</span><button type="button" disabled={current === pages} onClick={() => setPage(current + 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Next</button></div>

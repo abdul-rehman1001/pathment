@@ -4,7 +4,7 @@ import { AWARDED_CERTIFICATES, NO_CERTIFICATE, aiSelection } from '@/lib/utils/c
 import { useState, useMemo, useCallback } from 'react';
 import { toast } from 'sonner';
 import { TierCriteria } from '../certificate-constants';
-import type { ReviewerClanState } from '@/lib/services/certificates-api';
+import type { CertificateVerification, ReviewerClanState } from '@/lib/services/certificates-api';
 import type { ReviewFilter } from '@/components/certificates/shared';
 
 export interface UseRecipientSelectionOptions {
@@ -12,7 +12,7 @@ export interface UseRecipientSelectionOptions {
   qualifiedData: Record<string, any[]>;
   aiResults?: Record<string, any>;
   /** The open review round, keyed by recipient, when there is one. */
-  reviewRows?: Record<string, { status: 'pending' | 'verified'; overridden: boolean }>;
+  reviewRows?: Record<string, CertificateVerification>;
   /** Per-clan release state, so "approved to send" can be filtered on. */
   clanStates?: ReviewerClanState[];
 }
@@ -88,8 +88,33 @@ export function useRecipientSelection({
     return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [activeList]);
 
+  /**
+   * A review is an audit record and must remain visible independently of the
+   * current qualification calculation. Rebuilding changed/pending views from
+   * the roster was the bug: valid overrides disappeared whenever that second
+   * dataset omitted or reshaped the recipient.
+   */
+  const reviewBackedList = useMemo(() => Object.values(reviewRows ?? {}).map((row) => {
+    const rosterRecipient = activeList.find((recipient: any) => recipient.id === row.menteeId);
+    if (rosterRecipient) return rosterRecipient;
+    return {
+      id: row.menteeId,
+      firstName: row.mentee?.firstName ?? '',
+      lastName: row.mentee?.lastName ?? '',
+      email: row.mentee?.email ?? '',
+      clanId: row.clanId,
+      clanName: row.clanName,
+      role: 'mentee',
+      isPaused: false,
+      assignedDecision: row.decision,
+      assignedTier: row.finalTier,
+      issuedTiers: [],
+    };
+  }), [activeList, reviewRows]);
+
   const filtered = useMemo(() => {
-    let result = [...activeList];
+    const usesReviewRecords = reviewFilter === 'pending' || reviewFilter === 'verified' || reviewFilter === 'changed';
+    let result = [...(usesReviewRecords ? reviewBackedList : activeList)];
 
     const q = recipientSearch.toLowerCase().trim();
     if (q) {
@@ -108,7 +133,7 @@ export function useRecipientSelection({
       result = result.filter((m: any) => {
         const row = reviewRows?.[m.id];
         switch (reviewFilter) {
-          case 'pending':  return !row || row.status !== 'verified';
+          case 'pending':  return row?.status === 'pending';
           case 'verified': return row?.status === 'verified';
           case 'changed':  return Boolean(row?.overridden);
           // Sendability belongs to the clan, not the person: the admin
@@ -147,7 +172,7 @@ export function useRecipientSelection({
     }
 
     return result;
-  }, [activeList, recipientSearch, badgeFilter, clanFilter, reviewFilter, sortBy,
+  }, [activeList, reviewBackedList, recipientSearch, badgeFilter, clanFilter, reviewFilter, sortBy,
       getEffectiveTier, aiResults, reviewRows, clanStates]);
 
   const allFilteredIds = useMemo(() => filtered.map((m: any) => m.id), [filtered]);

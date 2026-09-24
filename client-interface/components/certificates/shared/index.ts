@@ -8,3 +8,5 @@ export { VerificationBanner } from './VerificationBanner';
 export { RosterFilterBar } from './RosterFilterBar';
 export type { ReviewFilter, RosterSort } from './RosterFilterBar';
 export { MenteeEvidenceDrawer } from './MenteeEvidenceDrawer';
+export { CertificateReviewDrawer } from './CertificateReviewDrawer';
+export type { CertificateReviewMode } from './CertificateReviewDrawer';
