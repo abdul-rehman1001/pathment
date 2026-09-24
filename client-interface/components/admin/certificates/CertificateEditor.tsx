@@ -130,6 +130,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
    */
   const [reviewRows, setReviewRows] = useState<Record<string, CertificateVerification>>({});
   const [clanStates, setClanStates] = useState<ReviewerClanState[]>([]);
+  const [reviewLoadError, setReviewLoadError] = useState<string | null>(null);
 
   const {
     recipientSearch, setRecipientSearch,
@@ -196,22 +197,31 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
     ? null
     : rosterClans.find(c => c.id === clanFilter)?.name ?? null;
 
+  const loadReviewRound = useCallback(async () => {
+    if (!templateId) {
+      setReviewRows({});
+      setClanStates([]);
+      setReviewLoadError(null);
+      return;
+    }
+    try {
+      setReviewLoadError(null);
+      const res = await certificatesApi.listVerifications(templateId);
+      if (!res.success || !res.data) throw new Error('The review round returned no data');
+      setClanStates(res.data.clans ?? []);
+      const byRecipient: Record<string, CertificateVerification> = {};
+      for (const row of res.data.rows ?? []) byRecipient[row.menteeId] = row;
+      setReviewRows(byRecipient);
+    } catch (error) {
+      // Keep the last good snapshot. Clearing it made signed-off decisions
+      // look unreviewed whenever this secondary request failed temporarily.
+      setReviewLoadError(extractApiErrorMessage(error, 'Could not load mentor review decisions.'));
+    }
+  }, [templateId]);
+
   useEffect(() => {
-    if (!templateId) { setReviewRows({}); setClanStates([]); return; }
-    let alive = true;
-    certificatesApi.listVerifications(templateId)
-      .then(res => {
-        if (!alive || !res.success || !res.data) return;
-        setClanStates(res.data.clans ?? []);
-        const byRecipient: Record<string, CertificateVerification> = {};
-        for (const row of res.data.rows ?? []) byRecipient[row.menteeId] = row;
-        setReviewRows(byRecipient);
-      })
-      // Advisory only. The roster still works without it — the filters that
-      // depend on a round simply have nothing to narrow.
-      .catch(() => { if (alive) { setReviewRows({}); setClanStates([]); } });
-    return () => { alive = false; };
-  }, [templateId, refreshKey]);
+    loadReviewRound();
+  }, [loadReviewRound, refreshKey]);
 
 
 
@@ -1548,6 +1558,12 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
             onIssueAnyway={() => {
               document.getElementById('certificate-recipients')?.scrollIntoView({ behavior: 'smooth' });
             }}
+            onViewClan={(clanId, changedOnly) => {
+              setRecipientType('mentees');
+              setClanFilter(clanId);
+              setReviewFilter(changedOnly ? 'changed' : 'all');
+              document.getElementById('certificate-recipients')?.scrollIntoView({ behavior: 'smooth' });
+            }}
           />
         )}
 
@@ -1641,6 +1657,15 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
               onReview={clanStates.length > 0 ? setReviewFilter : undefined}
             />
 
+            {reviewLoadError && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-red-500/30 bg-red-500/5 px-3 py-2 text-xs">
+                <span className="text-red-700 dark:text-red-300">Mentor review status could not be refreshed. The last loaded decisions are still shown.</span>
+                <button type="button" onClick={loadReviewRound} className="font-semibold text-red-700 underline underline-offset-2 dark:text-red-300">
+                  Retry
+                </button>
+              </div>
+            )}
+
             {}
             {filtered.length > 0 && (
               <div className="flex items-center gap-1.5 flex-wrap bg-muted/20 border border-border rounded-2xl p-3 text-xs w-full">
@@ -1686,6 +1711,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
               getTierName={getTierName}
               userRole="admin"
               reviewRows={reviewRows}
+              reviewRoundOpen={clanStates.length > 0}
               recipientTypeLabel={recipientType === 'all' ? 'Recipient' : recipientType === 'mentees' ? 'Mentee' : recipientType === 'mentors' ? 'Mentor' : 'Paused Mentee'}
               emptyMessage={`No ${recipientType === 'paused' ? 'paused mentees' : recipientType === 'all' ? 'active recipients' : 'active ' + recipientType} found in this program.`}
             />

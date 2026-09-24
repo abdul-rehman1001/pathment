@@ -123,6 +123,23 @@ describe('mentor verification of certificate grades', () => {
       const { rows } = await verification.listForReviewer(template.id, admin);
       expect(rows).toHaveLength(2);
     });
+
+    it('returns the same per-clan review facts used by the roster filters', async () => {
+      await verification.verify(template.id, mentee.id,
+        { finalTier: 'gold', reason: 'Led the clan project' }, lead, { notify: false });
+
+      const { clans } = await verification.listForReviewer(template.id, admin);
+      const viral = clans.find((entry) => entry.clanId === clan.id);
+
+      expect(viral).toMatchObject({
+        total: 1,
+        pending: 0,
+        verified: 1,
+        overridden: 1,
+        noCertificate: 0,
+        complete: true
+      });
+    });
   });
 
   describe('overriding a grade', () => {

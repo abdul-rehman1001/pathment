@@ -23,6 +23,7 @@ export interface RosterReviewState {
   overridden: boolean;
   overrideReason: string | null;
   verifiedBy: string | null;
+  verifiedAt?: string | null;
 }
 
 export interface RecipientRosterTableProps {
@@ -51,6 +52,8 @@ export interface RecipientRosterTableProps {
    */
   locked?: boolean;
   isRecipientLocked?: (id: string) => boolean;
+  /** True once rows were sent to mentors. Makes missing rows explicit. */
+  reviewRoundOpen?: boolean;
 }
 
 export function RecipientRosterTable({
@@ -72,6 +75,7 @@ export function RecipientRosterTable({
   reviewRows,
   locked = false,
   isRecipientLocked,
+  reviewRoundOpen = false,
 }: RecipientRosterTableProps) {
   if (loading) {
     return (
@@ -231,7 +235,17 @@ export function RecipientRosterTable({
                   selectedTier={selectedTier}
                   getTierName={getTierName}
                   userRole={userRole}
+                  reviewRoundOpen={reviewRoundOpen}
                 />
+                {review && (
+                  <button
+                    type="button"
+                    onClick={() => onInspectRecipient({ mentee_id: m.id })}
+                    className="mt-1 text-[10px] font-semibold text-brand-600 underline-offset-2 hover:underline"
+                  >
+                    View review details
+                  </button>
+                )}
               </div>
 
               {}
@@ -267,13 +281,14 @@ export function RecipientRosterTable({
  * because it is what will actually be issued.
  */
 function ReviewNote({
-  review, aiTier, selectedTier, getTierName, userRole,
+  review, aiTier, selectedTier, getTierName, userRole, reviewRoundOpen,
 }: {
   review?: RosterReviewState;
   aiTier: string | null;
   selectedTier: string;
   getTierName: (tierId: string) => string;
   userRole: 'admin' | 'mentor';
+  reviewRoundOpen: boolean;
 }) {
   const edited = Boolean(aiTier && aiTier !== selectedTier);
 
@@ -294,8 +309,8 @@ function ReviewNote({
       >
         <CheckCircle2 className="w-2.5 h-2.5" />
         {review.overridden
-          ? `Signed off — changed from ${getTierName(review.aiDecision === 'no_certificate' ? NO_CERTIFICATE : review.aiTier || '')}`
-          : 'Signed off'}
+          ? `Changed by ${review.verifiedBy || 'mentor'} · ${getTierName(review.aiDecision === 'no_certificate' ? NO_CERTIFICATE : review.aiTier || '')} → ${getTierName(reviewSelection(review))}`
+          : `Signed off${review.verifiedBy ? ` by ${review.verifiedBy}` : ''}`}
       </span>
     );
   }
@@ -312,6 +327,14 @@ function ReviewNote({
     return (
       <span className="flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 mt-0.5">
         <Edit3 className="w-2.5 h-2.5" /> Overridden by {userRole === 'admin' ? 'Admin' : 'Mentor'}
+      </span>
+    );
+  }
+
+  if (reviewRoundOpen) {
+    return (
+      <span className="flex items-center gap-1 text-[10px] font-semibold text-muted-foreground mt-0.5">
+        <Clock className="w-2.5 h-2.5" /> Not sent for review
       </span>
     );
   }

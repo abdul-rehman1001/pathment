@@ -58,9 +58,10 @@ export function RosterFilterBar({
   const clanLabel = (c: { id: string; name: string }) => {
     const state = stateOf(c.id);
     if (!state) return c.name;
-    if (state.canSend) return `${c.name} — approved`;
-    if (state.pending === 0) return `${c.name} — verified`;
-    return `${c.name} — ${state.pending} to review`;
+    const changes = state.overridden ? ` · ${state.overridden} changed` : '';
+    if (state.canSend) return `${c.name} — approved${changes}`;
+    if (state.pending === 0) return `${c.name} — verified${changes}`;
+    return `${c.name} — ${state.pending} to review${changes}`;
   };
 
   const clanOptions = [

@@ -223,8 +223,12 @@ export interface VerificationClanStatus {
 export interface ReviewerClanState {
   clanId: string;
   clanName: string | null;
+  total: number;
   pending: number;
   verified: number;
+  overridden: number;
+  noCertificate: number;
+  complete: boolean;
   /** The admin has released this clan. */
   approved: boolean;
   /** Whether this mentor may send certificates for it yet. */
@@ -601,4 +605,3 @@ export const certificatesApi = {
     }>(`/certificates/templates/${id}/ai-evaluate/status${qs}`, { timeout: 60000 });
   }
 };
-

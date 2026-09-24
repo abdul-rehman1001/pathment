@@ -24,11 +24,12 @@ import { useConfirm } from '@/lib/context/ConfirmContext';
  * a worse failure than issuing a grade nobody contested.
  */
 export function VerificationBanner({
-  templateId, refreshKey, onIssueAnyway,
+  templateId, refreshKey, onIssueAnyway, onViewClan,
 }: {
   templateId: string;
   refreshKey?: number;
   onIssueAnyway?: () => void;
+  onViewClan?: (clanId: string, changedOnly: boolean) => void;
 }) {
   const [summary, setSummary] = useState<Awaited<ReturnType<typeof certificatesApi.getVerificationSummary>>['data'] | null>(null);
   const [reminding, setReminding] = useState(false);
@@ -90,7 +91,9 @@ export function VerificationBanner({
     }
   };
 
-  const outstanding = summary.clans.filter((c) => !c.complete);
+  const realClans = summary.clans.filter((c) => Boolean(c.clanId));
+  const unassigned = summary.clans.find((c) => !c.clanId);
+  const outstanding = realClans.filter((c) => !c.complete);
   // Everything checked AND everything released is the only truly finished
   // state. "All verified" on its own still needs the admin to act, so it must
   // not look like a green light — that is what hid the approve buttons at
@@ -113,7 +116,7 @@ export function VerificationBanner({
             ? `All ${summary.total} decisions verified and approved`
             : summary.awaitingApproval > 0 && outstanding.length === 0
               ? `${summary.awaitingApproval} clan${summary.awaitingApproval === 1 ? '' : 's'} verified — approve to let mentors send`
-              : `${outstanding.length} of ${summary.clans.length} clan${summary.clans.length === 1 ? '' : 's'} have not verified yet`}
+              : `${outstanding.length} of ${realClans.length} clan${realClans.length === 1 ? '' : 's'} have not verified yet`}
         </span>
         <span className="text-[11px] text-muted-foreground">
           · {summary.verified} of {summary.total} decisions signed off
@@ -129,7 +132,10 @@ export function VerificationBanner({
 
       <p className="text-xs text-muted-foreground">Approval locks mentor edits. Only admins can change approved decisions.</p>
       <details className="rounded-xl border border-border bg-card p-3">
-      <summary className="cursor-pointer text-sm font-medium">Review clan approvals · {summary.clans.length} clans</summary>
+      <summary className="cursor-pointer text-sm font-medium">
+        Review clan approvals · {realClans.length} clans
+        {unassigned ? ` · ${unassigned.total} without a clan` : ''}
+      </summary>
       <input aria-label="Search certificate clan approvals" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Find a clan…" className="my-3 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
       <ul className="space-y-3">
         {matching.slice((current - 1) * 6, current * 6).map((clan) => (
@@ -168,6 +174,15 @@ export function VerificationBanner({
               <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600">
                 <CheckCircle2 className="h-2.5 w-2.5" /> Approved
               </span>
+            )}
+            {clan.clanId && onViewClan && (
+              <button
+                type="button"
+                onClick={() => onViewClan(clan.clanId!, clan.overridden > 0)}
+                className="rounded-lg border border-border bg-card px-2 py-0.5 text-[10px] font-semibold text-foreground hover:border-brand-500/40"
+              >
+                {clan.overridden > 0 ? `View ${clan.overridden} change${clan.overridden === 1 ? '' : 's'}` : 'View members'}
+              </button>
             )}
           </li>
         ))}

@@ -193,11 +193,16 @@ class CertificateVerificationService {
     const clanIdsInQueue = [...new Set(rows.map((r) => r.clanId).filter(Boolean))];
     const clanState = clanIdsInQueue.map((id) => {
       const forClan = rows.filter((r) => r.clanId === id);
+      const pending = forClan.filter((r) => r.status !== 'verified').length;
       return {
         clanId: id,
         clanName: forClan[0]?.clan?.name || null,
-        pending: forClan.filter((r) => r.status !== 'verified').length,
+        total: forClan.length,
+        pending,
         verified: forClan.filter((r) => r.status === 'verified').length,
+        overridden: forClan.filter((r) => r.overridden).length,
+        noCertificate: forClan.filter((r) => r.decision === 'no_certificate').length,
+        complete: pending === 0,
         approved: approved.has(id),
         canSend: approved.has(id)
       };
