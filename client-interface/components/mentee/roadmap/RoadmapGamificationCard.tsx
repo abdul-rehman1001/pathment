@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Trophy, Flame, Target, ArrowRight } from 'lucide-react';
+import { Trophy, Flame, Target, ArrowRight, Award } from 'lucide-react';
 import { useAuth } from '@/lib/context/AuthContext';
 import {
   gamificationApi,
