@@ -10,7 +10,7 @@ import { useAIConnections } from './useAIConnections';
  * - Key addition & deletion state
  */
 export function useAIConnectionsTab() {
-  const { connections, routing, loading, busyId, addKey, removeKey, testKey, setRoute } = useAIConnections();
+  const { connections, routing, loading, busyId, addKey, removeKey, testKey, setRoute, setAllRoutes } = useAIConnections();
   const [adding, setAdding] = useState(false);
 
   return {
@@ -24,5 +24,6 @@ export function useAIConnectionsTab() {
     removeKey,
     testKey,
     setRoute,
+    setAllRoutes,
   };
 }
