@@ -28,6 +28,7 @@ import { usePermissions } from '@/lib/hooks/usePermissions';
 import { useClan, ALL_CLANS } from '@/lib/context/ClanContext';
 import { useNavBadges } from '@/lib/hooks/shared/useNavBadges';
 import { SelectMenu } from './SelectMenu';
+import { ClanAvatar } from './ClanAvatar';
 import { CommandPalette } from './CommandPalette';
 import { LiveMeetingBanner } from './LiveMeetingBanner';
 import { FeedbackDrawer } from './FeedbackDrawer';
@@ -173,7 +174,11 @@ export default function Navigation({ role }: NavigationProps) {
     if (role === 'mentor' && clans.length >= 2) {
       const options = [
         { value: ALL_CLANS, label: 'All clans' },
-        ...clans.map((c) => ({ value: c.id, label: `${c.name}${c.kind === 'standing' ? ' · Standing clan' : c.frozenAt ? ' · Completed history' : ' · Active program'}` })),
+        ...clans.map((c) => ({
+          value: c.id,
+          label: `${c.name}${c.kind === 'standing' ? ' · Standing clan' : c.frozenAt ? ' · Completed history' : ' · Active program'}`,
+          icon: <ClanAvatar name={c.name} src={c.avatarUrl} size="sm" />,
+        })),
       ];
       return (
         <SelectMenu
@@ -190,7 +195,11 @@ export default function Navigation({ role }: NavigationProps) {
         <SelectMenu
           value={menteeActiveClanId || menteeClans[0].id}
           onChange={setMenteeActiveClanId}
-          options={menteeClans.map((c) => ({ value: c.id, label: `${c.name}${c.kind === 'standing' ? ' · Standing clan' : c.frozenAt ? ' · Completed history' : ' · Active program'}` }))}
+          options={menteeClans.map((c) => ({
+            value: c.id,
+            label: `${c.name}${c.kind === 'standing' ? ' · Standing clan' : c.frozenAt ? ' · Completed history' : ' · Active program'}`,
+            icon: <ClanAvatar name={c.name} src={c.avatarUrl} size="sm" />,
+          }))}
           ariaLabel="Switch clan"
           className="w-full"
         />
