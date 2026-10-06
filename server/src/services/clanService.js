@@ -818,7 +818,7 @@ class ClanService {
     const { Op } = require('sequelize');
     const direct = await models.ClanMembership.findAll({
       where: { userId, status: { [Op.in]: ['active', 'paused'] } },
-      include: [{ model: models.Clan, as: 'clan', attributes: ['id', 'name', 'programId', 'status', 'kind', 'frozenAt'] }],
+      include: [{ model: models.Clan, as: 'clan', attributes: ['id', 'name', 'avatarUrl', 'programId', 'status', 'kind', 'frozenAt'] }],
       order: [['joinedAt', 'DESC']]
     });
     const out = direct.map((m) => m.toJSON());
@@ -835,7 +835,7 @@ class ClanService {
     if (missingClanIds.length) {
       const clans = await models.Clan.findAll({
         where: { id: { [Op.in]: missingClanIds } },
-        attributes: ['id', 'name', 'programId', 'status', 'kind', 'frozenAt'],
+        attributes: ['id', 'name', 'avatarUrl', 'programId', 'status', 'kind', 'frozenAt'],
       });
       const clanById = new Map(clans.map((c) => [c.id, c.toJSON()]));
       for (const g of grants) {
@@ -917,7 +917,7 @@ class ClanService {
       include: [{
         model: models.Clan,
         as: 'clan',
-        attributes: ['id', 'name', 'programId', 'status'],
+        attributes: ['id', 'name', 'avatarUrl', 'programId', 'status'],
         where: { programId, kind: 'cohort' },
         required: true,
         include: [
@@ -955,7 +955,7 @@ class ClanService {
         if (row.role === 'mentee') mentees.push(person);
         else coMentors.push(person);
       }
-      return { id: clan.id, name: clan.name, myRole: m.role, mentees, coMentors };
+      return { id: clan.id, name: clan.name, avatarUrl: clan.avatarUrl || null, myRole: m.role, mentees, coMentors };
     });
 
     return {
