@@ -2,10 +2,11 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Building2, Check, ChevronDown, Plus, Settings2 } from 'lucide-react';
+import { Check, ChevronDown, Plus, Settings2 } from 'lucide-react';
 import { useOrganization } from '@/lib/context/OrganizationContext';
 import { workspacePath } from '@/lib/services/workspace-scope';
 import { CreateWorkspaceDrawer } from '@/components/settings/OrganizationSettingsTab';
+import { WorkspaceLogo } from '@/components/shared/WorkspaceLogo';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 interface WorkspaceSwitcherProps {
@@ -40,9 +41,7 @@ export function WorkspaceSwitcher({ compact = false, onNavigate }: WorkspaceSwit
           aria-label="Switch workspace"
           className={`flex w-full items-center gap-2 rounded-xl border border-slate-200 bg-card text-left text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-60 ${compact ? 'px-3 py-2' : 'px-3 py-2.5'}`}
         >
-          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700">
-            <Building2 className="h-4 w-4" aria-hidden="true" />
-          </span>
+          <WorkspaceLogo name={current?.name || 'Workspace'} src={current?.logoUrl} size="sm" />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-semibold">{current?.name || 'Loading workspace…'}</span>
             {!compact && <span className="block truncate text-[11px] capitalize text-slate-500">{current?.membershipRole || 'member'} workspace</span>}
@@ -64,9 +63,7 @@ export function WorkspaceSwitcher({ compact = false, onNavigate }: WorkspaceSwit
               aria-current={selected ? 'page' : undefined}
               className={`flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left transition-colors ${selected ? 'bg-brand-50 text-brand-900' : 'text-slate-700 hover:bg-slate-50'}`}
             >
-              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-slate-200 bg-card text-xs font-bold uppercase text-brand-700">
-                {organization.name.slice(0, 2)}
-              </span>
+              <WorkspaceLogo name={organization.name} src={organization.logoUrl} size="md" />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium">{organization.name}</span>
                 <span className="block truncate text-xs capitalize text-slate-500">{organization.membershipRole || 'member'}</span>
