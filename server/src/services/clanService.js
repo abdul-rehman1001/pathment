@@ -8,6 +8,7 @@ const { VISIBLE_MEMBERSHIP_STATUSES, strongestClanRole } = require('../config/me
 const { ensureMenteeProfile } = require('./menteeProfile');
 const standingClanService = require('./standingClanService');
 const clanLifecycleService = require('./clanLifecycleService');
+const gamificationService = require('./gamificationService');
 
 // The permissions a co-mentor holds by default — and therefore the exact set a
 // lead mentor / admin may toggle on or off for an individual co-mentor. Derived
@@ -431,6 +432,26 @@ class ClanService {
         newValues: { clanId, userId, role }
       }).catch(() => {});
     }
+
+    // Mentor auto-badges (mentees_guided / clans_led) — best-effort, never block roster.
+    setImmediate(() => {
+      const run = async () => {
+        if (role === 'lead_mentor' || role === 'co_mentor' || role === 'core_team') {
+          await gamificationService.checkAndAwardBadges(userId);
+          return;
+        }
+        if (role !== 'mentee') return;
+        const mentors = await models.ClanMembership.findAll({
+          where: { clanId, status: 'active', role: { [Op.in]: MENTOR_CLAN_ROLES } },
+          attributes: ['userId'],
+          raw: true,
+        });
+        for (const m of mentors) {
+          await gamificationService.checkAndAwardBadges(m.userId);
+        }
+      };
+      run().catch((err) => console.error('[Gamification] mentor badge check after clan add failed:', err.message));
+    });
 
     return membership;
   }

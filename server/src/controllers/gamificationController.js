@@ -1,5 +1,7 @@
 const authzService = require('../services/authzService');
 const gamificationService = require('../services/gamificationService');
+const { models } = require('../db');
+const { NotFoundError } = require('../utils/errors/errorTypes');
 const { successResponse } = require('../utils/responses');
 const { catchAsync } = require('../middlewares/errorHandler');
 
@@ -90,15 +92,18 @@ exports.getLeaderboard = catchAsync(async (req, res) => {
  * GET /api/gamification/badges?active=true
  */
 exports.getAllBadges = catchAsync(async (req, res) => {
-  const { active = true } = req.query;
-  const { models } = require('../db');
+  const { active = true, role } = req.query;
 
-  const where = active === 'true' ? { isActive: true } : {};
+  const where = active === 'true' || active === true ? { isActive: true } : {};
 
-  const badges = await models.Badge.findAll({
+  let badges = await models.Badge.findAll({
     where,
     order: [['category', 'ASC'], ['name', 'ASC']]
   });
+
+  if (role === 'mentee' || role === 'mentor') {
+    badges = badges.filter((badge) => gamificationService.badgeTargetRole(badge) === role);
+  }
 
   res.status(200).json(
     successResponse('Badges retrieved', { badges })
@@ -112,11 +117,42 @@ exports.getAllBadges = catchAsync(async (req, res) => {
 exports.createBadge = catchAsync(async (req, res) => {
   // Authorization enforced at the route (requirePermission GAMIFICATION_MANAGE),
   // which a granted admin satisfies even if their base role isn't 'admin'.
-  const badge = await require('../db').models.Badge.create(req.body);
+  const body = { ...req.body };
+  // Normalize role onto criteriaValue so existing rows stay compatible.
+  if (body.targetRole && body.criteriaValue && typeof body.criteriaValue === 'object') {
+    body.criteriaValue = { ...body.criteriaValue, targetRole: body.targetRole };
+    delete body.targetRole;
+  }
+  if (!body.criteriaValue?.targetRole) {
+    body.criteriaValue = { ...(body.criteriaValue || {}), targetRole: 'mentee' };
+  }
+  const badge = await models.Badge.create(body);
 
   res.status(201).json(
     successResponse('Badge created successfully', { badge }, 201)
   );
+});
+
+/**
+ * Update / deactivate a badge (Admin only)
+ * PATCH /api/gamification/badges/:badgeId
+ */
+exports.updateBadge = catchAsync(async (req, res) => {
+  const badge = await models.Badge.findByPk(req.params.badgeId);
+  if (!badge) throw new NotFoundError('Badge not found');
+
+  const patch = { ...req.body };
+  if (patch.targetRole && patch.criteriaValue) {
+    patch.criteriaValue = { ...patch.criteriaValue, targetRole: patch.targetRole };
+    delete patch.targetRole;
+  } else if (patch.targetRole) {
+    patch.criteriaValue = { ...(badge.criteriaValue || {}), ...(patch.criteriaValue || {}), targetRole: patch.targetRole };
+    delete patch.targetRole;
+  }
+  if (patch.iconUrl === '') patch.iconUrl = null;
+
+  await badge.update(patch);
+  res.status(200).json(successResponse('Badge updated', { badge }));
 });
 
 /**
@@ -141,7 +177,6 @@ exports.awardBadgeManual = catchAsync(async (req, res) => {
  */
 exports.getAllChallenges = catchAsync(async (req, res) => {
   const { active = true } = req.query;
-  const { models } = require('../db');
 
   const where = active === 'true' ? { isActive: true } : {};
 
@@ -174,7 +209,6 @@ exports.getAllChallenges = catchAsync(async (req, res) => {
 exports.joinChallenge = catchAsync(async (req, res) => {
   const { challengeId } = req.params;
   const userId = req.user.id;
-  const { models } = require('../db');
 
   // Check if challenge exists and is active
   const challenge = await models.Challenge.findByPk(challengeId);
@@ -215,7 +249,6 @@ exports.joinChallenge = catchAsync(async (req, res) => {
  */
 exports.getUserChallenges = catchAsync(async (req, res) => {
   const { userId } = req.params;
-  const { models } = require('../db');
 
   // Security: Users can view their own challenges, or mentors/admins can view mentee challenges
   if (!req.user || !(await authzService.canViewMentee(req.user, userId))) {

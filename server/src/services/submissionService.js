@@ -11,6 +11,7 @@ const { PERMISSIONS } = require('../config/permissions');
 const { pointsForDifficulty } = require('../config/points');
 const { toStringList, toBoolean } = require('../utils/multipartFields');
 const clanLifecycleService = require('./clanLifecycleService');
+const gamificationService = require('./gamificationService');
 
 /**
  * Max points for a review. Prefer the assignment's pointsBase when a mentor set
@@ -492,7 +493,6 @@ class SubmissionService {
     if (isApproved) {
       await this.updateMenteeGamificationProgress(task.menteeId);
 
-      const gamificationService = require('./gamificationService');
       const pointsToAward = updateData.pointsAwarded;
 
       try {
@@ -524,7 +524,6 @@ class SubmissionService {
     // Update mentor stats + mentor auto-badges (reviews_given / tasks_approved).
     await this.updateMentorReviewStats(mentorId);
     try {
-      const gamificationService = require('./gamificationService');
       await gamificationService.checkAndAwardBadges(mentorId);
     } catch (err) {
       console.error('[Gamification] mentor badge check after review failed:', err.message);

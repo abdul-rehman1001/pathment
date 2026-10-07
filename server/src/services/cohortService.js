@@ -13,6 +13,7 @@ const { requireWorkspaceId } = require('../utils/workspaceExecution');
 const logger = require('../utils/logger');
 const { resolveMenteeClanId } = require('./menteeClanScope');
 const clanLifecycleService = require('./clanLifecycleService');
+const gamificationService = require('./gamificationService');
 
 /**
  * cohortService - assembles a mentor's cohort for the Cockpit on real data,
@@ -750,6 +751,12 @@ class CohortService {
       attributedToId,
       createdBy: mentorId
     });
+
+    try {
+      await gamificationService.checkAndAwardBadges(mentorId);
+    } catch (err) {
+      console.error('[Gamification] mentor badge check after meeting log failed:', err.message);
+    }
 
     // Make "blockers to track" REAL: open Blocker records so they surface on
     // At-risk and feed the relative-grading blocker credit.
