@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Cloudinary delivery transforms.
  *
  * Uploads are stored as the ORIGINAL file — a profile picture straight off a
@@ -57,4 +57,11 @@ const avatarThumb = (url, size = 128) =>
  */
 const avatarFull = (url) => transformed(url, 'f_auto,q_auto');
 
-module.exports = { transformed, avatarThumb, avatarFull };
+/**
+ * Square workspace logo for switchers and lists. Logos are cropped square on
+ * upload, so centre-fill is enough — no face detection.
+ */
+const orgLogoThumb = (url, size = 128) =>
+  transformed(url, `c_fill,g_center,h_${size},w_${size},f_auto,q_auto`);
+
+module.exports = { transformed, avatarThumb, avatarFull, orgLogoThumb };

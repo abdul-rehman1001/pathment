@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const { models, sequelize } = require('../db');
 const { getRequestContext } = require('../utils/auditContext');
 const { NotFoundError, ForbiddenError, ValidationError, ConflictError } = require('../utils/errors/errorTypes');
+const { orgLogoThumb } = require('../utils/imageUrl');
 
 const SLUG = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const RESERVED_SLUGS = new Set(['pathment', 'www', 'app', 'api', 'links', 'meet', 'staging', 'status', 'support', 'admin', 'mail', 'cdn', 'assets']);
@@ -11,7 +12,8 @@ const serializeOrganization = (organization, membership = null) => ({
   name: organization.name,
   slug: organization.slug,
   status: organization.status,
-  logoUrl: organization.logoUrl || null,
+  // CDN thumb for switchers/lists; DB still holds the original upload URL.
+  logoUrl: orgLogoThumb(organization.logoUrl || null) || null,
   primaryColor: organization.primaryColor,
   timezone: organization.timezone,
   settings: organization.settings || {},
@@ -227,18 +229,25 @@ class OrganizationService {
     if (!['owner', 'admin'].includes(membership.role)) throw new ForbiddenError('Organization admin access is required');
     const organization = await models.Organization.findByPk(organizationId);
     if (!organization) throw new NotFoundError('Organization not found');
-    const changesBranding = patch.logoUrl !== undefined || patch.primaryColor !== undefined;
-    if (changesBranding && !(await this.entitlement(organizationId, 'customBranding'))) {
+    if (patch.logoUrl !== undefined) {
+      throw new ValidationError('Upload a workspace logo instead of setting a URL');
+    }
+    if (patch.primaryColor !== undefined && !(await this.entitlement(organizationId, 'customBranding'))) {
       throw new ForbiddenError('Custom branding is available on the Growth plan and above');
     }
     if (patch.timezone !== undefined) {
       try { new Intl.DateTimeFormat('en', { timeZone: patch.timezone }); }
       catch { throw new ValidationError('Choose a valid IANA timezone'); }
     }
-    const allowed = ['name', 'logoUrl', 'primaryColor', 'timezone'];
+    const allowed = ['name', 'primaryColor', 'timezone'];
     for (const key of allowed) if (patch[key] !== undefined) organization[key] = patch[key];
     if (!organization.name?.trim()) throw new ValidationError('Organization name is required');
     await organization.save();
+    return serializeOrganization(organization, membership);
+  }
+
+  /** Used by logo upload after mutating the org row. */
+  serializeForMembership(organization, membership) {
     return serializeOrganization(organization, membership);
   }
 

@@ -1,4 +1,5 @@
 const organizationService = require('../services/organizationService');
+const organizationLogoService = require('../services/organizationLogoService');
 const { successResponse } = require('../utils/responses');
 const { catchAsync } = require('../middlewares/errorHandler');
 
@@ -32,6 +33,16 @@ const requestPlan = catchAsync(async (req, res) => {
   res.json(successResponse('Plan change requested', { subscription }));
 });
 
+const uploadLogo = catchAsync(async (req, res) => {
+  const organization = await organizationLogoService.setLogo(req.user.id, req.organizationId, req.file);
+  res.json(successResponse('Workspace logo updated', { organization }));
+});
+
+const removeLogo = catchAsync(async (req, res) => {
+  const organization = await organizationLogoService.removeLogo(req.user.id, req.organizationId);
+  res.json(successResponse('Workspace logo removed', { organization }));
+});
+
 const demo = catchAsync(async (req, res) => {
   if (!require('../utils/stagingWorkspaceDemo').isDemo(req.organization)) {
     throw new (require('../utils/errors/errorTypes').NotFoundError)('Workspace demo not available');
@@ -61,4 +72,4 @@ const demo = catchAsync(async (req, res) => {
   }));
 });
 
-module.exports = { demo, current, listMine, create, listPlans, updateCurrent, requestPlan };
+module.exports = { demo, current, listMine, create, listPlans, updateCurrent, requestPlan, uploadLogo, removeLogo };
