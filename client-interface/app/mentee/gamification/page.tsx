@@ -3,6 +3,7 @@
 import { type ComponentType, useEffect, useMemo, useState } from "react";
 import {
   Award,
+  ChevronDown,
   Flame,
   Loader2,
   Medal,
@@ -37,6 +38,7 @@ export default function MenteeGamificationPage() {
   const [community, setCommunity] = useState<CommunityStanding | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [badgeProgressOpen, setBadgeProgressOpen] = useState(false);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -214,29 +216,48 @@ export default function MenteeGamificationPage() {
       )}
 
       {!!stats.badgeProgress?.length && (
-        <section className="rounded-2xl border border-slate-200 bg-card p-5">
-          <div className="mb-4 flex items-center gap-2">
-            <Award className="w-5 h-5 text-brand-600" />
-            <h2 className="text-slate-900">Badge progress</h2>
-          </div>
-          <div className="space-y-3">
-            {stats.badgeProgress.map((row) => (
-              <div key={row.badgeId} className="rounded-xl border border-slate-100 p-3">
-                <div className="flex items-center justify-between gap-3 text-sm">
-                  <span className="font-medium text-slate-800 truncate">{row.name}</span>
-                  <span className="text-slate-500 tabular-nums shrink-0">
-                    {row.earned ? "Earned" : `${row.current}/${row.target}`}
-                  </span>
-                </div>
-                <div className="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden">
-                  <div
-                    className={`h-full ${row.earned ? "bg-emerald-500" : "bg-brand-500"}`}
-                    style={{ width: `${row.percent}%` }}
-                  />
-                </div>
+        <section className="rounded-2xl border border-slate-200 bg-card overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setBadgeProgressOpen((open) => !open)}
+            aria-expanded={badgeProgressOpen}
+            className="w-full px-5 py-4 flex items-center justify-between gap-3 text-left hover:bg-slate-50/80 transition-colors"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <Award className="w-5 h-5 text-brand-600 shrink-0" />
+              <div className="min-w-0">
+                <h2 className="text-slate-900">Badge progress</h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {stats.badgeProgress.filter((r) => !r.earned).length} in progress
+                  {" · "}
+                  {stats.badgeProgress.filter((r) => r.earned).length} earned
+                </p>
               </div>
-            ))}
-          </div>
+            </div>
+            <ChevronDown
+              className={`w-5 h-5 text-slate-400 shrink-0 transition-transform ${badgeProgressOpen ? "rotate-180" : ""}`}
+            />
+          </button>
+          {badgeProgressOpen && (
+            <div className="px-5 pb-5 space-y-3 border-t border-slate-100 pt-4">
+              {stats.badgeProgress.map((row) => (
+                <div key={row.badgeId} className="rounded-xl border border-slate-100 p-3">
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <span className="font-medium text-slate-800 truncate">{row.name}</span>
+                    <span className="text-slate-500 tabular-nums shrink-0">
+                      {row.earned ? "Earned" : `${row.current}/${row.target}`}
+                    </span>
+                  </div>
+                  <div className="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden">
+                    <div
+                      className={`h-full ${row.earned ? "bg-emerald-500" : "bg-brand-500"}`}
+                      style={{ width: `${row.percent}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       )}
 
