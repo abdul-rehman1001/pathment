@@ -12,8 +12,15 @@ const { pointsForDifficulty } = require('../config/points');
 const { toStringList, toBoolean } = require('../utils/multipartFields');
 const clanLifecycleService = require('./clanLifecycleService');
 
-/** Standard points for a submission's task, derived solely from difficulty. */
+/**
+ * Max points for a review. Prefer the assignment's pointsBase when a mentor set
+ * a task value; otherwise the difficulty curve. Approval may award up to this.
+ */
 function taskStandardPoints(task) {
+  const assigned = Number(task?.pointsBase);
+  if (Number.isFinite(assigned) && assigned > 0) return Math.round(assigned);
+  const step = Number(task?.roadmapTask?.pointsBase);
+  if (Number.isFinite(step) && step > 0) return Math.round(step);
   return pointsForDifficulty(task?.roadmapTask?.difficulty);
 }
 
@@ -407,8 +414,8 @@ class SubmissionService {
       throw new ValidationError('Rating must be between 0 and 5');
     }
 
-    // Points are STANDARD by difficulty — not chosen by the mentor. Same
-    // difficulty always earns the same points (fair, ungameable leaderboard).
+    // Cap = assignment pointsBase (mentor-set) or roadmap/difficulty default.
+    // Mentor may award up to that max on approval (XP + coins via existing flow).
     const standardPoints = taskStandardPoints(task);
 
     // Create feedback
@@ -514,8 +521,14 @@ class SubmissionService {
       }
     }
 
-    // Update mentor stats
+    // Update mentor stats + mentor auto-badges (reviews_given / tasks_approved).
     await this.updateMentorReviewStats(mentorId);
+    try {
+      const gamificationService = require('./gamificationService');
+      await gamificationService.checkAndAwardBadges(mentorId);
+    } catch (err) {
+      console.error('[Gamification] mentor badge check after review failed:', err.message);
+    }
 
     // The task's roadmapTask is already loaded on `submission.assignedTask` at the
     // top of this method, so the title comes for free — no need to re-run the
@@ -1105,7 +1118,8 @@ class SubmissionService {
         deliverable: t.deliverableOverride || t.roadmapTask?.deliverable || null,
         criteria: (Array.isArray(t.acceptanceCriteriaOverride) && t.acceptanceCriteriaOverride.length)
           ? t.acceptanceCriteriaOverride : (t.roadmapTask?.acceptanceCriteria || []),
-        maxPoints: pointsForDifficulty(t.roadmapTask?.difficulty),
+        maxPoints: taskStandardPoints(t),
+        pointsBase: t.pointsBase ?? t.roadmapTask?.pointsBase ?? null,
         mentee: m ? {
           id: m.id,
           name: `${m.firstName} ${m.lastName}`.trim(),
@@ -1219,7 +1233,7 @@ class SubmissionService {
         decision: latestFb?.decision === 'approved_notes' ? 'approved_notes' : 'approved',
         rating: t.finalRating ?? latestFb?.rating ?? null,
         pointsAwarded: t.pointsAwarded ?? 0,
-        maxPoints: pointsForDifficulty(t.roadmapTask?.difficulty),
+        maxPoints: taskStandardPoints(t),
         feedbackText: latestFb?.feedbackText || null,
         reviewedAt: t.completedAt || latestFb?.createdAt || t.updatedAt,
         isLate: t.isLate,
