@@ -21,7 +21,8 @@ module.exports = (sequelize, DataTypes) => {
       field: 'file_url'
     },
     fileType: {
-      type: DataTypes.STRING(50),
+      // Must fit long Office MIME types 
+      type: DataTypes.STRING(255),
       field: 'file_type'
     },
     fileSizeBytes: {

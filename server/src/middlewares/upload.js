@@ -118,7 +118,7 @@ const withUploadErrors = (handler) => (req, res, next) => {
     if (!err) return next();
     if (err instanceof multer.MulterError) {
       const messages = {
-        LIMIT_FILE_SIZE: 'One of your files is too large. Please upload a smaller file.',
+        LIMIT_FILE_SIZE: 'This file is too large. Maximum size is 10MB (25MB for interview audio).',
         LIMIT_FILE_COUNT: 'Too many files. Please upload fewer files.',
         LIMIT_UNEXPECTED_FILE: 'Unexpected file field in the upload.',
       };
@@ -171,5 +171,9 @@ upload.singleSafeMedia = (field) => withUploadErrors(uploadMedia.single(field));
 /** Exposed so the accepted-type lists can be asserted directly in tests. */
 upload.fileFilter = fileFilter;
 upload.mediaOnlyFilter = mediaOnlyFilter;
+upload.allowedTypes = allowedTypes;
+upload.allowedExtensions = allowedExtensions;
+/** Default per-file size for task submissions / community (bytes). */
+upload.MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 module.exports = upload;

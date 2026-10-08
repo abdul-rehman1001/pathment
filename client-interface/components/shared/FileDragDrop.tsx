@@ -12,7 +12,35 @@ interface FileDragDropProps {
   disabled?: boolean;
   className?: string;
   onError?: (error: string) => void;
+  /** Override the default "not a supported type" toast/message. */
+  unsupportedTypeMessage?: (file: File) => string;
   children: React.ReactNode | ((props: { isDragging: boolean; openFilePicker: () => void }) => React.ReactNode);
+}
+
+function matchesAccept(file: File, accept: string): boolean {
+  const acceptedTypes = accept.split(',').map((t) => t.trim()).filter(Boolean);
+  if (acceptedTypes.length === 0) return true;
+
+  const fileName = file.name || '';
+  const ext = fileName.includes('.')
+    ? `.${fileName.split('.').pop()!.toLowerCase()}`
+    : '';
+  const mime = (file.type || '').toLowerCase();
+
+  return acceptedTypes.some((type) => {
+    const token = type.toLowerCase();
+    // Extension token: ".pdf"
+    if (token.startsWith('.')) {
+      return ext === token;
+    }
+    // Wildcard MIME: "image/*"
+    if (token.endsWith('/*')) {
+      const base = token.slice(0, -1); // "image/"
+      return mime.startsWith(base);
+    }
+    // Exact MIME
+    return mime === token;
+  });
 }
 
 export function FileDragDrop({
@@ -24,6 +52,7 @@ export function FileDragDrop({
   disabled = false,
   className = '',
   onError,
+  unsupportedTypeMessage,
   children,
 }: FileDragDropProps) {
   const [isDragging, setIsDragging] = useState(false);
@@ -42,6 +71,11 @@ export function FileDragDrop({
     onErrorRef.current = onError;
   }, [onError]);
 
+  const reportError = useCallback((errorMsg: string) => {
+    if (onErrorRef.current) onErrorRef.current(errorMsg);
+    else toast.error(errorMsg);
+  }, []);
+
   const openFilePicker = useCallback(() => {
     if (!disabled && fileInputRef.current) {
       fileInputRef.current.click();
@@ -50,36 +84,23 @@ export function FileDragDrop({
 
   const validateFiles = useCallback((files: File[]): File[] => {
     return files.filter((file) => {
-      // Validate file size
       if (maxSize && file.size > maxSize) {
-        const errorMsg = `File "${file.name}" is too large (max ${Math.round(maxSize / (1024 * 1024))}MB).`;
-        if (onErrorRef.current) onErrorRef.current(errorMsg);
-        else toast.error(errorMsg);
+        const maxMb = Math.round(maxSize / (1024 * 1024));
+        reportError(`File "${file.name}" is too large (max ${maxMb}MB).`);
         return false;
       }
 
-      // Validate file type
-      if (accept) {
-        const acceptedTypes = accept.split(',').map((t) => t.trim());
-        const matches = acceptedTypes.some((type) => {
-          if (type.endsWith('/*')) {
-            const base = type.replace('/*', '');
-            return file.type.startsWith(base);
-          }
-          return file.type === type;
-        });
-
-        if (!matches) {
-          const errorMsg = `Attach a valid file type (${accept}).`;
-          if (onErrorRef.current) onErrorRef.current(errorMsg);
-          else toast.error(errorMsg);
-          return false;
-        }
+      if (accept && !matchesAccept(file, accept)) {
+        reportError(
+          unsupportedTypeMessage?.(file) ||
+            `File "${file.name}" is not a supported type for this upload.`
+        );
+        return false;
       }
 
       return true;
     });
-  }, [accept, maxSize]);
+  }, [accept, maxSize, reportError, unsupportedTypeMessage]);
 
   const handleFiles = useCallback((selectedFiles: File[]) => {
     if (selectedFiles.length === 0) return;
