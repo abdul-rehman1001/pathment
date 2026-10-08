@@ -15,6 +15,7 @@ export interface ProgramPerson {
 export interface ProgramClanDetail {
   id: string;
   name: string;
+  avatarUrl?: string | null;
   myRole: 'lead_mentor' | 'co_mentor';
   mentees: ProgramPerson[];
   coMentors: ProgramPerson[];
@@ -74,6 +75,7 @@ export function useMentorProgramDetail(programId: string): UseMentorProgramDetai
         clans: (payload.clans ?? []).map((c: any): ProgramClanDetail => ({
           id: c.id,
           name: c.name,
+          avatarUrl: c.avatarUrl ?? null,
           myRole: c.myRole,
           mentees: (c.mentees ?? []).map(toPerson),
           coMentors: (c.coMentors ?? []).map(toPerson),

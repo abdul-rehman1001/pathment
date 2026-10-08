@@ -7,6 +7,7 @@ import {
   ClipboardCheck, Route, CalendarClock, Mail, GraduationCap, Lock, Globe,
 } from 'lucide-react';
 import { useMentorProgramDetail, type ProgramClanDetail, type ProgramPerson } from '@/lib/hooks/mentor';
+import { ClanAvatar } from '@/components/shared/ClanAvatar';
 
 const STATUS_CLASS: Record<string, string> = {
   published: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -51,7 +52,7 @@ function ClanCard({ clan }: { clan: ProgramClanDetail }) {
   return (
     <section className="bg-card rounded-2xl border border-slate-200 overflow-hidden" aria-label={`Clan ${clan.name}`}>
       <div className="px-5 py-4 border-b border-slate-200 flex items-center gap-3 flex-wrap">
-        <div className="w-9 h-9 rounded-xl bg-brand-50 flex items-center justify-center shrink-0"><Users2 className="w-4.5 h-4.5 text-brand-600" /></div>
+        <ClanAvatar name={clan.name} src={clan.avatarUrl} size="sm" className="shrink-0" />
         <div className="min-w-0">
           <h2 className="font-semibold text-slate-900 truncate">{clan.name}</h2>
           <p className="text-xs text-slate-500 inline-flex items-center gap-1">

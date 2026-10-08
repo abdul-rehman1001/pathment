@@ -16,6 +16,8 @@ export const PERMISSIONS = {
   INVITE_CREATE: 'invite.create',
   CLAN_CREATE: 'clan.create',
   CLAN_MANAGE_MEMBERS: 'clan.manage_members',
+  /** Upload / change the clan photo. Co-mentors have it by default; lead can revoke. */
+  CLAN_AVATAR: 'clan.avatar',
   MENTEE_VIEW: 'mentee.view',
   MENTEE_MANAGE: 'mentee.manage',
   MENTEE_ADD: 'mentee.add',
@@ -51,6 +53,7 @@ export const CO_MENTOR_PERMISSIONS: { key: Permission; label: string; descriptio
   { key: PERMISSIONS.TASK_ASSIGN, label: 'Assign tasks', description: 'Create and assign tasks to mentees.' },
   { key: PERMISSIONS.TASK_REVIEW, label: 'Review work', description: 'Mark tasks complete and leave feedback.' },
   { key: PERMISSIONS.CERTIFICATE_VERIFY, label: 'Verify certificates', description: 'Confirm or change the grade a mentee\'s certificate is issued at.' },
+  { key: PERMISSIONS.CLAN_AVATAR, label: 'Change clan photo', description: 'Upload or replace the clan photo. On by default; the lead can turn this off.' },
   { key: PERMISSIONS.ROADMAP_PUBLISH_LOCAL, label: 'Publish roadmaps', description: "Build and publish the clan's roadmap." },
   { key: PERMISSIONS.LIBRARY_MANAGE, label: 'Manage library', description: 'Add and edit shared resources.' },
   { key: PERMISSIONS.ANNOUNCEMENT_POST, label: 'Post announcements', description: 'Broadcast updates to the clan.' },

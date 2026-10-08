@@ -50,10 +50,35 @@ router.get(
 );
 
 const canEditAvatar = catchAsync(async (req, res, next) => { await avatarService.editableClan(req.params.id, req.user); next(); });
-router.post('/:id/avatar', authenticate, validateParams(clanSchemas.idParams), canEditAvatar, upload.singleSafe('file'), catchAsync(async (req, res) => {
-  res.json(successResponse('Clan photo updated', await avatarService.setAvatar(req.params.id, req.user, req.file)));
-}));
-router.delete('/:id/avatar', authenticate, validateParams(clanSchemas.idParams), catchAsync(async (req, res) => {
+
+// Crop → upload file → receive URL → save URL (add and change).
+router.post(
+  '/:id/avatar/upload',
+  authenticate,
+  validateParams(clanSchemas.idParams),
+  canEditAvatar,
+  upload.singleSafe('file'),
+  catchAsync(async (req, res) => {
+    res.status(201).json(
+      successResponse('File uploaded', await avatarService.uploadAvatarFile(req.params.id, req.user, req.file), 201)
+    );
+  })
+);
+router.put(
+  '/:id/avatar',
+  authenticate,
+  validateParams(clanSchemas.idParams),
+  canEditAvatar,
+  catchAsync(async (req, res) => {
+    res.json(
+      successResponse(
+        'Clan photo updated',
+        await avatarService.setAvatarUrl(req.params.id, req.user, req.body?.avatarUrl)
+      )
+    );
+  })
+);
+router.delete('/:id/avatar', authenticate, validateParams(clanSchemas.idParams), canEditAvatar, catchAsync(async (req, res) => {
   res.json(successResponse('Clan photo removed', await avatarService.removeAvatar(req.params.id, req.user)));
 }));
 

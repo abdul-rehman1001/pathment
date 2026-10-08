@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronDown, Search } from 'lucide-react';
 
 export interface SelectOption {
   value: string;
   label: string;
+  icon?: ReactNode;
 }
 
 interface SelectMenuProps {
@@ -101,7 +102,10 @@ export function SelectMenu({ value, onChange, options, placeholder = 'Select…'
         aria-label={ariaLabel}
         className="w-full flex items-center justify-between gap-2 px-3 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-700 dark:text-slate-700 bg-card hover:border-slate-300 dark:hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-brand-500"
       >
-        <span className={`truncate ${selected ? '' : 'text-slate-400'}`}>{selected?.label ?? placeholder}</span>
+        <span className="flex items-center gap-2 min-w-0">
+          {selected?.icon}
+          <span className={`truncate ${selected ? '' : 'text-slate-400'}`}>{selected?.label ?? placeholder}</span>
+        </span>
         <ChevronDown className={`w-4 h-4 text-slate-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
@@ -146,7 +150,10 @@ export function SelectMenu({ value, onChange, options, placeholder = 'Select…'
                       : 'text-slate-700 dark:text-slate-700 hover:bg-slate-50 dark:hover:bg-slate-100'
                   }`}
                 >
-                  <span className="truncate">{o.label}</span>
+                  <span className="flex items-center gap-2 min-w-0">
+                    {o.icon}
+                    <span className="truncate">{o.label}</span>
+                  </span>
                   {isSel && <Check className="w-4 h-4 text-brand-600 shrink-0" />}
                 </button>
               );
