@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { KeyRound, Plus, Trash2, Loader2, Zap, CheckCircle2, AlertTriangle, Circle } from 'lucide-react';
 import { useAIConnectionsTab } from '@/lib/hooks/admin';
-import type { AIProvider, AIFeature, AIKeyStatus } from '@/lib/services/ai-connections-api';
+import type { AIProvider, AIFeature, AIKeyStatus, AIConnection, AIRouting } from '@/lib/services/ai-connections-api';
 import { Drawer } from '@/components/shared/Drawer';
 
 const PROVIDER_META: Record<AIProvider, { label: string; hint: string; keyPrefix: string; models: string[] }> = {
@@ -16,7 +16,7 @@ const PROVIDER_META: Record<AIProvider, { label: string; hint: string; keyPrefix
 };
 const FREE_MODEL_PROVIDERS: AIProvider[] = ['openrouter', 'custom'];
 
-const FEATURE_META: { key: AIFeature; label: string; hint: string }[] = [
+const FEATURE_META: { key: Exclude<AIFeature, 'auto_reply'>; label: string; hint: string }[] = [
   { key: 'summary', label: 'Mentee summaries', hint: 'Per-mentee progress digests' },
   { key: 'delay', label: 'Delay reasoning', hint: 'Explain why a mentee is behind' },
   { key: 'atrisk', label: 'At-risk ranking', hint: 'Rank who needs attention' },
@@ -31,7 +31,6 @@ const FEATURE_META: { key: AIFeature; label: string; hint: string }[] = [
   { key: 'certificates', label: 'Certificate AI Evaluation', hint: 'Evaluate mentee criteria & assign certificate tiers' },
 ];
 
-
 const STATUS_META: Record<AIKeyStatus, { label: string; cls: string; Icon: typeof CheckCircle2 }> = {
   connected: { label: 'Connected', cls: 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400', Icon: CheckCircle2 },
   error: { label: 'Error', cls: 'bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400', Icon: AlertTriangle },
@@ -39,19 +38,37 @@ const STATUS_META: Record<AIKeyStatus, { label: string; cls: string; Icon: typeo
 };
 
 const field = 'w-full bg-background border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500';
+const selectCls = 'bg-background border border-slate-300 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50';
+
+/** Shared id when every non-embedding feature points at the same connection (else ''). */
+function sharedRouteId(routing: AIRouting) {
+  const ids = FEATURE_META.filter((f) => f.key !== 'rag_embedding').map((f) => routing[f.key] ?? null);
+  const first = ids[0] ?? null;
+  return ids.length && ids.every((id) => id === first) ? (first ?? '') : '';
+}
+
+function ConnectionOptions({ connections }: { connections: AIConnection[] }) {
+  return (
+    <>
+      <option value="">Off</option>
+      {connections.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+    </>
+  );
+}
 
 interface AIConnectionsTabProps {
   isMentor?: boolean;
 }
 
 export default function AIConnectionsTab({ isMentor }: AIConnectionsTabProps = {}) {
-  const { connections, routing, loading, busyId, adding, setAdding, addKey, removeKey, testKey, setRoute } = useAIConnectionsTab();
+  const { connections, routing, loading, busyId, adding, setAdding, addKey, removeKey, testKey, setRoute, setAllRoutes } = useAIConnectionsTab();
+  const shared = sharedRouteId(routing);
+  const mixed = connections.length > 0 && shared === '' && FEATURE_META.some((f) => f.key !== 'rag_embedding' && routing[f.key]);
 
   if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-7 h-7 animate-spin text-brand-600" /></div>;
 
   return (
     <div className="space-y-8">
-      {/* AI connections */}
       <section>
         <div className="flex items-start justify-between gap-3 mb-4">
           <div>
@@ -96,10 +113,31 @@ export default function AIConnectionsTab({ isMentor }: AIConnectionsTabProps = {
         )}
       </section>
 
-      {}
       <section>
         <h2 className="text-slate-900">Feature routing</h2>
         <p className="text-slate-500 text-sm mt-0.5 mb-4">Choose which connection powers each AI feature, or turn it off.</p>
+
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 mb-3 rounded-xl border border-slate-200 bg-slate-50/80">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-slate-800">Use for all features</p>
+            <p className="text-xs text-slate-400">Sets every feature below. RAG Vectors only updates for Gemini keys.</p>
+          </div>
+          <select
+            value={mixed ? '__mixed__' : shared}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === '__mixed__') return;
+              setAllRoutes(v || null);
+            }}
+            disabled={connections.length === 0}
+            className={`${selectCls} max-w-[200px]`}
+            aria-label="Use connection for all features"
+          >
+            {mixed && <option value="__mixed__" disabled>Custom</option>}
+            <ConnectionOptions connections={connections} />
+          </select>
+        </div>
+
         <div className="grid sm:grid-cols-2 gap-3">
           {FEATURE_META.map((f) => (
             <div key={f.key} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-200">
@@ -108,37 +146,54 @@ export default function AIConnectionsTab({ isMentor }: AIConnectionsTabProps = {
                 <p className="text-xs text-slate-400">{f.hint}</p>
               </div>
               <select
-                value={routing[f.key as Exclude<AIFeature, 'auto_reply'>] ?? ''}
-                onChange={(e) => setRoute(f.key as Exclude<AIFeature, 'auto_reply'>, e.target.value || null)}
+                value={routing[f.key] ?? ''}
+                onChange={(e) => setRoute(f.key, e.target.value || null)}
                 disabled={connections.length === 0}
-                className="bg-background border border-slate-300 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 max-w-[160px] disabled:opacity-50"
+                className={`${selectCls} max-w-[160px]`}
               >
-                <option value="">Off</option>
-                {connections.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+                <ConnectionOptions connections={connections} />
               </select>
             </div>
           ))}
         </div>
       </section>
 
-      {adding && <AddKeyModal onClose={() => setAdding(false)} onAdd={addKey} />}
+      {adding && (
+        <AddKeyModal
+          onClose={() => setAdding(false)}
+          onAdd={addKey}
+        />
+      )}
     </div>
   );
 }
 
-function AddKeyModal({ onClose, onAdd }: { onClose: () => void; onAdd: (d: { provider: AIProvider; label: string; model?: string; baseUrl?: string; key: string }) => Promise<boolean> }) {
+function AddKeyModal({
+  onClose,
+  onAdd,
+}: {
+  onClose: () => void;
+  onAdd: (
+    d: { provider: AIProvider; label: string; model?: string; baseUrl?: string; key: string },
+    opts?: { applyToAll?: boolean },
+  ) => Promise<boolean>;
+}) {
   const [provider, setProvider] = useState<AIProvider>('groq');
   const [label, setLabel] = useState('');
   const [model, setModel] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
   const [key, setKey] = useState('');
+  const [applyToAll, setApplyToAll] = useState(false);
   const [saving, setSaving] = useState(false);
   const meta = PROVIDER_META[provider];
 
   const submit = async () => {
     if (!label.trim() || !key.trim()) return;
     setSaving(true);
-    const ok = await onAdd({ provider, label: label.trim(), model: model || undefined, baseUrl: baseUrl || undefined, key: key.trim() });
+    const ok = await onAdd(
+      { provider, label: label.trim(), model: model || undefined, baseUrl: baseUrl || undefined, key: key.trim() },
+      { applyToAll },
+    );
     setSaving(false);
     if (ok) onClose();
   };
@@ -195,6 +250,20 @@ function AddKeyModal({ onClose, onAdd }: { onClose: () => void; onAdd: (d: { pro
             </select>
           )}
         </div>
+        <label className="flex items-start gap-2.5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={applyToAll}
+            onChange={(e) => setApplyToAll(e.target.checked)}
+            className="mt-1 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+          />
+          <span>
+            <span className="block text-sm font-medium text-slate-800">Use this key for all features</span>
+            <span className="block text-xs text-slate-400 mt-0.5">
+              Routes every feature to this connection{provider !== 'gemini' ? ' (RAG Vectors stays Gemini-only)' : ''}.
+            </span>
+          </span>
+        </label>
       </div>
     </Drawer>
   );
