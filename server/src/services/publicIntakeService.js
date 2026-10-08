@@ -450,7 +450,9 @@ class PublicIntakeService {
     await this._findByAccessToken(rawToken);
     if (!file || !file.buffer) throw new ValidationError('No file provided');
     const result = await uploadToCloudinary(file.buffer, 'pathment/assessments', 'auto');
-    return { url: result.url, fileName: file.originalname, fileSizeBytes: file.size };
+    const url = result.secure_url || result.url;
+    if (!url) throw new ValidationError('Could not upload the file');
+    return { url, fileName: file.originalname || 'upload', fileSizeBytes: file.size || 0 };
   }
 
   // ── helpers ──────────────────────────────────────────────────────────────────

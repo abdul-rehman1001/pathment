@@ -8,6 +8,7 @@ const { VISIBLE_MEMBERSHIP_STATUSES, strongestClanRole } = require('../config/me
 const { ensureMenteeProfile } = require('./menteeProfile');
 const standingClanService = require('./standingClanService');
 const clanLifecycleService = require('./clanLifecycleService');
+const avatarService = require('./clanAvatarService');
 
 // The permissions a co-mentor holds by default — and therefore the exact set a
 // lead mentor / admin may toggle on or off for an individual co-mentor. Derived
@@ -520,7 +521,15 @@ class ClanService {
 
     const clan = await models.Clan.findByPk(clanId, { attributes: ['kind', 'frozenAt'] });
     const readOnly = clan?.kind !== 'standing' && Boolean(clan?.frozenAt);
-    return { role, canManageTeam: canManageTeam && !readOnly, canAddMentees: canAddMentees && !readOnly, readOnly, permissions: permissions.sort() };
+    const canEditAvatar = !readOnly && await avatarService.canEditAvatar(clanId, user);
+    return {
+      role,
+      canManageTeam: canManageTeam && !readOnly,
+      canAddMentees: canAddMentees && !readOnly,
+      canEditAvatar,
+      readOnly,
+      permissions: permissions.sort(),
+    };
   }
 
   /**
