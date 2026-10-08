@@ -98,7 +98,10 @@ class SubmissionService {
         });
       } catch (error) {
         console.error('Error uploading file:', error);
-        throw new ValidationError(`Failed to upload file: ${file.originalname}`);
+        const detail = error?.message ? ` (${error.message})` : '';
+        throw new ValidationError(
+          `Could not upload "${file.originalname}"${detail}. Check the file type and size (max 10MB), then try again.`
+        );
       }
     }
 
