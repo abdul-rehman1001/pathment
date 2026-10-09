@@ -16,6 +16,16 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       field: 'badge_id'
     },
+    programId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: 'program_id'
+    },
+    clanId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: 'clan_id'
+    },
     unlockedAt: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW,
@@ -35,10 +45,12 @@ module.exports = (sequelize, DataTypes) => {
     underscored: true,
     timestamps: false,
     indexes: [
-      { unique: true, fields: ['user_id', 'badge_id'] },
+      // Uniqueness: user_badges_once_per_context expression index (migration 123).
       { fields: ['user_id'] },
       { fields: ['badge_id'] },
-      { fields: ['unlocked_at'] }
+      { fields: ['unlocked_at'] },
+      { fields: ['program_id'] },
+      { fields: ['clan_id'] },
     ],
     hooks: {
       afterCreate: async (userBadge, options) => {
@@ -62,6 +74,8 @@ module.exports = (sequelize, DataTypes) => {
   UserBadge.associate = (models) => {
     UserBadge.belongsTo(models.User, { foreignKey: 'user_id' });
     UserBadge.belongsTo(models.Badge, { foreignKey: 'badge_id' });
+    UserBadge.belongsTo(models.Program, { foreignKey: 'program_id', as: 'program' });
+    UserBadge.belongsTo(models.Clan, { foreignKey: 'clan_id', as: 'clan' });
   };
 
   return UserBadge;
