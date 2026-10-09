@@ -11,6 +11,8 @@ interface OrganizationContextValue {
   overview: OrganizationOverview | null;
   loading: boolean;
   refresh: () => Promise<void>;
+  /** Instant logo update in current + list (switcher) without a full refetch. */
+  patchLogo: (logoUrl: string | null) => void;
   switchTo: (slug: string) => void;
 }
 
@@ -31,14 +33,29 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { void refresh(); }, [refresh, user?.id]);
 
+  const patchLogo = useCallback((logoUrl: string | null) => {
+    setOverview((prev) => {
+      if (!prev?.organization) return prev;
+      const organization = { ...prev.organization, logoUrl };
+      return {
+        ...prev,
+        organization,
+        organizations: prev.organizations.map((row) =>
+          row.id === organization.id ? { ...row, logoUrl } : row,
+        ),
+      };
+    });
+  }, []);
+
   const value = useMemo<OrganizationContextValue>(() => ({
     current: overview?.organization || null,
     organizations: overview?.organizations || [],
     overview,
     loading,
     refresh,
+    patchLogo,
     switchTo: switchWorkspace,
-  }), [overview, loading, refresh]);
+  }), [overview, loading, refresh, patchLogo]);
 
   return <OrganizationContext.Provider value={value}>{children}</OrganizationContext.Provider>;
 }

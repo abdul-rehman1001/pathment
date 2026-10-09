@@ -1,23 +1,29 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Building2, Loader2, Plus, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { useOrganization } from '@/lib/context/OrganizationContext';
+import { useAuth } from '@/lib/context/AuthContext';
 import { organizationsApi } from '@/lib/services/organizations-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { Drawer } from '@/components/shared/Drawer';
 import { SelectMenu } from '@/components/shared/SelectMenu';
+import { OrgLogoEditor } from '@/components/shared/OrgLogoEditor';
 import { tzList } from '@/components/settings/LocationDetailsFields';
 
 export function OrganizationSettingsTab() {
-  const { current, overview, refresh, switchTo } = useOrganization();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const { current, overview, refresh, patchLogo, switchTo } = useOrganization();
   const [name, setName] = useState('');
   const [timezone, setTimezone] = useState('UTC');
   const [saving, setSaving] = useState(false);
   const [creating, setCreating] = useState(false);
   const creationEnabled = overview?.workspaceCreationEnabled === true;
   const canEdit = ['owner', 'admin'].includes(overview?.membership?.role || '');
+  const brandingEnabled = overview?.subscription?.plan?.features?.customBranding === true;
   const zones = useMemo(tzList, []);
 
   useEffect(() => {
@@ -45,6 +51,17 @@ export function OrganizationSettingsTab() {
         <span className="grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-700"><Building2 className="h-5 w-5" /></span>
         <div><h2 className="font-semibold text-foreground">Organization</h2><p className="text-sm text-muted-foreground">Workspace identity and regional defaults.</p></div>
       </div>
+      <OrgLogoEditor
+        name={current.name}
+        logoUrl={current.logoUrl}
+        canEdit={canEdit}
+        brandingEnabled={brandingEnabled}
+        onChanged={(logoUrl) => {
+          patchLogo(logoUrl);
+          void queryClient.invalidateQueries({ queryKey: ['account-workspaces', user?.id ?? 'account'] });
+          void refresh();
+        }}
+      />
       <div className="grid gap-5 md:grid-cols-2">
         <label className="space-y-2"><span className="text-sm font-medium">Name</span><input className={field} value={name} onChange={(e) => setName(e.target.value)} disabled={!canEdit} /></label>
         <label className="space-y-2"><span className="text-sm font-medium">Workspace URL</span><input className={field} value={`app.pathment.me/w/${current.slug}`} disabled /></label>

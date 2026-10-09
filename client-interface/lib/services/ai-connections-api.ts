@@ -23,6 +23,7 @@ export const aiConnectionsApi = {
     apiClient.post('/ai-connections', data),
   remove: (id: string) => apiClient.delete(`/ai-connections/${id}`),
   test: (id: string) => apiClient.post(`/ai-connections/${id}/test`),
-  setRouting: (routing: AIRouting) => apiClient.put('/ai-connections/routing', { routing }),
+  setRouting: (routing: AIRouting | Record<string, string | null | undefined>) =>
+    apiClient.put('/ai-connections/routing', { routing }),
   setQuotaLimit: (limit: number) => apiClient.put('/ai-connections/quota-limit', { limit }),
 };

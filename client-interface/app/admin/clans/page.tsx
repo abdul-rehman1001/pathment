@@ -8,6 +8,7 @@ import { SelectMenu, type SelectOption } from '@/components/shared/SelectMenu';
 import { TablePagination } from '@/components/shared/TablePagination';
 import { Drawer } from '@/components/shared/Drawer';
 import { ClanAvatarEditor } from '@/components/shared/ClanAvatarEditor';
+import { ClanAvatar } from '@/components/shared/ClanAvatar';
 import { Avatar } from '@/components/shared/Avatar';
 import { CoMentorPermissionsDrawer } from '@/components/shared/CoMentorPermissionsDrawer';
 import { ReassignClanModal } from '@/components/admin/ReassignClanModal';
@@ -700,7 +701,7 @@ function AdminClansInner() {
                   const n = counts(c);
                   return <tr key={c.id} className={selected.has(c.id) ? 'bg-brand-50 dark:bg-brand-950/30' : ''}>
                     <td><input type="checkbox" checked={selected.has(c.id)} onChange={() => toggleOne(c.id)} aria-label={`Select ${c.name}`} className="h-4 w-4 rounded border-border" /></td>
-                    <td><div className="flex items-center gap-3"><Avatar name={c.name} src={c.avatarUrl} size="sm"/><button type="button" onClick={() => setOpenClan(c.id)} className="font-semibold text-brand-700 dark:text-brand-300 text-left hover:underline">{c.name}</button></div><p className="text-xs text-muted-foreground mt-1">{c.program?.name || 'No program'}{c.levelLabel ? ` · ${c.levelLabel}` : ''}</p>{c.tags?.length > 0 && <p className="mt-1 text-xs text-muted-foreground">{c.tags.slice(0,3).join(' · ')}{c.tags.length>3 ? ` +${c.tags.length-3}` : ''}</p>}</td>
+                    <td><div className="flex items-center gap-3"><ClanAvatar name={c.name} src={c.avatarUrl} size="sm"/><button type="button" onClick={() => setOpenClan(c.id)} className="font-semibold text-brand-700 dark:text-brand-300 text-left hover:underline">{c.name}</button></div><p className="text-xs text-muted-foreground mt-1">{c.program?.name || 'No program'}{c.levelLabel ? ` · ${c.levelLabel}` : ''}</p>{c.tags?.length > 0 && <p className="mt-1 text-xs text-muted-foreground">{c.tags.slice(0,3).join(' · ')}{c.tags.length>3 ? ` +${c.tags.length-3}` : ''}</p>}</td>
                     <td>{c.leadMentor ? `${c.leadMentor.firstName} ${c.leadMentor.lastName}` : <span className="text-amber-700 dark:text-amber-300">Needs a lead mentor</span>}</td>
                     <td className="tabular-nums">{n.mentees}</td><td className="tabular-nums">{n.mentors}</td>
                     <td><span className={`rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ${c.publicJoinAllowed ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-muted text-muted-foreground'}`}>{c.publicJoinAllowed ? c.publicJoinEnabled ? 'Link active' : 'Allowed' : 'Closed'}</span></td>

@@ -23,6 +23,9 @@ const PERMISSIONS = {
   // Clans & people
   CLAN_CREATE: 'clan.create',
   CLAN_MANAGE_MEMBERS: 'clan.manage_members',
+  // Clan photo upload/change. Lead mentors always may; co-mentors get it by
+  // default and a lead can revoke it per person (same denied-list pattern).
+  CLAN_AVATAR: 'clan.avatar',
   MENTEE_VIEW: 'mentee.view',                // see mentees' profiles/progress
   MENTEE_MANAGE: 'mentee.manage',            // notes, insights, placement actions
   MENTEE_ADD: 'mentee.add',                  // add mentees to a clan (co-mentor toggle)
@@ -100,6 +103,7 @@ const PERMISSION_GROUPS = [
     permissions: [
       { key: P.CLAN_CREATE, label: 'Create clans' },
       { key: P.CLAN_MANAGE_MEMBERS, label: 'Change who is in a clan' },
+      { key: P.CLAN_AVATAR, label: 'Change the clan photo' },
       { key: P.MENTEE_VIEW, label: 'See mentee records' },
       { key: P.MENTEE_MANAGE, label: 'Edit mentee records' },
       { key: P.MENTEE_ADD, label: 'Add a mentee' },

@@ -9,6 +9,13 @@ import RichTextEditor from '@/components/shared/RichTextEditor';
 import { submissionService } from '@/lib/services/submissionService';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { cleanHtml, isBlankHtml } from '@/lib/utils/html';
+import {
+  SUBMISSION_FILE_ACCEPT,
+  SUBMISSION_FILE_HINT,
+  SUBMISSION_MAX_FILE_SIZE,
+  SUBMISSION_MAX_FILES,
+  getSubmissionFileRejectReason,
+} from '@/lib/utils/submission-files';
 
 // Helper to format file size
 const formatFileSize = (bytes: number): string => {
@@ -155,15 +162,23 @@ export function SubmitTaskDrawer({
           <FileDragDrop
             onFilesSelected={(newFiles) => {
               setFiles((p) => {
-                const remainingSlots = 5 - p.length;
-                const filesToAdd = newFiles.slice(0, remainingSlots);
-                return [...p, ...filesToAdd];
+                const remainingSlots = SUBMISSION_MAX_FILES - p.length;
+                if (remainingSlots <= 0) return p;
+                if (newFiles.length > remainingSlots) {
+                  toast.error(`You can attach up to ${SUBMISSION_MAX_FILES} files.`);
+                }
+                return [...p, ...newFiles.slice(0, remainingSlots)];
               });
             }}
             multiple={true}
-            maxSize={10 * 1024 * 1024}
+            accept={SUBMISSION_FILE_ACCEPT}
+            maxSize={SUBMISSION_MAX_FILE_SIZE}
+            unsupportedTypeMessage={(file) =>
+              getSubmissionFileRejectReason(file, SUBMISSION_MAX_FILE_SIZE) ||
+              `File "${file.name}" is not supported.`
+            }
             enablePaste={true}
-            disabled={files.length >= 5}
+            disabled={files.length >= SUBMISSION_MAX_FILES}
           >
             {({ isDragging, openFilePicker }) => (
               <div className="space-y-4">
@@ -172,7 +187,7 @@ export function SubmitTaskDrawer({
                   className={`
                     border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors
                     ${isDragging ? 'border-brand-500 bg-brand-50' : 'border-slate-300 hover:border-slate-400'}
-                    ${files.length >= 5 ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''}
+                    ${files.length >= SUBMISSION_MAX_FILES ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''}
                   `}
                 >
                   <Upload className={`w-12 h-12 mx-auto mb-4 ${isDragging ? 'text-brand-500' : 'text-slate-400'}`} />
@@ -180,7 +195,7 @@ export function SubmitTaskDrawer({
                     {isDragging ? 'Drop files here...' : 'Drag & drop files here, or click to select'}
                   </p>
                   <p className="text-sm text-slate-500">
-                    Max 5 files, up to 10MB each
+                    {SUBMISSION_FILE_HINT}
                   </p>
                 </div>
 

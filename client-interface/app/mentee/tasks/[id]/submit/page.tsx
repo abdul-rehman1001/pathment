@@ -34,6 +34,13 @@ import { PageHeader } from '@/components/admin/ui';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { looksLikeHtml } from '@/lib/utils/html';
 import { useActivityTracker } from '@/lib/hooks/shared/useActivityTracker';
+import {
+  SUBMISSION_FILE_ACCEPT,
+  SUBMISSION_FILE_HINT,
+  SUBMISSION_MAX_FILE_SIZE,
+  SUBMISSION_MAX_FILES,
+  getSubmissionFileRejectReason,
+} from '@/lib/utils/submission-files';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -424,14 +431,23 @@ export default function TaskSubmission({ params }: PageProps) {
                 </label>
                 <FileDragDrop
                   onFilesSelected={(newFiles) => {
-                    const remainingSlots = 5 - files.length;
-                    const filesToAdd = newFiles.slice(0, remainingSlots);
-                    handleFilesAdded(filesToAdd);
+                    const remainingSlots = SUBMISSION_MAX_FILES - files.length;
+                    if (remainingSlots <= 0) return;
+                    if (newFiles.length > remainingSlots) {
+                      setError(`You can attach up to ${SUBMISSION_MAX_FILES} files.`);
+                    }
+                    handleFilesAdded(newFiles.slice(0, remainingSlots));
                   }}
+                  onError={(msg) => setError(msg)}
                   multiple={true}
-                  maxSize={10 * 1024 * 1024}
+                  accept={SUBMISSION_FILE_ACCEPT}
+                  maxSize={SUBMISSION_MAX_FILE_SIZE}
+                  unsupportedTypeMessage={(file) =>
+                    getSubmissionFileRejectReason(file, SUBMISSION_MAX_FILE_SIZE) ||
+                    `File "${file.name}" is not supported.`
+                  }
                   enablePaste={true}
-                  disabled={files.length >= 5}
+                  disabled={files.length >= SUBMISSION_MAX_FILES}
                 >
                   {({ isDragging, openFilePicker }) => (
                     <div className="space-y-4">
@@ -440,7 +456,7 @@ export default function TaskSubmission({ params }: PageProps) {
                         className={`
                           border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors
                           ${isDragging ? 'border-brand-500 bg-brand-50' : 'border-slate-300 hover:border-slate-400'}
-                          ${files.length >= 5 ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''}
+                          ${files.length >= SUBMISSION_MAX_FILES ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''}
                         `}
                       >
                         <Upload className={`w-12 h-12 mx-auto mb-4 ${isDragging ? 'text-brand-500' : 'text-slate-400'}`} />
@@ -448,7 +464,7 @@ export default function TaskSubmission({ params }: PageProps) {
                           {isDragging ? 'Drop files here...' : 'Drag & drop files here, or click to select'}
                         </p>
                         <p className="text-sm text-slate-500">
-                          Max 5 files, up to 10MB each
+                          {SUBMISSION_FILE_HINT}
                         </p>
                       </div>
 

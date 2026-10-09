@@ -12,9 +12,10 @@ import { clanRequestsApi } from '@/lib/services/clan-requests-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { formatRelativeTime } from '@/lib/utils/date';
 import Link from 'next/link';
-import { ClanAvatarEditor } from '@/components/shared/ClanAvatarEditor';
 import { Drawer } from '@/components/shared/Drawer';
 import { Avatar } from '@/components/shared/Avatar';
+import { ClanAvatar } from '@/components/shared/ClanAvatar';
+import { ClanAvatarEditor } from '@/components/shared/ClanAvatarEditor';
 import { CoMentorPermissionsDrawer } from '@/components/shared/CoMentorPermissionsDrawer';
 import { SelectMenu } from '@/components/shared/SelectMenu';
 import { IncomingTransfers, OutgoingTransfers } from '@/components/mentor/IncomingTransfers';
@@ -125,6 +126,7 @@ function ClanTeamCard({ clanId, myRole }: { clanId: string; myRole: string }) {
   const [permMember, setPermMember] = useState<Member | null>(null);
   const [canManageTeam, setCanManageTeam] = useState(myRole === 'lead_mentor');
   const [canAddMentees, setCanAddMentees] = useState(myRole === 'lead_mentor');
+  const [canEditAvatar, setCanEditAvatar] = useState(myRole === 'lead_mentor' || myRole === 'co_mentor');
   const confirm = useConfirm();
 
   const [isEditingLink, setIsEditingLink] = useState(false);
@@ -145,9 +147,11 @@ function ClanTeamCard({ clanId, myRole }: { clanId: string; myRole: string }) {
         if (access) {
           setCanManageTeam(Boolean(access.canManageTeam));
           setCanAddMentees(Boolean(access.canAddMentees));
+          setCanEditAvatar(Boolean(access.canEditAvatar));
         } else {
           setCanManageTeam(myRole === 'lead_mentor');
           setCanAddMentees(myRole === 'lead_mentor');
+          setCanEditAvatar(myRole === 'lead_mentor' || myRole === 'co_mentor');
         }
       })
       .catch(() => toast.error('Could not load clan'))
@@ -263,11 +267,13 @@ function ClanTeamCard({ clanId, myRole }: { clanId: string; myRole: string }) {
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-card p-5">
-      <div className="mb-4"><ClanAvatarEditor clanId={clanId} name={clan.name} avatarUrl={clan.avatarUrl} onChanged={load} /></div>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="font-semibold text-slate-900">{clan.name}</h2>
-          <p className="text-sm text-slate-500">{clan.program?.name} · {menteeCount} mentee{menteeCount === 1 ? '' : 's'}</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0 max-w-full">
+          <ClanAvatar name={clan.name} src={clan.avatarUrl} size="lg" />
+          <div className="min-w-0">
+            <h2 className="font-semibold text-slate-900">{clan.name}</h2>
+            <p className="text-sm text-slate-500">{clan.program?.name} · {menteeCount} mentee{menteeCount === 1 ? '' : 's'}</p>
+          </div>
         </div>
         {canManageTeam ? (
           <div className="flex items-center gap-2 shrink-0">
@@ -286,6 +292,17 @@ function ClanTeamCard({ clanId, myRole }: { clanId: string; myRole: string }) {
           <span className="text-xs text-slate-400 shrink-0">View only (co-mentor)</span>
         )}
       </div>
+
+      {canEditAvatar && !historical && (
+        <div className="mt-4">
+          <ClanAvatarEditor
+            clanId={clanId}
+            name={clan.name}
+            avatarUrl={clan.avatarUrl}
+            onChanged={(avatarUrl) => setClan((prev) => (prev ? { ...prev, avatarUrl } : prev))}
+          />
+        </div>
+      )}
       
       {/* WhatsApp Group Link Section */}
       {isEditingLink ? (

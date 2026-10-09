@@ -16,7 +16,7 @@ function readStored(key: string): string | null {
   try { return window.localStorage.getItem(key); } catch { return null; }
 }
 
-export interface ClanLite { id: string; name: string; kind?: 'cohort' | 'standing'; frozenAt?: string | null; programId?: string; }
+export interface ClanLite { id: string; name: string; avatarUrl?: string | null; kind?: 'cohort' | 'standing'; frozenAt?: string | null; programId?: string; }
 
 /** Cohort clans become historical after formal program close. Standing clans stay writable. */
 export function isHistoricalCohortClan(clan?: Pick<ClanLite, 'kind' | 'frozenAt'> | null): boolean {
@@ -101,11 +101,11 @@ export function ClanProvider({ children }: { children: ReactNode }) {
         if (!c) continue;
         if (MENTOR_CLAN_ROLES.includes(m.role) && !mentorSeen.has(c.id)) {
           mentorSeen.add(c.id);
-          mentor.push({ id: c.id, name: c.name, kind: c.kind, frozenAt: c.frozenAt, programId: c.programId });
+          mentor.push({ id: c.id, name: c.name, avatarUrl: c.avatarUrl, kind: c.kind, frozenAt: c.frozenAt, programId: c.programId });
         }
         if (m.role === 'mentee' && (m.status === 'active' || m.status === 'paused') && !menteeSeen.has(c.id)) {
           menteeSeen.add(c.id);
-          mentee.push({ id: c.id, name: c.name, kind: c.kind, frozenAt: c.frozenAt, programId: c.programId });
+          mentee.push({ id: c.id, name: c.name, avatarUrl: c.avatarUrl, kind: c.kind, frozenAt: c.frozenAt, programId: c.programId });
         }
       }
       const activeFirst = (a: ClanLite, b: ClanLite) => Number(!!a.frozenAt) - Number(!!b.frozenAt) || a.name.localeCompare(b.name);
