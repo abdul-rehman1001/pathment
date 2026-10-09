@@ -224,7 +224,11 @@ function BadgesPanel() {
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-slate-500 mt-0.5 capitalize">{roleOf(b)} · {b.criteriaType?.replace(/_/g, ' ')}</p>
+                  <p className="text-xs text-slate-500 mt-0.5 capitalize">
+                    {roleOf(b)} · {b.criteriaType?.replace(/_/g, ' ')}
+                    {' · '}
+                    {Number(b.earningScope) === 1 ? 'program' : Number(b.earningScope) === 2 ? 'clan' : 'workspace'}
+                  </p>
                   <p className="text-sm text-slate-600 mt-1 line-clamp-2">{b.description}</p>
                 </div>
               </div>
@@ -270,9 +274,13 @@ function BadgeDrawer({ badge, onClose, onSaved }: { badge: Badge | null; onClose
   );
   const [iconUrl, setIconUrl] = useState<string | null>(badge?.iconUrl ?? null);
   const [pointsReward, setPointsReward] = useState(Number(badge?.pointsReward || 0));
+  const [earningScope, setEarningScope] = useState<0 | 1 | 2>(
+    (Number(badge?.earningScope ?? 0) as 0 | 1 | 2) || 0,
+  );
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const field = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500';
+  const rulesFrozen = Boolean(badge);
 
   const onPickImage = async (file?: File) => {
     if (!file) return;
@@ -318,20 +326,29 @@ function BadgeDrawer({ badge, onClose, onSaved }: { badge: Badge | null; onClose
       toast.error('Name and description are required');
       return;
     }
-    const payload = {
-      name: name.trim(),
-      description: description.trim(),
-      category: 'milestone',
-      criteriaType,
-      criteriaValue: buildCriteriaValue(),
-      pointsReward,
-      iconUrl,
-      isActive: true,
-    };
     try {
       setSaving(true);
-      if (badge) await gamificationApi.updateBadge(badge.id, { ...payload, targetRole });
-      else await gamificationApi.createBadge(payload);
+      if (badge) {
+        // Criteria and scope freeze at creation — only presentation fields update.
+        await gamificationApi.updateBadge(badge.id, {
+          name: name.trim(),
+          description: description.trim(),
+          pointsReward,
+          iconUrl,
+        });
+      } else {
+        await gamificationApi.createBadge({
+          name: name.trim(),
+          description: description.trim(),
+          category: 'milestone',
+          criteriaType,
+          criteriaValue: buildCriteriaValue(),
+          pointsReward,
+          iconUrl,
+          isActive: true,
+          earningScope: targetRole === 'mentor' ? 0 : earningScope,
+        });
+      }
       toast.success(badge ? 'Badge updated' : 'Badge created');
       onSaved();
     } catch (e) {
@@ -363,40 +380,75 @@ function BadgeDrawer({ badge, onClose, onSaved }: { badge: Badge | null; onClose
             <select
               className={field}
               value={targetRole}
+              disabled={rulesFrozen}
               onChange={(e) => {
                 const next = e.target.value as 'mentee' | 'mentor';
                 setTargetRole(next);
                 setCriteriaType(next === 'mentor' ? 'reviews_given' : 'tasks_completed');
+                if (next === 'mentor') setEarningScope(0);
               }}
             >
               <option value="mentee">Mentee</option>
               <option value="mentor">Mentor</option>
             </select>
           </label>
+          {targetRole === 'mentee' && (
+            <label className="block space-y-1">
+              <span className="text-sm font-medium text-slate-700">Earning scope</span>
+              <select
+                className={field}
+                value={earningScope}
+                disabled={rulesFrozen}
+                onChange={(e) => {
+                  const next = Number(e.target.value) as 0 | 1 | 2;
+                  setEarningScope(next);
+                  if (next !== 0) setCriteriaType('tasks_completed');
+                }}
+              >
+                <option value={0}>Workspace</option>
+                <option value={1}>Program</option>
+                <option value={2}>Clan</option>
+              </select>
+              <p className="text-xs text-slate-500">
+                {earningScope === 0 && 'Counts all approved tasks in this workspace.'}
+                {earningScope === 1 && 'Counts once per program (standing-clan work excluded).'}
+                {earningScope === 2 && 'Counts once per clan.'}
+              </p>
+            </label>
+          )}
           <label className="block space-y-1">
             <span className="text-sm font-medium text-slate-700">Requirement</span>
-            <select className={field} value={criteriaType} onChange={(e) => setCriteriaType(e.target.value as BadgeCriteriaType)}>
-              {targetRole === 'mentee' ? (
-                <>
-                  <option value="tasks_completed">Approved tasks count</option>
-                  <option value="coins_earned">Lifetime coins earned</option>
-                  <option value="points_milestone">XP total</option>
-                  <option value="streak_days">Streak days</option>
-                  <option value="level_reached">Level reached</option>
-                  <option value="custom">Manual award only</option>
-                </>
-              ) : (
-                <>
-                  <option value="reviews_given">Reviews given</option>
-                  <option value="tasks_approved">Tasks approved</option>
-                  <option value="meetings_logged">Meetings logged</option>
-                  <option value="mentees_guided">Mentees guided</option>
-                  <option value="clans_led">Clans led</option>
-                  <option value="mentor_avg_rating">Avg mentor rating (min 3 reviews)</option>
-                  <option value="custom">Manual award only</option>
-                </>
-              )}
-            </select>
+            {targetRole === 'mentee' && earningScope !== 0 ? (
+              <div className={`${field} text-slate-800`}>Approved tasks count</div>
+            ) : (
+              <select
+                className={field}
+                value={criteriaType}
+                disabled={rulesFrozen}
+                onChange={(e) => setCriteriaType(e.target.value as BadgeCriteriaType)}
+              >
+                {targetRole === 'mentee' ? (
+                  <>
+                    <option value="tasks_completed">Approved tasks count</option>
+                    <option value="coins_earned">Lifetime coins earned</option>
+                    <option value="points_milestone">XP total</option>
+                    <option value="streak_days">Streak days</option>
+                    <option value="level_reached">Level reached</option>
+                    <option value="custom">Manual award only</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="reviews_given">Reviews given</option>
+                    <option value="tasks_approved">Tasks approved</option>
+                    <option value="meetings_logged">Meetings logged</option>
+                    <option value="mentees_guided">Mentees guided</option>
+                    <option value="clans_led">Clans led</option>
+                    <option value="mentor_avg_rating">Avg mentor rating (min 3 reviews)</option>
+                    <option value="custom">Manual award only</option>
+                  </>
+                )}
+              </select>
+            )}
           </label>
           {criteriaType !== 'custom' && (
             <label className="block space-y-1">
@@ -410,9 +462,15 @@ function BadgeDrawer({ badge, onClose, onSaved }: { badge: Badge | null; onClose
                 max={criteriaType === 'mentor_avg_rating' ? 5 : undefined}
                 className={field}
                 value={threshold}
+                disabled={rulesFrozen}
                 onChange={(e) => setThreshold(Number(e.target.value) || 1)}
               />
             </label>
+          )}
+          {rulesFrozen && (
+            <p className="text-xs text-amber-700 rounded-lg bg-amber-50 border border-amber-100 p-3">
+              Criteria and scope are frozen after creation. Create a new badge to change requirements.
+            </p>
           )}
           {criteriaType === 'custom' && (
             <p className="text-xs text-slate-500 rounded-lg bg-slate-50 border border-slate-100 p-3">

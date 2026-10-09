@@ -241,7 +241,7 @@ export default function MenteeGamificationPage() {
           {badgeProgressOpen && (
             <div className="px-5 pb-5 space-y-3 border-t border-slate-100 pt-4">
               {stats.badgeProgress.map((row) => (
-                <div key={row.badgeId} className="rounded-xl border border-slate-100 p-3">
+                <div key={row.progressKey || row.badgeId} className="rounded-xl border border-slate-100 p-3">
                   <div className="flex items-center justify-between gap-3 text-sm">
                     <span className="font-medium text-slate-800 truncate">{row.name}</span>
                     <span className="text-slate-500 tabular-nums shrink-0">
@@ -353,7 +353,7 @@ export default function MenteeGamificationPage() {
 
             {badges.map((badge) => (
               <div
-                key={badge.id}
+                key={badge.userBadgeId || badge.id}
                 className="rounded-2xl border border-border p-4 bg-muted/40"
               >
                 <div className="flex items-start gap-3">
@@ -372,6 +372,8 @@ export default function MenteeGamificationPage() {
                     </p>
                     <div className="text-xs text-slate-500 mt-2 capitalize">
                       {badge.category}
+                      {badge.clanName ? ` · ${badge.clanName}` : ''}
+                      {!badge.clanName && badge.programName ? ` · ${badge.programName}` : ''}
                       {badge.unlockedAt
                         ? ` · ${new Date(badge.unlockedAt).toLocaleDateString()}`
                         : ''}

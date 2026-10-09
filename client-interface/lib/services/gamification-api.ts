@@ -5,6 +5,11 @@ export interface BadgeProgress {
   name: string;
   iconUrl?: string | null;
   criteriaType: string;
+  /** 0 workspace, 1 program, 2 clan */
+  earningScope?: number;
+  programId?: string | null;
+  clanId?: string | null;
+  progressKey?: string;
   current: number;
   target: number;
   earned: boolean;
@@ -41,6 +46,13 @@ export interface Badge {
   isActive?: boolean;
   iconUrl?: string | null;
   unlockedAt?: string;
+  /** 0 workspace, 1 program, 2 clan */
+  earningScope?: number;
+  userBadgeId?: string;
+  programId?: string | null;
+  clanId?: string | null;
+  programName?: string | null;
+  clanName?: string | null;
 }
 
 export type BadgeCriteriaType =
@@ -129,9 +141,16 @@ export const gamificationApi = {
         (('name' in item && (item as Badge).name) ? (item as Badge) : null);
       if (!nested?.name) continue;
 
+      const flat = item as Badge;
       mapped.push({
         ...nested,
         unlockedAt: (item as UserBadgeApiItem).unlockedAt || nested.unlockedAt,
+        userBadgeId: flat.userBadgeId || (item as UserBadgeApiItem).id,
+        earningScope: flat.earningScope ?? nested.earningScope,
+        programId: flat.programId ?? null,
+        clanId: flat.clanId ?? null,
+        programName: flat.programName ?? null,
+        clanName: flat.clanName ?? null,
       });
     }
 
@@ -174,6 +193,7 @@ export const gamificationApi = {
     isActive?: boolean;
     isSecret?: boolean;
     iconUrl?: string | null;
+    earningScope?: 0 | 1 | 2;
   }): Promise<Badge> {
     const response = await apiClient.post<ApiResponse<{ badge: Badge }>>('/gamification/badges', payload);
     return response.data.badge;
@@ -183,20 +203,21 @@ export const gamificationApi = {
     name: string;
     description: string;
     category: string;
-    criteriaType: BadgeCriteriaType;
-    criteriaValue: Record<string, unknown>;
     pointsReward: number;
     isActive: boolean;
     isSecret: boolean;
     iconUrl: string | null;
-    targetRole: 'mentee' | 'mentor';
   }>): Promise<Badge> {
     const response = await apiClient.patch<ApiResponse<{ badge: Badge }>>(`/gamification/badges/${badgeId}`, payload);
     return response.data.badge;
   },
 
-  async awardBadge(userId: string, badgeId: string): Promise<void> {
-    await apiClient.post('/gamification/badges/award', { userId, badgeId });
+  async awardBadge(
+    userId: string,
+    badgeId: string,
+    context?: { programId?: string | null; clanId?: string | null; reason?: string },
+  ): Promise<void> {
+    await apiClient.post('/gamification/badges/award', { userId, badgeId, context });
   },
 };
 
