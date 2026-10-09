@@ -1,7 +1,7 @@
 const authzService = require('../services/authzService');
 const gamificationService = require('../services/gamificationService');
 const { models } = require('../db');
-const { NotFoundError } = require('../utils/errors/errorTypes');
+const { NotFoundError, ValidationError } = require('../utils/errors/errorTypes');
 const { successResponse } = require('../utils/responses');
 const { catchAsync } = require('../middlewares/errorHandler');
 
@@ -98,7 +98,8 @@ exports.getAllBadges = catchAsync(async (req, res) => {
 
   let badges = await models.Badge.findAll({
     where,
-    order: [['category', 'ASC'], ['name', 'ASC']]
+    // Newest first so a just-created badge appears at the top of admin Rewards.
+    order: [['createdAt', 'DESC'], ['name', 'ASC']]
   });
 
   if (role === 'mentee' || role === 'mentor') {
@@ -126,6 +127,18 @@ exports.createBadge = catchAsync(async (req, res) => {
   if (!body.criteriaValue?.targetRole) {
     body.criteriaValue = { ...(body.criteriaValue || {}), targetRole: 'mentee' };
   }
+  const scope = Number(body.earningScope ?? 0);
+  if (![0, 1, 2].includes(scope)) {
+    throw new ValidationError('earningScope must be 0 (workspace), 1 (program), or 2 (clan)');
+  }
+  body.earningScope = scope;
+  // Program/clan auto-progress is tasks_completed only in this release.
+  if (scope !== 0 && body.criteriaType !== 'tasks_completed' && body.criteriaValue?.targetRole !== 'mentor') {
+    throw new ValidationError('Program and clan badges currently support tasks_completed only');
+  }
+  if (body.criteriaValue?.targetRole === 'mentor' && scope !== 0) {
+    throw new ValidationError('Mentor badges are workspace-scoped');
+  }
   const badge = await models.Badge.create(body);
 
   res.status(201).json(
@@ -142,13 +155,26 @@ exports.updateBadge = catchAsync(async (req, res) => {
   if (!badge) throw new NotFoundError('Badge not found');
 
   const patch = { ...req.body };
-  if (patch.targetRole && patch.criteriaValue) {
-    patch.criteriaValue = { ...patch.criteriaValue, targetRole: patch.targetRole };
-    delete patch.targetRole;
-  } else if (patch.targetRole) {
-    patch.criteriaValue = { ...(badge.criteriaValue || {}), ...(patch.criteriaValue || {}), targetRole: patch.targetRole };
-    delete patch.targetRole;
+  // Rules and scope freeze at creation — create a new badge for new requirements.
+  if (
+    patch.earningScope !== undefined
+    && Number(patch.earningScope) !== Number(badge.earningScope ?? 0)
+  ) {
+    throw new ValidationError('Cannot change earning scope; create a new badge instead');
   }
+  if (patch.criteriaType !== undefined && patch.criteriaType !== badge.criteriaType) {
+    throw new ValidationError('Cannot change criteria type; create a new badge instead');
+  }
+  if (patch.criteriaValue !== undefined) {
+    throw new ValidationError('Cannot change criteria; create a new badge instead');
+  }
+  if (patch.targetRole !== undefined) {
+    throw new ValidationError('Cannot change audience; create a new badge instead');
+  }
+  delete patch.earningScope;
+  delete patch.criteriaType;
+  delete patch.criteriaValue;
+  delete patch.targetRole;
   if (patch.iconUrl === '') patch.iconUrl = null;
 
   await badge.update(patch);
@@ -164,7 +190,11 @@ exports.awardBadgeManual = catchAsync(async (req, res) => {
 
   const { userId, badgeId, context } = req.body;
 
-  const result = await gamificationService.awardBadge(userId, badgeId, context || {});
+  const result = await gamificationService.awardBadge(userId, badgeId, {
+    ...(context || {}),
+    awardMethod: 'manual',
+    awardedBy: req.user?.id || null,
+  });
 
   res.status(200).json(
     successResponse('Badge awarded successfully', result)

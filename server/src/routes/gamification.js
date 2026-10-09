@@ -67,6 +67,8 @@ router.post(
     pointsReward: Joi.number().integer().min(0).default(0),
     isActive: Joi.boolean().default(true),
     isSecret: Joi.boolean().default(false),
+    // 0 = workspace, 1 = program, 2 = clan
+    earningScope: Joi.number().integer().valid(0, 1, 2).default(0),
     // Absolute CDN URLs or local presets under /badges/*
     iconUrl: Joi.string().uri({ allowRelative: true }).allow('', null).optional()
   })),
@@ -92,7 +94,7 @@ router.patch(
     isActive: Joi.boolean(),
     isSecret: Joi.boolean(),
     iconUrl: Joi.string().uri({ allowRelative: true }).allow('', null),
-    targetRole: Joi.string().valid('mentee', 'mentor'),
+    // criteria/scope/audience frozen after create — omitted from patch schema
   })),
   gamificationController.updateBadge
 );
@@ -104,7 +106,11 @@ router.post(
   validate(Joi.object({
     userId: Joi.string().uuid().required(),
     badgeId: Joi.string().uuid().required(),
-    context: Joi.object().optional()
+    context: Joi.object({
+      programId: Joi.string().uuid().allow(null),
+      clanId: Joi.string().uuid().allow(null),
+      reason: Joi.string().max(500),
+    }).unknown(true).optional()
   })),
   gamificationController.awardBadgeManual
 );

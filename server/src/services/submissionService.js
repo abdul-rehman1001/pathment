@@ -508,8 +508,20 @@ class SubmissionService {
 
         await gamificationService.updateStreak(task.menteeId);
 
-        // Re-check task-based badges after profile counters are refreshed.
-        await gamificationService.checkAndAwardBadges(task.menteeId);
+        // Re-check badges using the assignment's clan/enrollment (not UI clan).
+        let programId = null;
+        if (task.enrollmentId) {
+          const enrollment = await models.Enrollment.findByPk(task.enrollmentId, {
+            attributes: ['programId'],
+            skipOrganizationScope: true,
+          });
+          programId = enrollment?.programId || null;
+        }
+        await gamificationService.checkAndAwardBadges(task.menteeId, {
+          organizationId: task.organizationId,
+          programId,
+          clanId: task.clanId || null,
+        });
       } catch (gamificationError) {
         // Do not fail review flow if gamification side-effects fail.
         console.error('[Gamification] reviewSubmission side-effect failed:', {
