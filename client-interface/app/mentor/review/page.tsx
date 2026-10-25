@@ -1931,8 +1931,19 @@ export default function CohortReview() {
                 className={`rounded-xl border px-3.5 py-3 transition-colors ${isCurrent ? 'border-brand-300 bg-brand-50 dark:bg-brand-500/10' : 'border-slate-200 dark:border-slate-700 hover:border-brand-300'}`}>
                 <div className="flex items-start justify-between gap-2">
                   <button type="button" onClick={() => { setHistoryOpen(false); router.push(`/mentor/review?session=${s.id}`); }} className="min-w-0 flex-1 text-left">
-                    <span className="text-sm font-medium text-slate-900 inline-flex items-center gap-1.5"><CalendarDays className="w-3.5 h-3.5 text-slate-400" />{dateLabel}</span>
+                    <span className="text-sm font-medium text-slate-900 inline-flex flex-wrap items-center gap-1.5"><CalendarDays className="w-3.5 h-3.5 text-slate-400" />{dateLabel}
+                      {/* A discussion is not a review. Without saying which, the
+                          history is a column of identical dates and the only way
+                          to find a scored discussion is to open them one by one. */}
+                      {s.kind === 'discussion' && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-medium text-violet-700 dark:bg-violet-500/15 dark:text-violet-300"><MessageSquareQuote className="w-3 h-3" />Discussion</span>
+                      )}
+                      {s.kind === 'presentation' && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-500/15 dark:text-sky-300"><Presentation className="w-3 h-3" />Presentations</span>
+                      )}
+                    </span>
                     {s.title && <p className="text-xs text-slate-500 mt-0.5">{s.title}</p>}
+                    {!s.title && s.scenario && <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">{s.scenario}</p>}
                     <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5 text-[11px] text-slate-500">
                       <span>{s.counts.reviewed}/{s.counts.total} reviewed</span>
                       <span className="text-emerald-600">{s.counts.present} present</span>
