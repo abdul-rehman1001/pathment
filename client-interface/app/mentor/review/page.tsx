@@ -10,8 +10,7 @@ import { toast } from 'sonner';
 import {
   ChevronLeft, ChevronRight, SkipForward, Check, Loader2,
   TrendingUp, TrendingDown, Minus, Flag, Clock, ClipboardCheck, Keyboard, CheckCircle2, ArrowUpRight, Send, Plus, ListTodo, CalendarClock,
-  Trash2, X, History, RotateCcw, CalendarDays, AlertTriangle, StickyNote, Search, Lock, Unlock, PauseCircle, Sparkles, Star, Users,
-} from 'lucide-react';
+  Trash2, X, History, RotateCcw, CalendarDays, AlertTriangle, StickyNote, Search, Lock, Unlock, PauseCircle, Sparkles, Star, Users, MessageSquareQuote, Presentation } from 'lucide-react';
 import Link from 'next/link';
 import { useMentorCohort, useMentorApprovals, type CohortMentee, type CohortMomentum, type CohortRisk, type ApprovalItem } from '@/lib/hooks/mentor';
 import { useAuth } from '@/lib/context/AuthContext';
@@ -36,6 +35,7 @@ import { Avatar } from '@/components/shared/Avatar';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 import { AttendanceSection } from '@/components/mentor/attendance/AttendanceSection';
 import { ReviewMeetingPanel } from '@/components/mentor/ReviewMeetingPanel';
+import { DiscussionPanel } from '@/components/mentor/discussion/DiscussionPanel';
 import { ReviewScheduleDrawer } from '@/components/mentor/ReviewScheduleDrawer';
 import { getViewerTimeZone } from '@/lib/utils/datetime';
 import { MobileReviewActionBar } from '@/components/mentor/MobileReviewActionBar';
@@ -48,7 +48,7 @@ type EntryStatus = 'pending' | 'reviewed' | 'deferred';
 interface ReviewEntry { id?: string; menteeId: string; attendance: Attendance | null; status: EntryStatus; note?: string | null; mentee?: { id: string; name: string } | null }
 // `draft` = today's session that doesn't exist on the server yet. It's created
 // lazily on the first real action so merely opening the page leaves no record.
-interface ReviewSession { id: string; sessionDate: string; title: string | null; status: 'in_progress' | 'finished' | 'draft'; note: string | null; finishedAt?: string | null; entries: ReviewEntry[] }
+interface ReviewSession { id: string; sessionDate: string; title: string | null; status: 'in_progress' | 'finished' | 'draft'; note: string | null; finishedAt?: string | null; entries: ReviewEntry[]; kind?: 'review' | 'discussion' | 'presentation'; scenario?: string | null }
 interface ReviewSessionSummary extends Omit<ReviewSession, 'entries'> { counts: { total: number; present: number; absent: number; excused: number; reviewed: number; deferred: number } }
 
 const RISK_PILL: Record<CohortRisk, { label: string; cls: string; dot: string }> = {
@@ -771,6 +771,31 @@ export default function CohortReview() {
    */
   const [meetingSlot, setMeetingSlot] = useState<HTMLElement | null>(null);
 
+  /**
+   * Start a discussion or a presentation for this clan.
+   *
+   * A new session every time, not today's review reused: two discussions in an
+   * afternoon are two events with two sets of scores, and the server keeps
+   * them apart for the same reason.
+   */
+  const [startingKind, setStartingKind] = useState<'discussion' | 'presentation' | null>(null);
+  const startSession = useCallback(async (kind: 'discussion' | 'presentation') => {
+    setStartingKind(kind);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const r: any = await mentorApi.createReviewSession({ clanId: effectiveClanId, kind });
+      const created = r?.data?.session;
+      if (!created) throw new Error('Could not start it');
+      setSession(created);
+      toast.success(kind === 'discussion' ? 'Discussion started' : 'Presentations started');
+    } catch (error) {
+      toast.error((error as { message?: string })?.message || 'Could not start it');
+    } finally {
+      setStartingKind(null);
+    }
+  }, [effectiveClanId]);
+
+
   // Click a task row → full detail + edit/note/reassign/unassign, in-context.
   const [taskDetail, setTaskDetail] = useState<any>(null); // eslint-disable-line @typescript-eslint/no-explicit-any
   // Per-task inline controls in "Assigned work": change deadline / unassign.
@@ -1191,6 +1216,34 @@ export default function CohortReview() {
               It turns solid only once everyone has been seen, so it reads as
               "ready" rather than as the obvious next click from the start.
           */}
+          {/*
+            * Starting a discussion or a presentation. Deliberately beside
+            * Finish rather than hidden in a menu: a facilitator decides to run
+            * one at the moment they are looking at the clan, and a feature
+            * nobody can find is a feature nobody has.
+            */}
+          {!historical && session?.kind !== 'discussion' && session?.kind !== 'presentation' && (
+            <>
+              <button
+                onClick={() => startSession('discussion')}
+                disabled={startingKind !== null}
+                title="Run a group discussion on a scenario, and score it as it happens"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-muted disabled:opacity-50 sm:px-3 sm:py-2 sm:text-sm"
+              >
+                <MessageSquareQuote className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                Discussion
+              </button>
+              <button
+                onClick={() => startSession('presentation')}
+                disabled={startingKind !== null}
+                title="Run presentations with a running order, and score each one"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-muted disabled:opacity-50 sm:px-3 sm:py-2 sm:text-sm"
+              >
+                <Presentation className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                Presentations
+              </button>
+            </>
+          )}
           <button
             onClick={finishOrReopen}
             disabled={historical}
@@ -1226,6 +1279,19 @@ export default function CohortReview() {
           Idle it is a button in the header; live it is the call, here. */}
       {session && (session.id || isDraft) && (
         <ReviewMeetingPanel sessionId={session.id} isDraft={isDraft} ensureSession={ensureSession} onAttendanceSync={syncMeetingAttendance} onEnded={loadSession} readOnly={historical} buttonSlot={meetingSlot} />
+      )}
+
+      {/*
+        * A discussion or a presentation takes over the page. The daily review
+        * is a list of people to get through; this is a room to run, and the
+        * two want opposite layouts - so rather than squeezing a rubric into
+        * the review list, the session says which it is and gets the right one.
+        */}
+      {session?.id && session.kind && session.kind !== 'review' && (
+        <DiscussionPanel
+          session={session as never}
+          onChanged={loadSession}
+        />
       )}
 
       {/* Attendance Strip — now also the home of the mentee search. */}
