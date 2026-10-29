@@ -1,13 +1,40 @@
 const { Op } = require('sequelize');
 const { models, sequelize } = require('../db');
-const { NotFoundError, ValidationError } = require('../utils/errors/errorTypes');
+const { NotFoundError, ValidationError, AuthorizationError } = require('../utils/errors/errorTypes');
 const clanService = require('./clanService');
+const clanLifecycleService = require('./clanLifecycleService');
 const notificationOrchestrator = require('./notificationOrchestrator');
 const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
+const { VISIBLE_MEMBERSHIP_STATUSES } = require('../config/membership');
 
 const fullName = (u) => (u ? `${u.firstName} ${u.lastName}`.trim() : null);
 
 const CROSS_KIND_LABEL = { cover: 'cover for', specialist: 'specialist help in', co_mentee_access: 'mentee access in' };
+
+/**
+ * Why a mentee asks to move: a short code, and the same reason worded for each
+ * of the two people who read it.
+ *
+ * A free-text box alone gets "i want to change" forty times, which tells an
+ * admin nothing and makes a queue of four hundred impossible to triage. A
+ * category alone loses the detail that actually decides it. So: one of these,
+ * AND their own words. The category is what the queue groups on; the words are
+ * what the admin judges.
+ *
+ * Two labels because there are two readers. The mentee is choosing a sentence
+ * about themselves and must see it in the first person; the admin is reading
+ * about somebody else and must see it in the third. One shared string would
+ * have to be wrong for one of them - and the version that got written first
+ * ("the pace is wrong for them") was the one the mentee had to pick from.
+ */
+const MENTEE_REASON_CODES = {
+  timezone: { mine: 'The clan\u2019s hours do not work for me', theirs: 'The clan\u2019s hours do not work for them' },
+  schedule: { mine: 'I cannot make the review slot', theirs: 'They cannot make the review slot' },
+  pace: { mine: 'The pace is wrong for me', theirs: 'The pace is wrong for them' },
+  mentor_fit: { mine: 'I would work better with a different mentor', theirs: 'They would work better with a different mentor' },
+  peers: { mine: 'I want to be with different peers', theirs: 'They want to be with different peers' },
+  other: { mine: 'Something else', theirs: 'Something else' },
+};
 
 /** Admin clan operations: change requests, cross-clan assignments, policies. */
 class ClanRequestsService {
@@ -90,9 +117,325 @@ class ClanRequestsService {
     };
   }
 
+  /**
+   * An ADMIN raises a move from the console. Not the mentee's own path - that
+   * is `requestOwnMove`, and the difference is authority, not a body field.
+   *
+   * This used to be reachable by any authenticated user with any `menteeId`
+   * and any `toClanId` in the body, which let a mentee queue a move for
+   * somebody else entirely; an admin approving it in good faith would then
+   * reassign a person nobody had asked about. The route now carries the
+   * permission and `origin` is set here rather than trusted from the caller,
+   * so the three origins cannot be impersonated through one another.
+   */
   async createRequest({ menteeId, toClanId, fromClanId, reason }, createdBy) {
     if (!menteeId || !toClanId) throw new ValidationError('menteeId and toClanId are required');
-    return models.ClanChangeRequest.create({ menteeId, toClanId, fromClanId: fromClanId || null, reason: reason || null, createdBy });
+    return models.ClanChangeRequest.create({
+      menteeId, toClanId, fromClanId: fromClanId || null, reason: reason || null,
+      origin: 'admin', createdBy,
+    });
+  }
+
+  // ── the mentee's own ask ───────────────────────────────────────────────────
+
+  /**
+   * One of the mentee's clans, with the programme it belongs to, refusing the
+   * ones a move makes no sense from.
+   *
+   * `resolveMenteeClanId` is the shared resolver and it is deliberately strict:
+   * it will not pick for somebody who is in several clans, because guessing
+   * which clan a mentee wants to LEAVE is the one guess that cannot be
+   * recovered from.
+   */
+  async _menteeClan(userId, clanId) {
+    const { resolveMenteeClanId } = require('./menteeClanScope');
+    const resolved = await resolveMenteeClanId(userId, clanId || null);
+    if (!resolved) throw new ValidationError('You are not in a clan yet, so there is nothing to move from');
+
+    const clan = await models.Clan.findByPk(resolved, {
+      attributes: ['id', 'name', 'kind', 'programId', 'frozenAt', 'avatarUrl'],
+    });
+    if (!clan) throw new NotFoundError('Clan not found');
+    // A standing clan has no programme and no roster to move between, and a
+    // frozen one belongs to a closed cohort - asking to be moved inside either
+    // is asking for something that does not exist.
+    if (clan.kind === 'standing') {
+      throw new ValidationError('This is a standing clan. There is no other clan in it to move to.');
+    }
+    await clanLifecycleService.assertClanWritable(clan.id);
+    return clan;
+  }
+
+  /**
+   * What the mentee's own page needs in one read: where they are, where they
+   * could ask to go, what they have already asked, and why they might.
+   *
+   * Siblings are the other live cohort clans of the SAME programme. A mentee
+   * cannot ask to be moved into another programme - that is an enrolment
+   * decision with a different roadmap behind it, and `reassignMentee` would
+   * wipe their work to make it, which is not something a mentee should be able
+   * to set in motion from a form.
+   */
+  async myClanChangeOptions(userId) {
+    const memberships = await models.ClanMembership.findAll({
+      where: { userId, role: 'mentee', status: { [Op.in]: VISIBLE_MEMBERSHIP_STATUSES } },
+      attributes: ['clanId', 'status'],
+      include: [{
+        model: models.Clan, as: 'clan', required: true,
+        attributes: ['id', 'name', 'kind', 'programId', 'frozenAt', 'avatarUrl'],
+        include: [{ model: models.Program, as: 'program', attributes: ['id', 'name'] }],
+      }],
+    });
+
+    const mine = memberships.filter((m) => m.clan && m.clan.kind === 'cohort');
+    const programIds = [...new Set(mine.map((m) => m.clan.programId).filter(Boolean))];
+
+    // Every live cohort clan of those programmes, with the lead mentor's name
+    // and how many mentees are in it. No capacity figure: `Clan` has no such
+    // column, and inventing one from member counts would read as a promise.
+    const siblings = programIds.length
+      ? await models.Clan.findAll({
+        where: { programId: { [Op.in]: programIds }, kind: 'cohort', frozenAt: null },
+        attributes: ['id', 'name', 'programId', 'avatarUrl'],
+        include: [{
+          model: models.User, as: 'leadMentor', attributes: ['id', 'firstName', 'lastName'], required: false,
+        }],
+        order: [['name', 'ASC']],
+      })
+      : [];
+
+    const counts = siblings.length
+      ? await models.ClanMembership.findAll({
+        where: {
+          clanId: { [Op.in]: siblings.map((c) => c.id) },
+          role: 'mentee',
+          status: { [Op.in]: VISIBLE_MEMBERSHIP_STATUSES },
+        },
+        attributes: ['clanId', [sequelize.fn('COUNT', sequelize.col('id')), 'n']],
+        group: ['clanId'],
+        raw: true,
+      })
+      : [];
+    const countOf = Object.fromEntries(counts.map((r) => [r.clanId, Number(r.n)]));
+
+    const requests = await this.myClanChangeRequests(userId);
+
+    return {
+      clans: mine.map((m) => ({
+        id: m.clan.id,
+        name: m.clan.name,
+        avatarUrl: m.clan.avatarUrl || null,
+        paused: m.status === 'paused',
+        // A closed cohort is read-only, so `requestOwnMove` will refuse it.
+        // Said here too, or the page offers a button that can only ever fail.
+        closed: Boolean(m.clan.frozenAt),
+        programId: m.clan.programId,
+        programName: m.clan.program?.name || null,
+        // Their own clan is never offered as a destination.
+        options: siblings
+          .filter((c) => c.programId === m.clan.programId && c.id !== m.clan.id)
+          .map((c) => ({
+            id: c.id,
+            name: c.name,
+            avatarUrl: c.avatarUrl || null,
+            mentor: c.leadMentor ? fullName(c.leadMentor) : null,
+            mentees: countOf[c.id] || 0,
+          })),
+      })),
+      reasons: Object.entries(MENTEE_REASON_CODES).map(([code, label]) => ({ code, label: label.mine })),
+      requests,
+    };
+  }
+
+  /** The mentee's own requests, newest first, with the answer when there is one. */
+  async myClanChangeRequests(userId) {
+    const rows = await models.ClanChangeRequest.findAll({
+      where: { menteeId: userId, origin: 'mentee' },
+      order: [['created_at', 'DESC']],
+      limit: 20,
+      include: [
+        { model: models.Clan, as: 'fromClan', attributes: ['id', 'name', 'avatarUrl'] },
+        { model: models.Clan, as: 'toClan', attributes: ['id', 'name', 'avatarUrl'] },
+        { model: models.User, as: 'resolver', attributes: ['firstName', 'lastName'] },
+      ],
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      status: r.status,
+      reason: r.reason,
+      fromClan: r.fromClan?.name || null,
+      fromClanId: r.fromClanId || null,
+      // Null while it is open and they named no preference - the admin has not
+      // chosen yet, and the page says exactly that rather than showing a blank.
+      toClan: r.toClan?.name || null,
+      toClanId: r.toClanId || null,
+      resolutionNote: r.resolutionNote,
+      resolvedBy: r.resolver ? fullName(r.resolver) : null,
+      resolvedAt: r.resolvedAt,
+      at: r.createdAt,
+    }));
+  }
+
+  /**
+   * The mentee asks to be moved.
+   *
+   * `toClanId` is optional on purpose: see the migration. Naming a clan makes
+   * it a preference, not a decision - the admin can approve into a different
+   * one, and the mentee's page says which they were actually moved to.
+   */
+  async requestOwnMove({ fromClanId, toClanId, reasonCode, note }, user) {
+    const code = String(reasonCode || '').trim();
+    if (!MENTEE_REASON_CODES[code]) throw new ValidationError('Choose a reason for the move');
+    const words = String(note || '').trim();
+    if (words.length < 10) {
+      throw new ValidationError('Tell the admin a little more - at least a sentence about why');
+    }
+    if (words.length > 2000) throw new ValidationError('Please keep this under 2000 characters');
+
+    const from = await this._menteeClan(user.id, fromClanId);
+
+    // One open ask per clan, not per person: a mentee in two clans may well
+    // need to move out of one and be perfectly happy in the other.
+    const open = await models.ClanChangeRequest.findOne({
+      where: { menteeId: user.id, fromClanId: from.id, status: 'pending' },
+    });
+    if (open) {
+      throw new ValidationError('You already have a request waiting on an admin for this clan');
+    }
+
+    let target = null;
+    if (toClanId) {
+      target = await models.Clan.findByPk(toClanId, {
+        attributes: ['id', 'name', 'kind', 'programId', 'frozenAt'],
+      });
+      if (!target) throw new NotFoundError('That clan no longer exists');
+      if (target.id === from.id) throw new ValidationError('That is the clan you are already in');
+      if (target.kind !== 'cohort' || target.frozenAt) {
+        throw new ValidationError('That clan is not taking people');
+      }
+      // The cross-programme bar, enforced here rather than trusted from the
+      // form: a different programme means a different roadmap, and the move
+      // would discard this mentee's work to make room for it.
+      if (target.programId !== from.programId) {
+        throw new ValidationError('You can only ask to move within your own program');
+      }
+    }
+
+    const request = await models.ClanChangeRequest.create({
+      menteeId: user.id,
+      fromClanId: from.id,
+      toClanId: target ? target.id : null,
+      // Both halves in one column, because that is what the admin reads. The
+      // code leads so the queue can group on it without a second column.
+      reason: `${MENTEE_REASON_CODES[code].theirs}: ${words}`,
+      origin: 'mentee',
+      createdBy: user.id,
+    });
+
+    await this._notifyMenteeRequest({ request, mentee: user, from, target }).catch((e) =>
+      console.error('[clanRequests] mentee request notify failed (non-fatal):', e.message));
+
+    return (await this.myClanChangeRequests(user.id)).find((r) => r.id === request.id) || null;
+  }
+
+  /** The mentee changes their mind before anyone has decided. */
+  async cancelOwnMove(id, userId) {
+    const request = await models.ClanChangeRequest.findByPk(id);
+    if (!request) throw new NotFoundError('Request not found');
+    if (request.menteeId !== userId || request.origin !== 'mentee') {
+      throw new AuthorizationError('That is not your request');
+    }
+    if (request.status !== 'pending') {
+      throw new ValidationError('That request has already been decided');
+    }
+    request.status = 'cancelled';
+    request.resolvedAt = new Date();
+    await request.save();
+    return { id: request.id, status: request.status };
+  }
+
+  /**
+   * Tell the programme's admins, and nobody else's.
+   *
+   * `workspaceRecipients.programAdmins` is the whole point: an org-tier admin
+   * sees everything, and the admin who actually runs this programme - the one
+   * who will decide it - holds a programme-scoped role that the plain
+   * `admins()` list leaves out entirely.
+   */
+  async _notifyMenteeRequest({ request, mentee, from, target }) {
+    const recipients = await require('./workspaceRecipients').programAdmins(from.programId);
+    if (!recipients.length) return;
+
+    const who = fullName(mentee) || 'A mentee';
+    const where = target
+      ? `They would like to move to ${target.name}.`
+      : 'They have not named a clan, so the choice is yours.';
+
+    await notificationOrchestrator.dispatch({
+      eventKey: NOTIFICATION_EVENTS.CLAN_CHANGE_REQUESTED,
+      recipients: recipients.map((a) => ({ userId: a.id })),
+      payload: {
+        title: 'A mentee asked to change clan',
+        message: `${who} asked to move out of ${from.name}. ${where} Reason: ${request.reason}`,
+        actionUrl: '/admin/requests?tab=requests',
+        actionLabel: 'Review the request',
+        relatedEntityType: 'clan_change_request',
+        relatedEntityId: request.id,
+        emailSubject: `Pathment: ${who} asked to change clan`,
+      },
+      dedupe: { relatedEntityType: 'clan_change_request', relatedEntityId: request.id },
+    });
+  }
+
+  /** A mentee has landed in this clan by someone else's decision. */
+  async _notifyReceivingMentors({ request, clanId }) {
+    const [mentors, clan, mentee] = await Promise.all([
+      models.ClanMembership.findAll({
+        where: { clanId, role: ['lead_mentor', 'co_mentor'], status: 'active' },
+        attributes: ['userId'],
+      }),
+      models.Clan.findByPk(clanId, { attributes: ['name'] }),
+      models.User.findByPk(request.menteeId, { attributes: ['firstName', 'lastName'] }),
+    ]);
+    const recipientIds = [...new Set(mentors.map((m) => m.userId).filter(Boolean))];
+    if (!recipientIds.length) return;
+
+    const who = fullName(mentee) || 'A mentee';
+    await notificationOrchestrator.dispatch({
+      eventKey: NOTIFICATION_EVENTS.NEW_MENTEE_IN_CLAN,
+      recipients: recipientIds.map((userId) => ({ userId })),
+      payload: {
+        title: 'A mentee has moved into your clan',
+        message: `${who} has been moved into ${clan?.name || 'your clan'} by an admin. Their tasks, submissions and feedback have come with them.`,
+        actionUrl: '/mentor/mentees',
+        actionLabel: 'See your mentees',
+        relatedEntityType: 'clan_change_arrival',
+        relatedEntityId: request.id,
+        emailSubject: `Pathment: ${who} has joined your clan`,
+      },
+      dedupe: { relatedEntityType: 'clan_change_arrival', relatedEntityId: request.id },
+    });
+  }
+
+  /** The answer, to the mentee who asked. */
+  async _notifyMenteeDecision({ request, approved, movedTo, note }) {
+    const landed = approved && movedTo ? ` You are now in ${movedTo.name}.` : '';
+    await notificationOrchestrator.dispatch({
+      eventKey: NOTIFICATION_EVENTS.CLAN_CHANGE_DECIDED,
+      recipients: [{ userId: request.menteeId }],
+      payload: {
+        title: approved ? 'Your clan change was approved' : 'Your clan change was not approved',
+        message: approved
+          ? `Your request to move clan has been approved.${landed}${note ? ` Note: ${note}` : ''}`
+          : `Your request to move clan was not approved.${note ? ` ${note}` : ''}`,
+        actionUrl: '/mentee/clan',
+        actionLabel: approved ? 'See your clan' : 'See the answer',
+        relatedEntityType: 'clan_change_decided',
+        relatedEntityId: request.id,
+        emailSubject: approved ? 'Pathment: your clan change was approved' : 'Pathment: about your clan change request',
+      },
+      dedupe: { relatedEntityType: 'clan_change_decided', relatedEntityId: request.id },
+    });
   }
 
   /**
@@ -106,16 +449,49 @@ class ClanRequestsService {
    * approving a request produced a different result from a mentor accepting the
    * same one. One path, one outcome.
    */
-  async resolveRequest(id, { status, note }, actorId = null) {
+  async resolveRequest(id, { status, note, toClanId }, actorId = null) {
     if (!['approved', 'denied'].includes(status)) throw new ValidationError('status must be approved or denied');
     const req = await models.ClanChangeRequest.findByPk(id);
     if (!req) throw new NotFoundError('Request not found');
     if (req.status !== 'pending') throw new ValidationError('This request has already been decided');
 
+    const fromMentee = req.origin === 'mentee';
+
+    /*
+     * Where they are actually going.
+     *
+     * A mentee's request may name no clan at all, and may name one only as a
+     * preference, so the admin's choice wins when they make one. For the other
+     * two origins the destination was the request - overriding it silently
+     * would answer a different question from the one that was asked - so it is
+     * taken as given and an override is refused rather than ignored.
+     */
+    let destination = req.toClanId;
+    if (status === 'approved' && toClanId && toClanId !== req.toClanId) {
+      if (!fromMentee) {
+        throw new ValidationError('This request names its own target clan. Deny it and raise a new one to send them elsewhere.');
+      }
+      destination = toClanId;
+    }
+
+    if (status === 'approved' && !destination) {
+      throw new ValidationError('Choose the clan to move them into');
+    }
+
+    // A mentee who is told "no" and nothing else has no idea what to do next,
+    // and will simply ask again. Mentor- and admin-raised rows keep their old
+    // behaviour, where the note is genuinely optional.
+    if (status === 'denied' && fromMentee && !String(note || '').trim()) {
+      throw new ValidationError('Explain the decision so the mentee knows where they stand');
+    }
+
     // Move first: if placement fails the request stays pending rather than
     // claiming a move that never happened.
     if (status === 'approved') {
-      await clanService.reassignMentee(req.menteeId, req.toClanId, actorId);
+      await clanService.reassignMentee(req.menteeId, destination, actorId);
+      // Record the clan they were actually moved into, which for a mentee's
+      // open-ended ask is the only place that answer is ever written down.
+      req.toClanId = destination;
     }
 
     req.status = status;
@@ -123,6 +499,45 @@ class ClanRequestsService {
     req.resolvedBy = actorId || null;
     req.resolvedAt = new Date();
     await req.save();
+
+    /*
+     * Tell the mentors who have just acquired a mentee.
+     *
+     * `reassignMentee` places the person and mirrors their work across, but it
+     * notifies nobody - the two paths that reached it before this one were an
+     * admin doing it deliberately and a mentor claiming from the pool, and in
+     * both the person who would be told is the person who did it. An approved
+     * clan change is the first case where the receiving mentors took no action
+     * at all: without this a new mentee, with a migrated history of tasks and
+     * submissions, simply appears in their clan overnight.
+     *
+     * Deliberately not sent to the mentor they are LEAVING. A mentee citing
+     * mentor fit has to be able to say so to an admin without it being
+     * forwarded to the person they are talking about, or the honest version of
+     * this form stops being filled in. The departure shows on their roster,
+     * and an admin can explain it in the words they choose.
+     */
+    if (status === 'approved' && destination) {
+      try {
+        await this._notifyReceivingMentors({ request: req, clanId: destination });
+      } catch (e) {
+        console.error('[clanRequests] receiving-mentor notify failed (non-fatal):', e.message);
+      }
+    }
+
+    // The mentee asked for this one — tell them the answer either way.
+    if (fromMentee) {
+      try {
+        const movedTo = req.toClanId
+          ? await models.Clan.findByPk(req.toClanId, { attributes: ['id', 'name'] })
+          : null;
+        await this._notifyMenteeDecision({
+          request: req, approved: status === 'approved', movedTo, note: String(note || '').trim(),
+        });
+      } catch (e) {
+        console.error('[clanRequests] mentee decision notify failed (non-fatal):', e.message);
+      }
+    }
 
     // A mentor asked for this one — tell them the answer, same as when a peer
     // mentor decides it. Best-effort; the decision itself is already saved.

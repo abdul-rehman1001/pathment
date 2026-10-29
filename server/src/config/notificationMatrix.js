@@ -34,6 +34,8 @@ EXTENSION_HANDLED: 'extension_handled',
   STANDING_CLAN_REQUEST_DECIDED: 'standing_clan_request_decided',
   MENTEE_TRANSFER_REQUESTED: 'mentee_transfer_requested',
   MENTEE_TRANSFER_DECIDED: 'mentee_transfer_decided',
+  CLAN_CHANGE_REQUESTED: 'clan_change_requested',
+  CLAN_CHANGE_DECIDED: 'clan_change_decided',
   PROMOTION_NOMINATED: 'promotion_nominated',
   // A mentor put somebody forward as a top performer; the admin decides.
   TOP_PERFORMER_NOMINATED: 'top_performer_nominated',
@@ -412,6 +414,24 @@ const NOTIFICATION_MATRIX = {
     // mentee, so the per-notification actionUrl resolves the audience.
     audience: 'any',
     preferenceKey: 'mentee_transfer_decided',
+    channels: { inApp: true, email: true, chat: false }
+  },
+  // The mentee asks to be moved. Goes to the admins of THEIR programme, who
+  // are the only ones who decide these - a mentor cannot approve a request to
+  // be moved out of their own clan. Email as well as the bell: the mentee is
+  // waiting on a human, and an unseen request is the whole failure mode.
+  [NOTIFICATION_EVENTS.CLAN_CHANGE_REQUESTED]: {
+    type: 'system',
+    audience: 'admin',
+    preferenceKey: 'clan_change_requested',
+    channels: { inApp: true, email: true, chat: false }
+  },
+  // The answer, back to the mentee who asked. Approved or denied, they hear
+  // it: a request that disappears silently is worse than a no.
+  [NOTIFICATION_EVENTS.CLAN_CHANGE_DECIDED]: {
+    type: 'system',
+    audience: 'mentee',
+    preferenceKey: 'clan_change_decided',
     channels: { inApp: true, email: true, chat: false }
   },
   [NOTIFICATION_EVENTS.TOP_PERFORMER_NOMINATED]: {

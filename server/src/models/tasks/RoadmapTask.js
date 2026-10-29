@@ -87,6 +87,11 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.ARRAY(DataTypes.UUID),
       defaultValue: [],
       field: 'open_source_org_ids'
+    },
+    talkIds: {
+      type: DataTypes.ARRAY(DataTypes.UUID),
+      defaultValue: [],
+      field: 'talk_ids'
     }
   }, {
     tableName: 'roadmap_tasks',

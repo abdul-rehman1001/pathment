@@ -137,6 +137,8 @@ export const qk = {
     publicPrograms: ['me', 'public-programs'] as const,
     /** Which clans the signed-in mentee is paused in. Read on every mentee page. */
     pauseState: ['me', 'pause-state'] as const,
+    /** Their clans, the clans they could ask to move to, and their own asks. */
+    clanChange: ['me', 'clan-change'] as const,
     program: (programId: string) => ['me', 'program', programId] as const,
     programEnrollment: (programId: string, menteeId: string) =>
       ['me', 'program-enrollment', programId, menteeId] as const,

@@ -16,8 +16,11 @@ export interface ChangeRequest {
   status: 'pending' | 'approved' | 'denied' | 'cancelled';
   resolutionNote: string | null;
   /** 'mentor' = a mentor asked the target clan directly; that clan decides, but
-   *  an admin can still step in. 'admin' = raised here. */
-  origin?: 'admin' | 'mentor';
+   *  an admin can still step in. 'admin' = raised here. 'mentee' = the mentee
+   *  asked to be moved, and only an admin can answer it — which is also the
+   *  only origin where `toClanId` may be null, because they were allowed to
+   *  leave the destination to whoever picks it up. */
+  origin?: 'admin' | 'mentor' | 'mentee';
   requestedBy?: string | null;
   at: string;
 }

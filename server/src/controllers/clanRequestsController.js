@@ -17,6 +17,28 @@ const createRequest = catchAsync(async (req, res) => {
   res.status(201).json(successResponse('Request created', { request }, 201));
 });
 
+/**
+ * The mentee's own clan-change surface. Everything their page needs in one
+ * read, so the form, the sibling clans and their own history cannot disagree
+ * about which clan they are in.
+ */
+const myClanChangeOptions = catchAsync(async (req, res) => {
+  const data = await clanRequestsService.myClanChangeOptions(req.user.id);
+  res.status(200).json(successResponse('Your clan options', data));
+});
+
+/** POST: the mentee asks to be moved. `menteeId` is never read from the body. */
+const requestOwnMove = catchAsync(async (req, res) => {
+  const request = await clanRequestsService.requestOwnMove(req.body, req.user);
+  res.status(201).json(successResponse('Request sent to your program admin', { request }, 201));
+});
+
+/** POST: they withdraw it before anyone decided. */
+const cancelOwnMove = catchAsync(async (req, res) => {
+  const result = await clanRequestsService.cancelOwnMove(req.params.id, req.user.id);
+  res.status(200).json(successResponse('Request withdrawn', result));
+});
+
 const resolveRequest = catchAsync(async (req, res) => {
   const request = await clanRequestsService.resolveRequest(req.params.id, req.body, req.user?.id);
   res.status(200).json(successResponse('Request resolved', { request }));
@@ -101,6 +123,9 @@ module.exports = {
   overview,
   createRequest,
   resolveRequest,
+  myClanChangeOptions,
+  requestOwnMove,
+  cancelOwnMove,
   listCrossClan,
   createCrossClan,
   removeCrossClan,
