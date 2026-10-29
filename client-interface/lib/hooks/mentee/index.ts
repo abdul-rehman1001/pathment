@@ -7,6 +7,15 @@ export type { UseMenteeMeetingsReturn, BookableMentor, OpenSlot, MenteeMeeting }
 export { useMyProgress } from './useMyProgress';
 export type { UseMyProgressReturn } from './useMyProgress';
 
+export { useMyClanChange } from './useMyClanChange';
+export type {
+  UseMyClanChangeReturn,
+  MyClanChangeData,
+  MyClanChangeRequest,
+  MyClanPlacement,
+  ClanOption,
+} from './useMyClanChange';
+
 export { useDailyLog } from './useDailyLog';
 export type { UseDailyLogReturn, DailyLogEntry } from './useDailyLog';
 

@@ -5,8 +5,8 @@ import { AdminScopeFilter } from '@/components/admin/AdminScopeFilter';
 import { useAdminScope, ALL_PROGRAMS, ALL_CLANS_IN_SCOPE } from '@/lib/context/AdminScopeContext';
 import { useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
-import { GitPullRequest, Loader2, Check, X, Plus, Trash2, ArrowRight, Search } from 'lucide-react';
-import { useClanRequests } from '@/lib/hooks/admin';
+import { GitPullRequest, Loader2, Check, X, Plus, Trash2, ArrowRight, Search, UserRound, MessageSquareQuote } from 'lucide-react';
+import { useClanRequests, type ChangeRequest } from '@/lib/hooks/admin';
 import { clanRequestsApi } from '@/lib/services/clan-requests-api';
 import { apiClient } from '@/lib/services/api-client';
 import { Drawer } from '@/components/shared/Drawer';
@@ -51,16 +51,68 @@ function AdminClanRequestsInner() {
   const [ccUser, setCcUser] = useState<{ id: string; name: string } | null>(null);
   const [ccToClan, setCcToClan] = useState('');
   const [ccFromClan, setCcFromClan] = useState('');
-  const [clans, setClans] = useState<{ id: string; name: string }[]>([]);
+  const [clans, setClans] = useState<{ id: string; name: string; programId: string | null }[]>([]);
   const [showCcForm, setShowCcForm] = useState(false);
 
   const act = async (id: string, fn: () => Promise<unknown>, msg = 'Done') => {
     try { setBusy(id); await fn(); toast.success(msg); refetch(); } catch (e: any) { toast.error(e?.response?.data?.message || 'Action failed'); } finally { setBusy(null); }
   };
 
+  /*
+   * Deciding a mentee's own request.
+   *
+   * The other two origins name their destination when they are raised, so the
+   * inline Approve is a complete decision and stays as it was. A mentee's ask
+   * often names none at all - that is the whole point of letting them raise one
+   * - so approving it means CHOOSING a clan, and there is nowhere on a row to
+   * do that. It also means a denial has to carry a reason: the mentee is told
+   * the outcome either way, and "no" with nothing after it just produces the
+   * same request again next week.
+   */
+  const [deciding, setDeciding] = useState<{ request: ChangeRequest; approve: boolean } | null>(null);
+  const [decisionClan, setDecisionClan] = useState('');
+  const [decisionNote, setDecisionNote] = useState('');
+
+  const openDecision = (request: ChangeRequest, approve: boolean) => {
+    setDeciding({ request, approve });
+    // Their stated preference, pre-selected - it is usually the right answer,
+    // and the admin only has to intervene when it is not.
+    setDecisionClan(approve ? (request.toClanId || '') : '');
+    setDecisionNote('');
+  };
+
+  const submitDecision = async () => {
+    if (!deciding) return;
+    const { request, approve } = deciding;
+    if (approve && !decisionClan) { toast.error('Choose the clan to move them into'); return; }
+    if (!approve && !decisionNote.trim()) { toast.error('Explain the decision so the mentee knows where they stand'); return; }
+    try {
+      setBusy(request.id);
+      await clanRequestsApi.resolveRequest(
+        request.id,
+        approve ? 'approved' : 'denied',
+        decisionNote.trim() || undefined,
+        approve ? decisionClan : undefined,
+      );
+      toast.success(approve ? 'Approved - mentee moved' : 'Denied, and the mentee has been told');
+      setDeciding(null);
+      refetch();
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { message?: string } } };
+      toast.error(err?.response?.data?.message || 'Action failed');
+    } finally { setBusy(null); }
+  };
+
+  /** Live cohort clans of the request's programme, minus the one they are leaving. */
+  const destinationsFor = (request: ChangeRequest) => clans.filter(
+    (c) => c.id !== request.fromClanId && (!request.programId || c.programId === request.programId),
+  );
+
   // Load clans for the cross-clan pickers.
   useEffect(() => {
-    apiClient.get<any>('/clans').then((r) => setClans(((r.data?.clans) || r.data || []).map((c: any) => ({ id: c.id, name: c.name })))).catch(() => {});
+    apiClient.get<any>('/clans').then((r) => setClans(((r.data?.clans) || r.data || []).map((c: any) => ({
+      id: c.id, name: c.name, programId: c.programId ?? c.program?.id ?? null,
+    })))).catch(() => {});
   }, []);
 
   // Debounced person search for the cross-clan helper.
@@ -157,7 +209,7 @@ function AdminClanRequestsInner() {
               <div className="bg-card rounded-2xl border border-slate-200 py-12 px-6 text-center">
                 <GitPullRequest className="w-10 h-10 text-slate-300 mx-auto mb-3" />
                 <p className="text-slate-600 font-medium">No clan-change requests</p>
-                <p className="text-slate-400 text-sm mt-1 max-w-md mx-auto">When a mentee asks to move from one clan to another, it shows up here for you to approve or deny. Approving moves the mentee into the new clan.</p>
+                <p className="text-slate-400 text-sm mt-1 max-w-md mx-auto">When a mentee asks to move clan, or a mentor asks another clan to take one of theirs, it shows up here. Approving moves the mentee, and their work goes with them.</p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -173,11 +225,29 @@ function AdminClanRequestsInner() {
                             Mentor request{r.requestedBy ? ` · ${r.requestedBy}` : ''}
                           </span>
                         )}
+                        {/* The mentee asked for this themselves, and only an
+                            admin can answer it - no mentor can approve a move
+                            out of their own clan. */}
+                        {r.origin === 'mentee' && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-700">
+                            <UserRound className="w-3 h-3" />Asked by the mentee
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5">
-                        <span>{r.fromClan || '-'}</span><ArrowRight className="w-3 h-3" /><span>{r.toClan}</span>
+                        <span>{r.fromClan || '-'}</span><ArrowRight className="w-3 h-3" />
+                        {/* No destination is a real state, not missing data:
+                            the mentee left the choice to whoever picks this up. */}
+                        {r.toClan
+                          ? <span>{r.toClan}{r.origin === 'mentee' && r.status === 'pending' ? ' (their preference)' : ''}</span>
+                          : <span className="italic text-slate-400">{r.status === 'pending' ? 'you choose' : 'not decided'}</span>}
                       </div>
                       {r.reason && <p className="text-xs text-slate-500 mt-1">{r.reason}</p>}
+                      {r.resolutionNote && (
+                        <p className="mt-1 inline-flex items-start gap-1 text-xs text-slate-400">
+                          <MessageSquareQuote className="w-3 h-3 mt-0.5 shrink-0" />{r.resolutionNote}
+                        </p>
+                      )}
                       {r.origin === 'mentor' && r.status === 'pending' && (
                         <p className="mt-1 text-[11px] text-slate-400">
                           Waiting on {r.toClan}&apos;s mentors — approve here only if you want to decide it for them.
@@ -186,9 +256,17 @@ function AdminClanRequestsInner() {
                     </div>
                     {r.status === 'pending' ? (
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <button onClick={() => act(r.id, () => clanRequestsApi.resolveRequest(r.id, 'approved'), 'Approved - mentee moved')} disabled={busy === r.id}
+                        <button
+                          onClick={() => (r.origin === 'mentee'
+                            ? openDecision(r, true)
+                            : act(r.id, () => clanRequestsApi.resolveRequest(r.id, 'approved'), 'Approved - mentee moved'))}
+                          disabled={busy === r.id}
                           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-medium hover:bg-emerald-100 disabled:opacity-50"><Check className="w-3.5 h-3.5" />Approve</button>
-                        <button onClick={() => act(r.id, () => clanRequestsApi.resolveRequest(r.id, 'denied'), 'Denied')} disabled={busy === r.id}
+                        <button
+                          onClick={() => (r.origin === 'mentee'
+                            ? openDecision(r, false)
+                            : act(r.id, () => clanRequestsApi.resolveRequest(r.id, 'denied'), 'Denied'))}
+                          disabled={busy === r.id}
                           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 text-xs font-medium hover:border-red-300 hover:text-red-600 disabled:opacity-50"><X className="w-3.5 h-3.5" />Deny</button>
                       </div>
                     ) : (
@@ -310,6 +388,87 @@ function AdminClanRequestsInner() {
           )}
         </>
       )}
+
+      {/* Deciding a mentee's own request: choose where they go, or say why not. */}
+      <Drawer
+        open={deciding !== null}
+        onClose={() => setDeciding(null)}
+        width="md"
+        title={deciding?.approve ? 'Approve the move' : 'Deny the request'}
+        subtitle={deciding ? `${deciding.request.mentee || 'This mentee'} · out of ${deciding.request.fromClan || 'their clan'}` : undefined}
+      >
+        {deciding && (
+          <div className="space-y-4">
+            <div className="rounded-lg bg-slate-50 px-3 py-2.5">
+              <p className="text-xs font-medium text-slate-500 mb-1">What they said</p>
+              <p className="text-sm text-slate-700">{deciding.request.reason || 'No reason given.'}</p>
+            </div>
+
+            {deciding.approve ? (
+              <>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">
+                    Move them into <span className="text-rose-500">*</span>
+                  </label>
+                  <SelectMenu
+                    value={decisionClan}
+                    onChange={setDecisionClan}
+                    options={destinationsFor(deciding.request).map((c) => ({ value: c.id, label: c.name }))}
+                    placeholder="Select a clan…"
+                    ariaLabel="Clan to move them into"
+                  />
+                  {deciding.request.toClanId ? (
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      They asked for {deciding.request.toClan}. You can place them elsewhere.
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      They left the choice to you.
+                    </p>
+                  )}
+                </div>
+                <p className="text-xs text-slate-500">
+                  Their tasks, submissions, feedback and day log come with them. The old clan&apos;s
+                  record is left exactly as it is.
+                </p>
+              </>
+            ) : null}
+
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">
+                Note to the mentee {deciding.approve
+                  ? <span className="text-slate-400">(optional)</span>
+                  : <span className="text-rose-500">*</span>}
+              </label>
+              <textarea
+                value={decisionNote}
+                onChange={(e) => setDecisionNote(e.target.value)}
+                rows={3}
+                maxLength={4000}
+                placeholder={deciding.approve
+                  ? 'e.g. your new mentor runs the review at 6pm your time'
+                  : 'e.g. we are moving your review slot instead - speak to your mentor this week'}
+                className={`${field} w-full`}
+              />
+              <p className="text-[11px] text-slate-400 mt-1">They see this on their My clan page.</p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button onClick={() => setDeciding(null)} className="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50">Cancel</button>
+              <button
+                onClick={submitDecision}
+                disabled={busy === deciding.request.id}
+                className={`px-4 py-2 rounded-lg text-white text-sm font-medium inline-flex items-center gap-1.5 disabled:opacity-50 ${deciding.approve ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-slate-700 hover:bg-slate-800'}`}
+              >
+                {busy === deciding.request.id
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : deciding.approve ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
+                {deciding.approve ? 'Approve and move' : 'Deny'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Drawer>
     </div>
   );
 }

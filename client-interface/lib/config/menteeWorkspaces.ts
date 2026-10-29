@@ -21,6 +21,10 @@ export const menteeWorkspaces = [
     label: "My support",
     tabs: [
       { href: "/mentee/meetings", label: "My mentor" },
+      // Their clan and the mentor in it are the support they actually have, and
+      // asking to change clan is a support request - it belongs beside
+      // roadblocks, not buried in Settings where nobody would look for it.
+      { href: "/mentee/clan", label: "My clan" },
       { href: "/mentee/blockers", label: "Roadblocks" },
     ],
   },

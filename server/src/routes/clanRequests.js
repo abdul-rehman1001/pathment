@@ -48,9 +48,47 @@ router.post(
 
 router.get('/', adminOnly, c.overview);
 
-// Change requests: a mentee may create one; admin resolves.
-router.post('/requests', authenticate, c.createRequest);
-router.patch('/requests/:id/resolve', adminOnly, c.resolveRequest);
+/**
+ * A mentee's own clan change. Authenticated, not permissioned: the only thing
+ * these can act on is the caller's own placement, which the service resolves
+ * from the session rather than the body.
+ *
+ * Declared BEFORE '/requests' so 'my-move' is never swallowed by a parameter
+ * segment, and kept on its own path rather than sharing the admin route with a
+ * role check inside - authority belongs at the route, where it can be read.
+ */
+router.get('/my-move', authenticate, c.myClanChangeOptions);
+router.post(
+  '/my-move',
+  authenticate,
+  validateBody(clanRequestValidation.ownMove),
+  c.requestOwnMove,
+);
+router.post(
+  '/my-move/:id/cancel',
+  authenticate,
+  validateParams(clanRequestValidation.idParams),
+  c.cancelOwnMove,
+);
+
+/*
+ * Change requests, raised from the admin console and resolved there.
+ *
+ * The POST was `authenticate` only, which meant any signed-in account could
+ * queue a move naming any mentee and any clan; the row was indistinguishable
+ * from one an admin had raised, so approving it looked routine. Mentees now
+ * have '/my-move' above, which can only ever move the caller, and mentors go
+ * through menteeTransferService - so nothing legitimate was reaching this
+ * route unprivileged, and it is now guarded like the resolve beside it.
+ */
+router.post('/requests', adminOnly, c.createRequest);
+router.patch(
+  '/requests/:id/resolve',
+  adminOnly,
+  validateParams(clanRequestValidation.idParams),
+  validateBody(clanRequestValidation.resolveMove),
+  c.resolveRequest,
+);
 
 // The covering person's own surface: see + accept/decline cover requests for them.
 router.get('/cross-clan/mine', authenticate, c.listMyCrossClan);
